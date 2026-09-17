@@ -3,7 +3,7 @@ import json
 import io
 import unittest
 
-from pycozmo.anim_encoder import AnimClips
+from pycozmo.anim_encoder import AnimClips, AnimHeadAngle, AnimLiftHeight
 
 
 class TestClips(unittest.TestCase):
@@ -711,3 +711,27 @@ class TestEvent(unittest.TestCase):
 
         data2 = clips.to_dict()
         self.assertEqual(data, data2)
+
+
+class TestLiftHeightDefaults(unittest.TestCase):
+
+    def test_missing_height_variability(self):
+        # heightVariability_mm is optional in the resource files. Its absence used to reach int(None); the head
+        # angle keyframe already defaulted its own variability to zero.
+        keyframe = AnimLiftHeight.from_dict({
+            "triggerTime_ms": 1,
+            "durationTime_ms": 2,
+            "height_mm": 3,
+        })
+        self.assertEqual(keyframe.trigger_time_ms, 1)
+        self.assertEqual(keyframe.duration_ms, 2)
+        self.assertEqual(keyframe.height_mm, 3)
+        self.assertEqual(keyframe.variability_mm, 0)
+
+    def test_missing_angle_variability(self):
+        keyframe = AnimHeadAngle.from_dict({
+            "triggerTime_ms": 1,
+            "durationTime_ms": 2,
+            "angle_deg": 3,
+        })
+        self.assertEqual(keyframe.variability_deg, 0)
