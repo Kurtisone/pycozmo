@@ -73,7 +73,15 @@ cli.stop()
 Documentation
 -------------
 
-[https://pycozmo.readthedocs.io/](https://pycozmo.readthedocs.io/)
+[https://pycozmo.readthedocs.io/](https://pycozmo.readthedocs.io/) documents upstream v0.8.0. It predates this fork
+and does not describe its changes.
+
+To build the documentation for this tree:
+
+```
+pip install --user -r requirements-dev.txt
+sphinx-build -b html docs/source docs/source/build
+```
 
 
 Robot Support
