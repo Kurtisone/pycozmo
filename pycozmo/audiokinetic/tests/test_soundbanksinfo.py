@@ -135,3 +135,85 @@ class TestLoadSoundbanksInfo(unittest.TestCase):
         self.assertEqual(file.path, r"SFX\Codelab__SFX_General_Negative_4B76E3B5.wem")
         self.assertEqual(file.embedded, False)
         self.assertEqual(file.prefetch_size, -1)
+
+    def test_soundbank_missing_id(self):
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <SoundBanks>
+        <SoundBank Language="SFX">
+            <ObjectPath>\SoundBanks\Default Work Unit\SFX</ObjectPath>
+            <ShortName>SFX</ShortName>
+            <Path>SFX.bnk</Path>
+        </SoundBank>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
+            pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
+
+    def test_soundbank_missing_short_name(self):
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <SoundBanks>
+        <SoundBank Id="393239870" Language="SFX">
+            <ObjectPath>\SoundBanks\Default Work Unit\SFX</ObjectPath>
+            <Path>SFX.bnk</Path>
+        </SoundBank>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
+            pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
+
+    def test_soundbank_empty_short_name(self):
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <SoundBanks>
+        <SoundBank Id="393239870" Language="SFX">
+            <ObjectPath>\SoundBanks\Default Work Unit\SFX</ObjectPath>
+            <ShortName/>
+            <Path>SFX.bnk</Path>
+        </SoundBank>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
+            pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
+
+    def test_streamed_file_missing_path(self):
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <StreamedFiles>
+        <File Id="26755609" Language="SFX">
+            <ShortName>Codelab__SFX_General_Negative.wav</ShortName>
+        </File>
+    </StreamedFiles>
+    <SoundBanks>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
+            pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
+
+    def test_event_missing_id(self):
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <SoundBanks>
+        <SoundBank Id="393239870" Language="SFX">
+            <ObjectPath>\SoundBanks\Default Work Unit\SFX</ObjectPath>
+            <ShortName>SFX</ShortName>
+            <Path>SFX.bnk</Path>
+            <IncludedEvents>
+                <Event Name="Play__Codelab__SFX_Alien_Invasion_UFO" ObjectPath="\Events\Play"/>
+            </IncludedEvents>
+        </SoundBank>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
+            pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
