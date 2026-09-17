@@ -13,6 +13,32 @@ This project is a tool for exploring the hardware and software of the Digital Dr
 It is unstable and heavily under development.
 
 
+About This Fork
+---------------
+
+This is an actively maintained fork of [zayfod/pycozmo](https://github.com/zayfod/pycozmo).
+
+Upstream development stopped in November 2020. The last release on PyPI is v0.8.0 and the issue tracker has
+collected reports and pull requests that have gone unanswered since 2021, among them the one that makes the package
+fail to import at all on current Python.
+
+The Cozmo protocol is not a moving target: Anki shut down in 2019 and the robot firmware is frozen. This fork is
+therefore not chasing upstream changes, it is paying off the maintenance debt that accumulated after the project was
+abandoned:
+
+- Support for current Python versions. `import pycozmo` failed outright on Python 3.13, for every user, because the
+  standard library module it depended on was removed.
+- Dependencies pinned to versions that are known to work, rather than open ranges.
+- Continuous integration running the linter, the type checker and the unit tests on Python 3.11 through 3.14.
+
+The protocol layer is deliberately left alone. `protocol_declaration.py`, `protocol_encoder.py` and the generator
+that produces them are the parts hardest to verify without a robot on the desk, so they are touched only for a
+demonstrated bug.
+
+Changes made here are listed separately from the upstream history in [CHANGES.md](CHANGES.md), and are kept in a
+shape that could be offered upstream if that project ever becomes active again.
+
+
 Usage
 -----
 
@@ -216,20 +242,15 @@ Requirements
 Installation
 ------------
 
-Using pip:
-
-```
-pip install --user pycozmo
-
-pycozmo_resources.py download
-```
+This fork is not published on PyPI. Installing `pycozmo` from PyPI gives upstream v0.8.0, which fails to import on
+Python 3.13 and newer.
 
 From source:
 
 ```
-git clone https://github.com/zayfod/pycozmo.git
+git clone http://192.168.1.20:3002/kurtisone/pycozmo.git
 cd pycozmo
-python setup.py install --user
+pip install --user .
 
 pycozmo_resources.py download
 ```
@@ -237,19 +258,41 @@ pycozmo_resources.py download
 From source, for development:
 
 ```
-git clone git@github.com:zayfod/pycozmo.git
+git clone http://192.168.1.20:3002/kurtisone/pycozmo.git
 cd pycozmo
-python setup.py develop --user
+pip install --user -e .
 pip install --user -r requirements-dev.txt
 
 pycozmo_resources.py download
 ```
 
+`setup.py install` and `setup.py develop`, which earlier revisions documented, are deprecated by setuptools. The pip
+invocations above replace them.
+
+
+Checks
+------
+
+None of the checks below need a robot or a network connection. They are what the CI workflow runs:
+
+```
+flake8 .
+mypy .
+pytest pycozmo/
+```
+
+`flake8` and `pytest` are expected to pass. `mypy` currently reports a backlog of pre-existing errors in project
+code and is advisory.
+
  
 Support
 -------
 
-Bug reports and changes should be sent via GitHub:
+Bug reports and changes for this fork:
+
+[http://192.168.1.20:3002/kurtisone/pycozmo](http://192.168.1.20:3002/kurtisone/pycozmo)
+
+The upstream project, for reference:
 
 [https://github.com/zayfod/pycozmo](https://github.com/zayfod/pycozmo)
 
