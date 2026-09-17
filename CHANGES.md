@@ -11,6 +11,13 @@ Fork
 Unreleased
 ----------
 
+- Fixed the return annotations of five generator functions, including connect(), the documented entry point, whose
+    signature prevented type checkers from resolving `with pycozmo.connect() as cli:` in calling code.
+- Fixed the drawing context annotations in the procedural face renderers, which named the PIL.ImageDraw module
+    where its class was meant. Same defect as upstream issue #68, on call sites that fix missed.
+- Made Activity.get_sorted_choices() honour its declared return type.
+- Declared the build system in pyproject.toml, per PEP 518, and dropped the license classifier that setuptools
+    deprecates. Package metadata stays in setup.py so the command line tools keep their documented names.
 - Re-enabled test_send_30, disabled as intermittently failing since 2020. The transport was not at fault: the test
     stopped waiting one packet early, then asserted that all of them had arrived. The suite now has no skipped tests.
 - Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the

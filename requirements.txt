@@ -1,6 +1,6 @@
 # Exact versions of the runtime dependencies this revision is tested against.
 # setup.py declares wider ranges, so that installing pycozmo as a library does not over-constrain the environment.
-setuptools>=64
+setuptools>=77
 dpkt==1.9.8
 numpy==2.4.6
 Pillow==12.3.0

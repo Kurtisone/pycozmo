@@ -30,6 +30,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     version=get_package_variable("__version__"),
     license="MIT",
+    license_files=["LICENSE.md"],
     description="A pure-Python communication library, alternative SDK, and application for the Cozmo robot.",
     long_description=get_readme(),
     long_description_content_type="text/markdown",
@@ -46,7 +47,6 @@ setuptools.setup(
     keywords=["ddl", "anki", "cozmo", "robot", "robotics"],
     classifiers=[
         "Development Status :: 4 - Beta",
-        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",

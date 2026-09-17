@@ -1,0 +1,6 @@
+# Build system declaration, per PEP 518. Package metadata stays in setup.py, which installs the command line tools
+# from tools/ verbatim; the entry point mechanism a full move here would require renames them, and the README
+# documents them with their .py suffix.
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
