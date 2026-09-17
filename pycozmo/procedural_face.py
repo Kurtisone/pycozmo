@@ -118,7 +118,7 @@ class ProceduralLid(ProceduralBase):
     def get_black(cls, width, height):
         return Image.new("1", (width, height), color=0)
 
-    def render(self, im: Image) -> None:
+    def render(self, im: Image.Image) -> None:
         # Lid image
         lid = Image.new("1", (self.width * 2, self.height * 2), color=0)
 
@@ -338,7 +338,7 @@ class ProceduralEye(ProceduralBase):
         y4 = y2
         draw.pieslice(((x3, y3), (x4, y4)), 90, 180, fill=1)
 
-    def render(self, im: Image) -> None:
+    def render(self, im: Image.Image) -> None:
         # Eye image
         eye = Image.new("1", (self.width, self.height), color=0)
 
@@ -463,7 +463,7 @@ class ProceduralFace(ProceduralBase):
     def angle(self, value: float) -> None:
         self.params[self.offset + 4] = value
 
-    def render(self) -> Image:
+    def render(self) -> Image.Image:
         # Background image
         im = Image.new("1", (self.width, self.height), color=0)
 

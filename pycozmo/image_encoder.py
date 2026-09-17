@@ -43,7 +43,7 @@ def image_to_str(image):
     return s.getvalue()
 
 
-def str_to_image(sim: str) -> Image:
+def str_to_image(sim: str) -> Image.Image:
     s = StringIO(sim)
     im = Image.new("1", (128, 32), color=0)
     px = im.load()
@@ -163,7 +163,7 @@ class ImageDecoder(object):
 
 class ImageEncoder(object):
 
-    def __init__(self, im: Image):
+    def __init__(self, im: Image.Image):
         if im.size[0] != 128 or im.size[1] != 32:
             raise ValueError("Invalid image dimensions. Only 128x32 images are supported. {}x{} given.".format(
                 im.size[0], im.size[1]))

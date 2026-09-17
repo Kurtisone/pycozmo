@@ -41,7 +41,7 @@ class PreprocessedClip(object):
         self.keyframes = keyframes or defaultdict(list)
 
     @classmethod
-    def keyframe_to_im(cls, keyframe) -> Image:
+    def keyframe_to_im(cls, keyframe) -> Image.Image:
         params = [keyframe.center_x, keyframe.center_y, keyframe.scale_x, keyframe.scale_y, keyframe.angle] + \
                  keyframe.left_eye + keyframe.right_eye
         face = procedural_face.ProceduralFace(params)
