@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from typing import Optional
+from typing import List, Optional, Tuple
 import sys
 import time
 
@@ -14,8 +14,8 @@ class ReplayApp(object):
     def __init__(self, log_messages: Optional[list] = None, replay_messages: Optional[list] = None):
         self.log_messages = log_messages
         self.frame_count = 0
-        self.pkts = []
-        self.first_ts = None
+        self.pkts: List[Tuple[float, pycozmo.protocol_base.Packet]] = []
+        self.first_ts: Optional[float] = None
         self.packet_id_filter = pycozmo.filter.Filter()
         if replay_messages:
             for i in replay_messages:
@@ -75,6 +75,8 @@ class ReplayApp(object):
                 if self.packet_id_filter.filter(pkt.id):
                     continue
                 input()
+                # Set while reading the capture, which must have happened for there to be packets to replay.
+                assert self.first_ts is not None
                 print("{}, time={:.06f}".format(i, ts - self.first_ts))
                 cli.conn.send(pkt)
         except KeyboardInterrupt:
@@ -86,8 +88,8 @@ class ReplayApp(object):
 
 def main():
     fspec = sys.argv[1]
-    log_messages = []   # "objects", "audio", "state"]
-    replay_messages = []    # "lights", "objects"]
+    log_messages: List[str] = []   # "objects", "audio", "state"]
+    replay_messages: List[str] = []    # "lights", "objects"]
 
     app = ReplayApp(log_messages=log_messages, replay_messages=replay_messages)
     app.replay(fspec)
