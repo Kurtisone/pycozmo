@@ -8,6 +8,13 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+Unreleased
+----------
+
+- Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the
+    documentation are ones a reader can actually use.
+
+
 v0.9.0 (Sep 17, 2026)
 ---------------------
 
