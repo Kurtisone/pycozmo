@@ -169,8 +169,16 @@ class SendThread(Thread):
             raise
 
     def _send_raw_frame(self, raw_frame: bytes) -> None:
+        # Read once: the receive thread sets this when a client connects and reset() clears it again on the server
+        # side, so it can change between a check and the call below.
+        receiver_address = self.receiver_address
+        if receiver_address is None:
+            # Server side with no client connected. sendto() would raise TypeError, which is not an OSError and
+            # would leave this thread dead.
+            self.discarded_frames += 1
+            return
         try:
-            self.sock.sendto(raw_frame, self.receiver_address)
+            self.sock.sendto(raw_frame, receiver_address)
             self.sent_frames += 1
             self.sent_bytes += len(raw_frame)
         except OSError:
