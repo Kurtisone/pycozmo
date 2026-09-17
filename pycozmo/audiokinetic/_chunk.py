@@ -36,7 +36,8 @@ class Chunk:
             raise EOFError("Truncated chunk name.")
 
         try:
-            self.chunksize = struct.unpack(">L" if bigendian else "<L", file.read(4))[0]
+            chunksize: int = struct.unpack(">L" if bigendian else "<L", file.read(4))[0]
+            self.chunksize = chunksize
         except struct.error:
             raise EOFError("Truncated chunk size.") from None
         if inclheader:
