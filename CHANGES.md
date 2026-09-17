@@ -8,6 +8,18 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.2 (Sep 17, 2026)
+---------------------
+
+- Fixed Client.wait_for() timing out on any event that carries a payload. Client shadowed the working version from
+    Dispatcher with a copy whose handler accepted a single argument, so waiting for the next camera frame or for an
+    orientation change raised Timeout although the event had fired, while the receive loop took a TypeError.
+    Waiting for a camera frame could not have worked.
+- Typed the Client public API: its attributes, the light and motion commands and the packet handlers. A caller now
+    gets Client from connect(), sees which robot fields are optional until the robot reports them, and is told when
+    it passes something that is not a LightState to the backpack lights.
+- Added a test module for the event dispatcher, which had none.
+
 v0.9.1 (Sep 17, 2026)
 ---------------------
 
