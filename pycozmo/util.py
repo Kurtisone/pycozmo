@@ -881,14 +881,14 @@ class FPSTimer:
         # Timer period in seconds.
         self._period = 1.0 / int(fps)
         # Start time of the last successfully maintained frame sequence.
-        self._start = None
+        self._start: Optional[float] = None
         # Number of successfully maintained frames.
         self._frames = 1
 
     def sleep(self):
         """ Sleep to maintain the framerate. Should be called at the end of a frame. """
         now = time.perf_counter()
-        if not self._start:
+        if self._start is None:
             # First call.
             self._start = now
         delay = self._start + (self._frames * self._period) - now

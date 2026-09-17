@@ -6,7 +6,7 @@ JSON reading functions for files containing non-standard comments
 
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 def load_json_file(filename: str) -> Dict:
@@ -37,7 +37,7 @@ def get_json_files(resource_dir: str, base_names: List[str]) -> List[str]:
     return file_addr
 
 
-def find_file(directory: str, name: str) -> str:
+def find_file(directory: str, name: str) -> Optional[str]:
     for root, _, files in os.walk(directory):
         if name in files:
             return os.path.join(root, name)

@@ -8,9 +8,19 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
-Unreleased
-----------
+v0.9.1 (Sep 17, 2026)
+---------------------
 
+A maintenance release. No API changes; every item below is a fix to code, to a
+signature that misdescribed the code, or to packaging.
+
+- Corrected three functions that lied about what they return: find_file(), which returns None when the file is not
+    found, DecayGraph.get_line_parameters(), which returns a pair rather than a single value, and the frame rate
+    timer's start time, which is also now tested for absence rather than for falsiness.
+- Made the SoundbanksInfo reader raise its documented AudioKineticFormatError on files missing a required
+    attribute or element, instead of letting TypeError and AttributeError escape.
+- Qualified the documentation link, which points at upstream v0.8.0 and does not describe this fork, and added the
+    command that builds the documentation from a checkout.
 - Fixed the return annotations of five generator functions, including connect(), the documented entry point, whose
     signature prevented type checkers from resolving `with pycozmo.connect() as cli:` in calling code.
 - Fixed the drawing context annotations in the procedural face renderers, which named the PIL.ImageDraw module
