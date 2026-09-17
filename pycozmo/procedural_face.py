@@ -531,7 +531,7 @@ class ProceduralFaceGenerator:
     def __init__(self):
         self.current_face = ProceduralFace()
 
-    def _blink(self):
+    def _blink(self) -> Generator[Image.Image, None, None]:
         """ Generate blink animation. """
 
         # Create blink face at the position of the current face.
@@ -560,7 +560,7 @@ class ProceduralFaceGenerator:
             im2 = Image.fromarray(np_im2)
             yield im2
 
-    def __iter__(self):
+    def __iter__(self) -> Generator[Optional[Image.Image], None, None]:
         """ Generate eye animation. """
 
         while True:

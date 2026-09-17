@@ -4,7 +4,7 @@ Utility classes and functions.
 
 """
 
-from typing import Optional, Tuple
+from typing import Iterator, Optional, Tuple
 import os
 import pathlib
 import math
@@ -771,7 +771,7 @@ def hex_load(data: str) -> bytes:
     return res
 
 
-def frange(start, stop, step):
+def frange(start: float, stop: float, step: float) -> Iterator[float]:
     x = start
     while x < stop:
         yield x
