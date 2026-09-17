@@ -8,8 +8,12 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
-Unreleased
-----------
+v0.9.0 (Sep 17, 2026)
+---------------------
+
+First release of this fork. Its version number continues the upstream sequence: upstream stopped at v0.8.0 and is
+not expected to publish again. The minor version is raised rather than the patch version because the supported
+Python range changed, which is a breaking change for anyone still on 3.6 to 3.10.
 
 Python 3.12 and 3.13 support:
 - Fixed `import pycozmo` failing with `ModuleNotFoundError: No module named 'chunk'` on Python 3.13. The `chunk`
