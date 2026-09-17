@@ -51,7 +51,7 @@ class DecayGraph:
         return f_out
 
     @staticmethod
-    def get_line_parameters(p1: Node, p2: Node) -> Tuple[float]:
+    def get_line_parameters(p1: Node, p2: Node) -> Tuple[float, float]:
         try:
             m = (p1.y - p2.y) / (p1.x - p2.x)
             b = p1.y - m * p1.x
