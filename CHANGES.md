@@ -11,6 +11,13 @@ Fork
 Unreleased
 ----------
 
+- Fixed the return annotations of five generator functions, including connect(), the documented entry point, whose
+    signature prevented type checkers from resolving `with pycozmo.connect() as cli:` in calling code.
+- Fixed the drawing context annotations in the procedural face renderers, which named the PIL.ImageDraw module
+    where its class was meant. Same defect as upstream issue #68, on call sites that fix missed.
+- Made Activity.get_sorted_choices() honour its declared return type.
+- Declared the build system in pyproject.toml, per PEP 518, and dropped the license classifier that setuptools
+    deprecates. Package metadata stays in setup.py so the command line tools keep their documented names.
 - Merged the four commits upstream left unreleased on its dev branch: emotion type updates and emotion events,
     camera matrix extraction, and saved cube ID extraction. The opencv-python requirement that came with them is
     left out, as nothing in the tree imports cv2.

@@ -4,7 +4,7 @@ Helper functions for running PyCozmo applications.
 
 """
 
-from typing import Optional
+from typing import Iterator, Optional
 import sys
 import os
 import logging
@@ -61,7 +61,7 @@ def connect(
         robot_log_level: Optional[str] = None,
         auto_initialize: bool = True,
         enable_animations: bool = True,
-        enable_procedural_face: bool = True) -> client.Client:
+        enable_procedural_face: bool = True) -> Iterator[client.Client]:
 
     setup_basic_logging(log_level=log_level, protocol_log_level=protocol_log_level, robot_log_level=robot_log_level)
 

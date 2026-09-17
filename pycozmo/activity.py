@@ -84,7 +84,11 @@ class BehaviorChooser:
             self.behavior_scores[idx] = max(0, self.behavior_scores[idx])
             self.total_score = sum(self.behavior_scores)
 
-    def get_sorted_choices(self) -> List[str]:
+    # Note: the two populated branches below do not agree on what a choice is. 'StrictPriority' returns the raw
+    # behavior dictionaries, while 'Scoring' returns behavior IDs. That predates this fork, the method has no
+    # callers, and settling it needs a robot to check the behavior engine against, so it is documented rather than
+    # guessed at.
+    def get_sorted_choices(self) -> Optional[List]:
         if self.choice_type == 'Selection':
             return None
         if self.choice_type == 'StrictPriority':
@@ -100,7 +104,9 @@ class BehaviorChooser:
 
                 val = np.random.choice(self.behavior_names, p=probability_distribution,
                                        size=len(np.nonzero(probability_distribution)[0]), replace=False)
-                return val
+                # np.ndarray.tolist() is typed as Any, so bind it before returning.
+                choices: List = val.tolist()
+                return choices
             else:
                 return None
         else:

@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 from PIL import Image
 import numpy as np
@@ -271,7 +271,7 @@ class AnimationGroup:
         return member
 
 
-def load_trigger_map(resource_dir: str, map_relative_path: str) -> Tuple[str, str, Dict]:
+def load_trigger_map(resource_dir: str, map_relative_path: str) -> Iterator[Tuple[str, str, Dict]]:
     json_data = load_json_file(os.path.join(resource_dir, map_relative_path))
     for pair in json_data['Pairs']:
         anim_file = find_file(resource_dir, pair['AnimName'] + '.json')
