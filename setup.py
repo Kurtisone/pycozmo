@@ -5,10 +5,8 @@ PyCozmo setup script.
 """
 
 import os
-import sys
 import re
 import setuptools
-from distutils.version import LooseVersion
 
 
 def get_package_variable(key):
@@ -26,10 +24,6 @@ def get_readme():
         readme = f.read()
     return readme
 
-
-# Check for setuptools version as long_description_content_type is not supported in older versions.
-if LooseVersion(setuptools.__version__) < LooseVersion("38.6.0"):
-    sys.exit("ERROR: setuptools 38.6.0 or newer required.")
 
 setuptools.setup(
     name="pycozmo",
