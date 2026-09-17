@@ -4,7 +4,7 @@ Helper functions for running PyCozmo applications.
 
 """
 
-from typing import Iterator, Optional
+from typing import Iterator, Optional, TextIO, Union
 import sys
 import os
 import logging
@@ -22,18 +22,21 @@ __all__ = [
 
 
 def setup_basic_logging(
-        log_level: Optional[str] = None,
-        protocol_log_level: Optional[str] = None,
-        robot_log_level: Optional[str] = None,
-        target=sys.stderr) -> None:
+        log_level: Optional[Union[int, str]] = None,
+        protocol_log_level: Optional[Union[int, str]] = None,
+        robot_log_level: Optional[Union[int, str]] = None,
+        target: TextIO = sys.stderr) -> None:
 
     if log_level is None:
-        log_level = os.environ.get('PYCOZMO_LOG_LEVEL', logging.INFO)
+        env_level = os.environ.get('PYCOZMO_LOG_LEVEL')
+        log_level = logging.INFO if env_level is None else env_level
     if protocol_log_level is None:
-        protocol_log_level = os.environ.get('PYCOZMO_PROTOCOL_LOG_LEVEL', logging.INFO)
+        env_level = os.environ.get('PYCOZMO_PROTOCOL_LOG_LEVEL')
+        protocol_log_level = logging.INFO if env_level is None else env_level
     if robot_log_level is None:
         # Keeping the default to WARNING due to "AnimationController.IsReadyToPlay.BufferStarved" messages.
-        robot_log_level = os.environ.get('PYCOZMO_ROBOT_LOG_LEVEL', logging.WARNING)
+        env_level = os.environ.get('PYCOZMO_ROBOT_LOG_LEVEL')
+        robot_log_level = logging.WARNING if env_level is None else env_level
     handler = logging.StreamHandler(stream=target)
     formatter = logging.Formatter(
         fmt="%(asctime)s.%(msecs)03d %(name)-20s %(levelname)-8s %(message)s",

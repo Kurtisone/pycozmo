@@ -8,6 +8,21 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.4 (Sep 17, 2026)
+---------------------
+
+- Fixed the send thread dying when the server side has no client connected. The receiver address is unset until a
+    client connects and again after a reset; sending then raised TypeError, which the surrounding handler does not
+    catch. Such a frame is now discarded, as one that fails to send already was.
+- Corrected Filter.filter(), which declared an int parameter while its body tests the argument against None and
+    both of its callers pass an optional packet id.
+- Widened the log level parameters of setup_basic_logging() to accept numbers as well as names, which the body
+    already produced when reading them from the environment.
+- Typed the connection layer, reachable from application code through Client.conn, and the remaining untyped parts
+    of the animation encoder.
+- Declared trigger_time_ms on the animation keyframe base class. All ten keyframe types carry it, and both the
+    encoder and its tests read it off the base.
+
 v0.9.3 (Sep 17, 2026)
 ---------------------
 

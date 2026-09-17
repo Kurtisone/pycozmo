@@ -1,5 +1,6 @@
 
 import unittest
+import socket
 from threading import Event
 
 import pycozmo
@@ -72,3 +73,19 @@ class TestConnection(unittest.TestCase):
         self.assertTrue(self.s_e.wait(5.0))
         self.assertEqual(counts, list(range(COUNT)))
         self.stop()
+
+
+class TestSendThread(unittest.TestCase):
+
+    def test_send_without_receiver(self):
+        # On the server side the receiver address is unset until a client connects, and reset() clears it again.
+        # A frame sent in that window has nowhere to go and must be discarded rather than killing the thread:
+        # socket.sendto(data, None) raises TypeError, which the OSError handler does not catch.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.addCleanup(sock.close)
+        thread = pycozmo.conn.SendThread(sock, None)
+        self.assertTrue(thread.server)
+        discarded = thread.discarded_frames
+        thread._send_raw_frame(b"\x00" * 8)
+        self.assertEqual(thread.discarded_frames, discarded + 1)
+        self.assertEqual(thread.sent_frames, 0)
