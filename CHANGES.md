@@ -19,6 +19,9 @@ v0.9.2 (Sep 17, 2026)
     gets Client from connect(), sees which robot fields are optional until the robot reports them, and is told when
     it passes something that is not a LightState to the backpack lights.
 - Added a test module for the event dispatcher, which had none.
+- Made the internal logger imports unambiguous. "from . import logger" names both the logger module and the Logger
+    object the package rebinds over it; it resolves to the Logger at run time, but left every logging call in the
+    package unverifiable. Two modules already imported from the module directly; the other ten now do too.
 
 v0.9.1 (Sep 17, 2026)
 ---------------------
