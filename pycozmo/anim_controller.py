@@ -4,7 +4,7 @@ Animation controller for audio, image, and animation playback.
 
 """
 
-from typing import List, Tuple, Any, Optional, Iterable
+from typing import Any, Deque, Iterable, List, Optional, Tuple
 from threading import Thread, Lock
 from collections import deque
 
@@ -22,11 +22,11 @@ class AnimationQueue:
 
     MAXLEN = 4500   # ~2.5 min of frames
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.lock = Lock()
-        self.audio_queue = deque(maxlen=self.MAXLEN)
-        self.image_queue = deque(maxlen=self.MAXLEN)
-        self.pkt_queue = deque(maxlen=self.MAXLEN)
+        self.audio_queue: Deque = deque(maxlen=self.MAXLEN)
+        self.image_queue: Deque = deque(maxlen=self.MAXLEN)
+        self.pkt_queue: Deque = deque(maxlen=self.MAXLEN)
 
     def is_empty(self):
         with self.lock:

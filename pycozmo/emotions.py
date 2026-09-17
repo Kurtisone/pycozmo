@@ -41,7 +41,7 @@ class DecayGraph:
         self.nodes_y = [node.y for node in nodes]
         self.ext_line_params = self.get_line_parameters(nodes[-2], nodes[-1]) if len(nodes) > 1 else None
 
-    def get_increment(self, val) -> float:
+    def get_increment(self, val: float) -> float:
         if self.ext_line_params is None:
             f_out = self.nodes_y[0]
         elif val <= self.nodes_x[-1]:
@@ -93,7 +93,7 @@ class EmotionEvent:
         self.affectors = dict(affectors)
 
     @classmethod
-    def from_json(cls, data: Dict):
+    def from_json(cls, data: Dict) -> "EmotionEvent":
         affectors = {}
         for affector in data['emotionAffectors']:
             affectors[affector['emotionType']] = affector['value']
