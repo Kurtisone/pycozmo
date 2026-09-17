@@ -137,7 +137,7 @@ class Objective:
         self.random_completions_needed_min = \
             int(random_completions_needed_min) if random_completions_needed_min is not None else 0
         self.random_completions_needed_max = \
-            int(random_completions_needed_min) if random_completions_needed_max is not None else 0
+            int(random_completions_needed_max) if random_completions_needed_max is not None else 0
 
     @classmethod
     def from_json(cls, data: Dict):

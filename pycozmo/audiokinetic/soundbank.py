@@ -8,7 +8,7 @@ References:
 
 """
 
-from typing import BinaryIO, Iterable, Dict, Any
+from typing import Any, BinaryIO, Dict, Iterable, Optional
 import struct
 from ._chunk import Chunk
 
@@ -148,27 +148,32 @@ class SoundBank:
         # DATA chunk start offset for loading WEM files.
         self.data_offset = -1
         # Object dictionary (ID -> File/SFX/EventAction/Event).
-        self.objs = {}
+        self.objs: Dict[int, Any] = {}
 
 
 class SoundBankReader:
 
     def __init__(self, soundbankinfo: Dict[int, Any]) -> None:
         self.soundbankinfo = soundbankinfo
-        self._soundbank = None
+        # The sound bank being read. Set for the duration of load_file() and cleared again afterwards, so the
+        # _read_* methods below assert it rather than handling its absence.
+        self._soundbank: Optional[SoundBank] = None
 
     @staticmethod
     def _read_uint8(chunk: Chunk) -> int:
         """ Read uint8 value from chunk. """
-        return struct.unpack('B', chunk.read(1))[0]
+        value: int = struct.unpack('B', chunk.read(1))[0]
+        return value
 
     @staticmethod
     def _read_uint32(chunk: Chunk) -> int:
         """ Read uint32 value from chunk. """
-        return struct.unpack('<L', chunk.read(4))[0]
+        value: int = struct.unpack('<L', chunk.read(4))[0]
+        return value
 
     def _read_header(self, f: BinaryIO) -> None:
         """ Read Bank Header (BKHD) chunk. """
+        assert self._soundbank is not None
         chunk = Chunk(f, bigendian=False, align=False)
         if chunk.getname() != b"BKHD":
             raise exception.AudioKineticFormatError("Not an AudioKinetic WWise SoundBank file.")
@@ -182,6 +187,7 @@ class SoundBankReader:
 
     def _read_data_index(self, chunk: Chunk) -> None:
         """ Read Data Index (DIDX) chunk."""
+        assert self._soundbank is not None
         num_objects = chunk.getsize() // 12
         for i in range(num_objects):
             try:
@@ -195,6 +201,7 @@ class SoundBankReader:
 
     def _read_hirc(self, chunk: Chunk) -> None:
         """ Read HIRC chunk. """
+        assert self._soundbank is not None
         num_objects = self._read_uint32(chunk)
         for i in range(num_objects):
             try:
@@ -292,6 +299,7 @@ class SoundBankReader:
                 raise exception.AudioKineticIOError("Failed reading SoundBank file.") from e
 
         soundbank = self._soundbank
+        assert soundbank is not None
         self._soundbank = None
 
         return soundbank
