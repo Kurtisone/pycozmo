@@ -13,7 +13,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 from PIL import Image
 import numpy as np
 
-from . import logger
+from .logger import logger
 from . import anim_encoder
 from . import image_encoder
 from . import lights

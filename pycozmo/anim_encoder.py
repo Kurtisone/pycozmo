@@ -17,7 +17,7 @@ import time
 
 import flatbuffers
 
-from . import logger
+from .logger import logger
 from . import CozmoAnim
 
 
