@@ -158,7 +158,7 @@ class ImageDecoder(object):
             if self.debug:
                 sys.stdout.write("{}: ".format(i))
             self._execute(b)
-        return self.image
+        return bytes(self.image)
 
 
 class ImageEncoder(object):

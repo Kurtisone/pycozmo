@@ -41,3 +41,4 @@ def find_file(directory: str, name: str) -> Optional[str]:
     for root, _, files in os.walk(directory):
         if name in files:
             return os.path.join(root, name)
+    return None

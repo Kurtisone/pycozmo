@@ -58,7 +58,9 @@ class FileInfo:
         self.embedded = bool(embedded)
         self.prefetch_size = int(prefetch_size)
 
-    def __eq__(self, other: "FileInfo") -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FileInfo):
+            return NotImplemented
         res = True
         res = res and self.soundbank_id == other.soundbank_id
         res = res and self.id == other.id
@@ -116,23 +118,23 @@ def load_soundbanksinfo(fspec: Union[str, TextIO]) -> Dict[int, Any]:
     root = tree.getroot()
 
     # Load StreamedFiles.
-    streamed_files = {}
-    for file in root.findall("./StreamedFiles/File"):
-        file_id = int(_get_attr(file, "Id"))
+    streamed_files: Dict[int, Dict[str, Any]] = {}
+    for file_node in root.findall("./StreamedFiles/File"):
+        file_id = int(_get_attr(file_node, "Id"))
         assert file_id not in streamed_files
         streamed_files[file_id] = {
             "id": file_id,
-            "language": file.get("Language"),
-            "name": _get_text(file, "ShortName"),
-            "path": _get_text(file, "Path"),
+            "language": file_node.get("Language"),
+            "name": _get_text(file_node, "ShortName"),
+            "path": _get_text(file_node, "Path"),
         }
 
-    # Load SoundBanks
-    objects = {}
+    # Load SoundBanks. The result mixes SoundBankInfo, EventInfo and FileInfo, keyed by their ids.
+    objects: Dict[int, Any] = {}
     for soundbank_node in root.findall("./SoundBanks/SoundBank"):
         # Create SoundBankInfo object.
         soundbank_id = int(_get_attr(soundbank_node, "Id"))
-        language = soundbank_node.get("Language")
+        language = _get_attr(soundbank_node, "Language")
         soundbank = SoundBankInfo(
             soundbank_id,
             _get_text(soundbank_node, "ShortName"),
@@ -149,8 +151,8 @@ def load_soundbanksinfo(fspec: Union[str, TextIO]) -> Dict[int, Any]:
             event = EventInfo(
                 soundbank_id,
                 event_id,
-                event_node.get("Name"),
-                event_node.get("ObjectPath"))
+                _get_attr(event_node, "Name"),
+                _get_attr(event_node, "ObjectPath"))
             assert event_id not in objects
             objects[event_id] = event
 
@@ -178,7 +180,11 @@ def load_soundbanksinfo(fspec: Union[str, TextIO]) -> Dict[int, Any]:
             # The file and SoundBank languages may differ.
             # assert file_node.get("Language") == language
             prefetch_size_node = file_node.find("PrefetchSize")
-            prefetch_size = int(prefetch_size_node.text) if prefetch_size_node is not None else -1
+            if prefetch_size_node is None or prefetch_size_node.text is None:
+                # No prefetch size, or an empty element, which int() would choke on.
+                prefetch_size = -1
+            else:
+                prefetch_size = int(prefetch_size_node.text)
             file = FileInfo(
                 soundbank_id,
                 file_id,
