@@ -8,6 +8,19 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+Unreleased
+----------
+
+- Merged the four commits upstream left unreleased on its dev branch: emotion type updates and emotion events,
+    camera matrix extraction, and saved cube ID extraction. The opencv-python requirement that came with them is
+    left out, as nothing in the tree imports cv2.
+- Removed debug output that the merged NV storage handler wrote to stdout.
+
+None of the merged work is covered by tests and it changes the robot
+initialization sequence, so it stays on this branch until it can be checked
+against a robot.
+
+
 v0.9.0 (Sep 17, 2026)
 ---------------------
 
