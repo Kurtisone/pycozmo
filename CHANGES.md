@@ -8,6 +8,19 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.5 (Sep 17, 2026)
+---------------------
+
+- Fixed comparing an Angle or a sound bank FileInfo against another type raising instead of answering. Both
+    narrowed the argument of __eq__ to their own type and reached straight for its attributes. It matters most for
+    Angle, which reaches application code through Client.head_angle and Client.pose_pitch, where comparing against
+    None, or looking one up in a mixed container, is ordinary.
+- Fixed an empty <PrefetchSize/> element crashing the SoundbanksInfo reader, and made it require the Language, Name
+    and ObjectPath attributes rather than storing the string "None" when they are missing.
+- Corrected find_file(), hex_load() and ImageDecoder.decode(), which returned something other than what they
+    declared.
+- Added a test module for util, which had none.
+
 v0.9.4 (Sep 17, 2026)
 ---------------------
 
