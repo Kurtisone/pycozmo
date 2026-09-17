@@ -180,7 +180,7 @@ class ImageEncoder(object):
 
     def _encode_seq(self, color: int, cnt: int) -> Optional[int]:
         """ Encode a sequence of pixels with the same color. """
-        cmd = None  # type: Optional[int]
+        cmd: Optional[int] = None
         if color:
             # Draw
             if cnt <= 15:

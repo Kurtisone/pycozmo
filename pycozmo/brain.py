@@ -64,7 +64,7 @@ class Brain:
         # Current activity
         self.activity = self.activities["Freeplay"]
         # Current behavior
-        self.behavior = None    # type: Optional[behavior.Behavior]
+        self.behavior: Optional[behavior.Behavior] = None
 
     def start(self):
         # Connect to robot

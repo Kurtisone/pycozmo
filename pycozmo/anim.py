@@ -54,7 +54,7 @@ class PreprocessedClip(object):
 
     @classmethod
     def from_anim_clip(cls, clip: anim_encoder.AnimClip) -> "PreprocessedClip":
-        keyframes = defaultdict(list)   # type: Dict[int, List[protocol_encoder.Packet]]
+        keyframes: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
         for keyframe in clip.keyframes:
             if isinstance(keyframe, anim_encoder.AnimHeadAngle):
                 # FIXME: Why can duration be larger than 255?
