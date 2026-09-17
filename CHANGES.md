@@ -1,6 +1,49 @@
 Revision History
 ================
 
+This file holds two separate histories. "Fork" covers the changes made in this fork of zayfod/pycozmo, after
+upstream development stopped in November 2020. "Upstream" below it is the inherited history, left as it was.
+
+
+Fork
+====
+
+Unreleased
+----------
+
+Python 3.12 and 3.13 support:
+- Fixed `import pycozmo` failing with `ModuleNotFoundError: No module named 'chunk'` on Python 3.13. The `chunk`
+    standard library module was removed by PEP 594. A minimal replacement is now vendored in the audiokinetic
+    package. The failure affected every user, not only those reading sound banks (upstream issues #67 and #69).
+- Fixed the setup script failing on Python 3.12 and newer, where `distutils` has been removed.
+
+Bug fixes:
+- Fixed `Client.last_image_timestamp` always being zero. The timestamp was read from the first chunk of a frame,
+    where the robot leaves it unset (partial cherry-pick of upstream pull request #55, thanks to ADebor).
+- Fixed image type annotations naming the `PIL.Image` module where the image class was meant, which type checkers
+    reject and which showed the wrong type in the generated API documentation (upstream issue #68).
+- Fixed the FlatBuffers deprecation warnings raised by passing an element count to `Builder.EndVector()`.
+
+Maintenance:
+- Raised the minimum supported Python version to 3.11. Support for 3.6 through 3.10 is dropped; all of those are
+    out of support or nearly so, and holding on to them blocked pinning dependencies to maintained releases.
+- Pinned dependency versions. The setup script declares bounded ranges, the requirements files declare the exact
+    versions each revision is tested against.
+- Fixed the mypy configuration, which refused to start at all because it declared Python 3.6, and which then
+    descended into the virtualenv and into build artifacts.
+- Replaced the remaining type comments with variable annotations, which also cleared the last flake8 warnings.
+
+Infrastructure:
+- Added a Forgejo Actions workflow running flake8, mypy and the unit tests on Python 3.11 through 3.14. No step
+    requires a robot.
+- Updated the inherited GitHub workflow, which tested Python versions no longer available on its runners using
+    retired action versions.
+- Documented the fork, its scope and how to run the checks, in the README.
+
+
+Upstream
+========
+
 v0.8.0 (Nov 12, 2020)
 ---------------------
 - New animation controller that synchronizes animations, audio playback, and image displaying.
