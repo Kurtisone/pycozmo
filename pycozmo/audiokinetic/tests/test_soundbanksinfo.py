@@ -217,3 +217,16 @@ class TestLoadSoundbanksInfo(unittest.TestCase):
         f = io.StringIO(dump)
         with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
             pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
+
+    def test_fileinfo_equality_with_other_types(self):
+        # Comparing against an unrelated type answers instead of raising, so that a FileInfo can be looked up in a
+        # mixed container or compared against None.
+        info = pycozmo.audiokinetic.soundbanksinfo.FileInfo(1, 2, "name", "path", False, -1)
+        same = pycozmo.audiokinetic.soundbanksinfo.FileInfo(1, 2, "name", "path", False, -1)
+        other = pycozmo.audiokinetic.soundbanksinfo.FileInfo(9, 9, "x", "y", False, -1)
+        self.assertEqual(info, same)
+        self.assertNotEqual(info, other)
+        for unrelated in (None, "name", 2, object()):
+            self.assertFalse(info == unrelated)
+            self.assertTrue(info != unrelated)
+        self.assertIn(same, [None, "x", info])

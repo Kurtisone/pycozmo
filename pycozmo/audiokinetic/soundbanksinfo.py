@@ -58,7 +58,9 @@ class FileInfo:
         self.embedded = bool(embedded)
         self.prefetch_size = int(prefetch_size)
 
-    def __eq__(self, other: "FileInfo") -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FileInfo):
+            return NotImplemented
         res = True
         res = res and self.soundbank_id == other.soundbank_id
         res = res and self.id == other.id

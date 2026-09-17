@@ -80,27 +80,39 @@ class Angle:
             raise TypeError("Unsupported type for / expected number")
         return Angle(radians=self.radians / other)
 
-    def _cmp_int(self, other):
-        if not isinstance(other, Angle):
-            raise TypeError("Unsupported type for comparison expected Angle")
+    def _cmp_int(self, other: "Angle") -> float:
         return self.radians - other.radians
 
-    def __eq__(self, other):
+    # Comparing against anything that is not an Angle returns NotImplemented rather than raising. Python then
+    # falls back to identity for == and !=, and raises TypeError itself for the ordering operators.
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Angle):
+            return NotImplemented
         return self._cmp_int(other) == 0
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
+        if not isinstance(other, Angle):
+            return NotImplemented
         return self._cmp_int(other) != 0
 
-    def __gt__(self, other):
+    def __gt__(self, other: "Angle") -> bool:
+        if not isinstance(other, Angle):
+            return NotImplemented
         return self._cmp_int(other) > 0
 
-    def __lt__(self, other):
+    def __lt__(self, other: "Angle") -> bool:
+        if not isinstance(other, Angle):
+            return NotImplemented
         return self._cmp_int(other) < 0
 
-    def __ge__(self, other):
+    def __ge__(self, other: "Angle") -> bool:
+        if not isinstance(other, Angle):
+            return NotImplemented
         return self._cmp_int(other) >= 0
 
-    def __le__(self, other):
+    def __le__(self, other: "Angle") -> bool:
+        if not isinstance(other, Angle):
+            return NotImplemented
         return self._cmp_int(other) <= 0
 
     @property
@@ -768,7 +780,7 @@ def hex_dump(data: bytes) -> str:
 
 def hex_load(data: str) -> bytes:
     res = bytearray.fromhex(data.replace(":", ""))
-    return res
+    return bytes(res)
 
 
 def frange(start: float, stop: float, step: float) -> Iterator[float]:
