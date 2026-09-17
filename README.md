@@ -249,7 +249,7 @@ Python 3.13 and newer.
 From source:
 
 ```
-git clone http://192.168.1.20:3002/kurtisone/pycozmo.git
+git clone https://github.com/Kurtisone/pycozmo.git
 cd pycozmo
 pip install --user .
 
@@ -259,7 +259,7 @@ pycozmo_resources.py download
 From source, for development:
 
 ```
-git clone http://192.168.1.20:3002/kurtisone/pycozmo.git
+git clone https://github.com/Kurtisone/pycozmo.git
 cd pycozmo
 pip install --user -e .
 pip install --user -r requirements-dev.txt
@@ -291,7 +291,12 @@ Support
 
 Bug reports and changes for this fork:
 
-[http://192.168.1.20:3002/kurtisone/pycozmo](http://192.168.1.20:3002/kurtisone/pycozmo)
+[https://github.com/Kurtisone/pycozmo](https://github.com/Kurtisone/pycozmo)
+
+Development happens on a private Forgejo instance, which mirrors to GitHub. The mirror is one way: it overwrites
+the branches and tags of the GitHub repository on every synchronization. Issues and pull requests opened on GitHub
+are not touched by that and are read, but a pull request cannot be merged on GitHub, because the next
+synchronization would undo it. Changes are applied on the Forgejo side and reach GitHub with the following sync.
 
 The upstream project, for reference:
 

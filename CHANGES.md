@@ -15,10 +15,11 @@ Unreleased
     camera matrix extraction, and saved cube ID extraction. The opencv-python requirement that came with them is
     left out, as nothing in the tree imports cv2.
 - Removed debug output that the merged NV storage handler wrote to stdout.
+- Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the
+    documentation are ones a reader can actually use.
 
-None of the merged work is covered by tests and it changes the robot
-initialization sequence, so it stays on this branch until it can be checked
-against a robot.
+None of the work merged from the upstream dev branch is covered by tests, and it changes the robot initialization
+sequence, so it stays on this branch until it can be checked against a robot.
 
 
 v0.9.0 (Sep 17, 2026)
