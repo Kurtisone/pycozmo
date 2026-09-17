@@ -37,10 +37,11 @@ class TestAngleComparison(unittest.TestCase):
         # Ordering is genuinely undefined against another type, so it still raises, through Python rather than
         # through a hand written check.
         for other in (None, "1.0"):
+            # The type checker is right that these are unsupported; that is exactly what is asserted here.
             with self.assertRaises(TypeError):
-                self.angle < other       # noqa: B015
+                self.angle < other       # type: ignore[operator]  # noqa: B015
             with self.assertRaises(TypeError):
-                self.angle >= other      # noqa: B015
+                self.angle >= other      # type: ignore[operator]  # noqa: B015
 
 
 class TestHexLoad(unittest.TestCase):

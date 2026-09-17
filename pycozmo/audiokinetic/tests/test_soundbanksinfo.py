@@ -230,3 +230,44 @@ class TestLoadSoundbanksInfo(unittest.TestCase):
             self.assertFalse(info == unrelated)
             self.assertTrue(info != unrelated)
         self.assertIn(same, [None, "x", info])
+
+    def test_empty_prefetch_size(self):
+        # An empty PrefetchSize element is treated as no prefetch size. int() would raise TypeError on its None
+        # text, which is neither the documented format error nor a useful failure.
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <SoundBanks>
+        <SoundBank Id="393239870" Language="SFX">
+            <ObjectPath>\SoundBanks\Default Work Unit\SFX</ObjectPath>
+            <ShortName>SFX</ShortName>
+            <Path>SFX.bnk</Path>
+            <IncludedMemoryFiles>
+                <File Id="26755609" Language="SFX">
+                    <ShortName>Codelab__SFX_General_Negative.wav</ShortName>
+                    <Path>SFX\Codelab__SFX_General_Negative_4B76E3B5.wem</Path>
+                    <PrefetchSize/>
+                </File>
+            </IncludedMemoryFiles>
+        </SoundBank>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        objs = pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
+        self.assertEqual(objs[26755609].prefetch_size, -1)
+
+    def test_soundbank_missing_language(self):
+        dump = r"""
+<SoundBanksInfo Platform="Android" BasePlatform="Android" SchemaVersion="11" SoundbankVersion="120">
+    <SoundBanks>
+        <SoundBank Id="393239870">
+            <ObjectPath>\SoundBanks\Default Work Unit\SFX</ObjectPath>
+            <ShortName>SFX</ShortName>
+            <Path>SFX.bnk</Path>
+        </SoundBank>
+    </SoundBanks>
+</SoundBanksInfo>
+"""
+        f = io.StringIO(dump)
+        with self.assertRaises(pycozmo.audiokinetic.exception.AudioKineticFormatError):
+            pycozmo.audiokinetic.soundbanksinfo.load_soundbanksinfo(f)
