@@ -15,6 +15,8 @@ Unreleased
     camera matrix extraction, and saved cube ID extraction. The opencv-python requirement that came with them is
     left out, as nothing in the tree imports cv2.
 - Removed debug output that the merged NV storage handler wrote to stdout.
+- Re-enabled test_send_30, disabled as intermittently failing since 2020. The transport was not at fault: the test
+    stopped waiting one packet early, then asserted that all of them had arrived. The suite now has no skipped tests.
 - Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the
     documentation are ones a reader can actually use.
 

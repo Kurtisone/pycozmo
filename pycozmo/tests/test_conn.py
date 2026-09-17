@@ -52,12 +52,19 @@ class TestConnection(unittest.TestCase):
         self.assertTrue(self.s_e.wait(2.0))
         self.stop()
 
-    @unittest.skip("Intermittently failing.")
     def test_send_30(self):
         COUNT = 30
         counts = []
-        self.s.add_handler(pycozmo.protocol_encoder.SetRobotVolume,
-                           lambda cli, pkt: (counts.append(pkt.level), (pkt.level < COUNT - 2) or self.s_e.set()))
+
+        def on_set_robot_volume(cli, pkt):
+            del cli
+            counts.append(pkt.level)
+            # Wake the main thread only once every packet has been handled. Waking on the value of the last packet
+            # would let the assertion below run while a packet was still in flight.
+            if len(counts) == COUNT:
+                self.s_e.set()
+
+        self.s.add_handler(pycozmo.protocol_encoder.SetRobotVolume, on_set_robot_volume)
         self.start()
         self.connect()
         for i in range(COUNT):
