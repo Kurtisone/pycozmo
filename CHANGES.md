@@ -11,6 +11,8 @@ Fork
 Unreleased
 ----------
 
+- Re-enabled test_send_30, disabled as intermittently failing since 2020. The transport was not at fault: the test
+    stopped waiting one packet early, then asserted that all of them had arrived. The suite now has no skipped tests.
 - Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the
     documentation are ones a reader can actually use.
 
