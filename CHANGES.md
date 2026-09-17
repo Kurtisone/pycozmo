@@ -8,6 +8,18 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.2 (Sep 17, 2026)
+---------------------
+
+- Fixed Client.wait_for() timing out on any event that carries a payload. Client shadowed the working version from
+    Dispatcher with a copy whose handler accepted a single argument, so waiting for the next camera frame or for an
+    orientation change raised Timeout although the event had fired, while the receive loop took a TypeError.
+    Waiting for a camera frame could not have worked.
+- Typed the Client public API: its attributes, the light and motion commands and the packet handlers. A caller now
+    gets Client from connect(), sees which robot fields are optional until the robot reports them, and is told when
+    it passes something that is not a LightState to the backpack lights.
+- Added a test module for the event dispatcher, which had none.
+
 v0.9.1 (Sep 17, 2026)
 ---------------------
 
@@ -31,7 +43,8 @@ signature that misdescribed the code, or to packaging.
 - Merged the four commits upstream left unreleased on its dev branch: emotion type updates and emotion events,
     camera matrix extraction, and saved cube ID extraction. The opencv-python requirement that came with them is
     left out, as nothing in the tree imports cv2.
-- Removed debug output that the merged NV storage handler wrote to stdout.
+- Removed debug output that the merged NV storage handler wrote to stdout, typed it, and gave the request it
+    sends a name of its own rather than overwriting the incoming packet the following branch still inspects.
 - Re-enabled test_send_30, disabled as intermittently failing since 2020. The transport was not at fault: the test
     stopped waiting one packet early, then asserted that all of them had arrived. The suite now has no skipped tests.
 - Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the

@@ -239,4 +239,4 @@ class Dispatcher(object):
         e = threading.Event()
         self.add_handler(evt, lambda *args: e.set(), one_shot=True)
         if not e.wait(timeout):
-            raise exception.Timeout("Failed to receive event in time.")
+            raise exception.Timeout("Failed to receive event {} in time.".format(evt))
