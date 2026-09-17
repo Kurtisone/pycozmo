@@ -4,7 +4,7 @@ ID filtering for logging.
 
 """
 
-from typing import Set
+from typing import Optional, Set
 
 
 __all__ = [
@@ -14,9 +14,9 @@ __all__ = [
 
 class Filter(object):
 
-    def __init__(self):
-        self.allowed_ids = set()
-        self.denied_ids = set()
+    def __init__(self) -> None:
+        self.allowed_ids: Set[int] = set()
+        self.denied_ids: Set[int] = set()
 
     def allow_ids(self, ids: Set[int]) -> None:
         self.allowed_ids.update(ids)
@@ -24,7 +24,7 @@ class Filter(object):
     def deny_ids(self, ids: Set[int]) -> None:
         self.denied_ids.update(ids)
 
-    def filter(self, target_id: int) -> bool:
+    def filter(self, target_id: Optional[int]) -> bool:
         if target_id is not None:
             if self.allowed_ids and target_id not in self.allowed_ids:
                 return True

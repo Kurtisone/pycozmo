@@ -9,7 +9,7 @@ import socket
 import time
 from queue import Queue, Empty
 from threading import Thread, Lock
-from typing import Optional, Tuple, Any
+from typing import Any, Callable, List, Optional, Tuple
 
 from .logger import logger, logger_protocol
 from .frame import Frame
@@ -55,9 +55,9 @@ class SendThread(Thread):
         self.server = receiver_address is None
         self.window = SendWindow(16, size=62, max_seq=MAX_SEQ)
         self.stop_flag = False
-        self.queue = Queue()
+        self.queue: Queue = Queue()
         self.last_ack = 0
-        self.last_ack_time = 0
+        self.last_ack_time = 0.0
         self.disconnected = False
         # Number of packets received from the application layer.
         self.outgoing_packets = 0
@@ -120,7 +120,7 @@ class SendThread(Thread):
             pkts = []
         return pkts
 
-    def _send_packets(self, pkts, last_ack: int):
+    def _send_packets(self, pkts: List[Tuple[int, Packet]], last_ack: int) -> None:
         to_frame = []
         frame_len = 0
         first_seq = None
@@ -149,18 +149,18 @@ class SendThread(Thread):
             # Send current frame.
             self._send_frame(to_frame, first_seq, seq, last_ack)
 
-    def _send_ping(self, pkt) -> None:
+    def _send_ping(self, pkt: Packet) -> None:
         self.sent_packets += 1
         raw_frame = Frame(protocol_declaration.FrameType.PING, OOB_SEQ, OOB_SEQ, self.last_ack, [pkt]).to_bytes()
         self._send_raw_frame(raw_frame)
 
-    def _send_frame(self, pkts, first_seq: int, seq: int, ack: int) -> None:
+    def _send_frame(self, pkts: List[Packet], first_seq: int, seq: int, ack: int) -> None:
         self.sent_packets += len(pkts)
         raw_frame = self._build_frame(pkts, first_seq, seq, ack)
         self._send_raw_frame(raw_frame)
 
     @staticmethod
-    def _build_frame(pkts, first_seq: int, seq: int, ack: int) -> bytes:
+    def _build_frame(pkts: List[Packet], first_seq: int, seq: int, ack: int) -> bytes:
         try:
             frame = Frame(protocol_declaration.FrameType.ENGINE, first_seq, seq, ack, pkts)
             return frame.to_bytes()
@@ -215,7 +215,7 @@ class ReceiveThread(Thread):
                  sock: socket.socket,
                  send_thread: SendThread,
                  sender_address: Optional[Tuple[str, int]],
-                 delivery_handler,
+                 delivery_handler: Callable[[Packet], None],
                  buffer_size: int = 2048) -> None:
         super().__init__(daemon=True, name=__class__.__name__)
         self.sock = sock
@@ -333,7 +333,7 @@ class ReceiveThread(Thread):
                 break
             self.deliver(pkt)
 
-    def deliver(self, pkt: Packet):
+    def deliver(self, pkt: Packet) -> None:
         self.delivered_packets += 1
         self.delivery_handler(pkt)
 
@@ -367,7 +367,7 @@ class Connection(Thread, event.Dispatcher):
         self.robot_addr = robot_addr or (SERVER_ADDR if server else ROBOT_ADDR)
         self.server = server
         # Event queue.
-        self.queue = Queue()
+        self.queue: Queue = Queue()
         # Filters
         self.packet_type_filter = filter.Filter()
         self.packet_type_filter.deny_ids({PacketType.PING.value})
@@ -384,9 +384,9 @@ class Connection(Thread, event.Dispatcher):
         self.recv_thread = ReceiveThread(
             self.sock, self.send_thread, None if server else self.robot_addr, self._on_packet)
         self.stop_flag = False
-        self.send_last = 0
-        self.ping_last = 0
-        self.stats_last = 0
+        self.send_last = 0.0
+        self.ping_last = 0.0
+        self.stats_last = 0.0
         self.ping_counter = 0
 
     def start(self) -> None:
@@ -408,7 +408,7 @@ class Connection(Thread, event.Dispatcher):
         self.sock.close()
         self.del_all_handlers()
 
-    def _on_packet(self, pkt) -> None:
+    def _on_packet(self, pkt: Packet) -> None:
         self.queue.put((event.EvtPacketReceived, [pkt], {}))
 
     def run(self) -> None:
@@ -458,7 +458,7 @@ class Connection(Thread, event.Dispatcher):
         if not self.packet_type_filter.filter(pkt.type.value) and not self.packet_id_filter.filter(pkt.id):
             logger_protocol.debug("Sent %s", pkt)
 
-    def post_event(self, evt, *args, **kwargs) -> None:
+    def post_event(self, evt: type, *args: Any, **kwargs: Any) -> None:
         self.queue.put((evt, args, kwargs))
 
     def disconnect(self) -> None:
@@ -481,18 +481,18 @@ class Connection(Thread, event.Dispatcher):
             logger_protocol.debug("Got  %s", pkt)
         self.dispatch(pkt.__class__, self, pkt)
 
-    def _on_connect(self, cli, pkt: protocol_encoder.Connect):
+    def _on_connect(self, cli: "Connection", pkt: protocol_encoder.Connect) -> None:
         del cli, pkt
         self.state = self.CONNECTED
         self.ping_counter = 0
         logger_protocol.debug("Connected.")
 
-    def _on_disconnect(self, cli, pkt: protocol_encoder.Disconnect):
+    def _on_disconnect(self, cli: "Connection", pkt: protocol_encoder.Disconnect) -> None:
         del cli, pkt
         self.state = self.IDLE
         logger_protocol.debug("Disconnected.")
 
-    def _on_ping(self, cli, pkt: protocol_encoder.Ping):
+    def _on_ping(self, cli: "Connection", pkt: protocol_encoder.Ping) -> None:
         if self.server:
             self.send(pkt)
         else:
