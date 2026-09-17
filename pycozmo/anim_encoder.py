@@ -8,7 +8,7 @@ Animation data structures are declared in FlatBuffers format in files/cozmo/cozm
 
 """
 
-from typing import Union, Dict, TextIO, BinaryIO, Iterable
+from typing import Any, Union, Dict, TextIO, BinaryIO, Iterable
 from abc import ABC
 import os
 import json
@@ -71,6 +71,10 @@ class AnimBase(ABC):
 class AnimKeyframe(AnimBase, ABC):
     """ Animation keyframe base class. """
 
+    # Declared here because every keyframe carries it. It is an annotation only: each subclass assigns it in its
+    # own __init__, and nothing is added to instances by declaring it.
+    trigger_time_ms: int
+
     def __init__(self):
         super().__init__()
 
@@ -84,7 +88,7 @@ class AnimClip(AnimBase):
         self.keyframes = list(keyframes)
 
     def to_dict(self) -> dict:
-        data = {
+        data: Dict[str, Any] = {
             "Name": self.name,
             "keyframes": {
                 "LiftHeightKeyFrame": [],
@@ -339,7 +343,7 @@ class AnimClips(AnimBase):
         self.clips = list(clips)
 
     def to_dict(self) -> dict:
-        data = {
+        data: Dict[str, Any] = {
             "clips": [],
         }
         for clip in self.clips:
