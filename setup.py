@@ -37,7 +37,12 @@ setuptools.setup(
     author_email="zayfod@gmail.com",
     url="https://github.com/zayfod/pycozmo/",
     python_requires=">=3.11",
-    install_requires=["dpkt", "numpy", "Pillow>=6.0.0", "flatbuffers"],
+    install_requires=[
+        "dpkt>=1.9.8,<2",
+        "numpy>=1.26,<3",
+        "Pillow>=10.0,<13",
+        "flatbuffers>=24.3.25,<26",
+    ],
     keywords=["ddl", "anki", "cozmo", "robot", "robotics"],
     classifiers=[
         "Development Status :: 4 - Beta",

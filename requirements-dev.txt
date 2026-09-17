@@ -1,5 +1,7 @@
-pytest
-flake8
-mypy
-Sphinx
-recommonmark
+# Exact versions of the development tooling this revision is tested against, so that linting and type checking
+# results do not change without a deliberate update.
+pytest==9.1.1
+flake8==7.3.0
+mypy==2.3.1
+Sphinx==9.1.0
+recommonmark==0.7.1
