@@ -13,7 +13,7 @@ import io
 import numpy as np
 from PIL import Image
 
-from . import logger, logger_robot, logger_animation
+from .logger import logger, logger_robot, logger_animation
 from . import protocol_base
 from . import protocol_encoder
 from . import protocol_utils
