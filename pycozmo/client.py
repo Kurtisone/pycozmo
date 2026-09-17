@@ -178,12 +178,6 @@ class Client(event.Dispatcher):
             self._initialize_robot()
         self.dispatch(event.EvtRobotFound, self)
 
-    def wait_for(self, evt, timeout: Optional[float] = None):
-        e = Event()
-        self.add_handler(evt, lambda cli: e.set(), one_shot=True)
-        if not e.wait(timeout):
-            raise exception.Timeout("Timeout waiting for event {}".format(evt))
-
     def wait_for_robot(self, timeout: float = 5.0) -> None:
         if not self.robot_fw_sig:
             try:
