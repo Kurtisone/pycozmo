@@ -100,8 +100,12 @@ class SendThread(Thread):
                 # The robot does not expect packets after a disconnect. Sometimes this may lead to reboots or revert
                 #   to factory firmware.  Ensure this does not happen.
                 self.disconnected = True
-            if not self.server and isinstance(pkt, protocol_encoder.Ping):
+            if isinstance(pkt, protocol_encoder.Ping):
                 self._send_ping(pkt)
+            elif pkt.is_oob():
+                # Out-of-band packets carry no sequence number. Putting them through the window would make the
+                # frame advertise a sequence its packets do not consume, and the peer would reject the frame.
+                self._send_oob(pkt)
             else:
                 with self.lock:
                     seq = self.window.put(pkt)
@@ -150,10 +154,16 @@ class SendThread(Thread):
             assert first_seq is not None and last_seq is not None
             self._send_frame(to_frame, first_seq, last_seq, last_ack)
 
-
     def _send_ping(self, pkt: Packet) -> None:
         self.sent_packets += 1
         raw_frame = Frame(protocol_declaration.FrameType.PING, OOB_SEQ, OOB_SEQ, self.last_ack, [pkt]).to_bytes()
+        self._send_raw_frame(raw_frame)
+
+    def _send_oob(self, pkt: Packet) -> None:
+        self.sent_packets += 1
+        with self.lock:
+            last_ack = self.last_ack
+        raw_frame = self._build_frame([pkt], OOB_SEQ, OOB_SEQ, last_ack)
         self._send_raw_frame(raw_frame)
 
     def _send_frame(self, pkts: List[Packet], first_seq: int, seq: int, ack: int) -> None:
@@ -161,10 +171,15 @@ class SendThread(Thread):
         raw_frame = self._build_frame(pkts, first_seq, seq, ack)
         self._send_raw_frame(raw_frame)
 
-    @staticmethod
-    def _build_frame(pkts: List[Packet], first_seq: int, seq: int, ack: int) -> bytes:
+    def _frame_type(self) -> protocol_declaration.FrameType:
+        # The robot answers with ROBOT frames. Only the engine side sends ENGINE frames.
+        if self.server:
+            return protocol_declaration.FrameType.ROBOT
+        return protocol_declaration.FrameType.ENGINE
+
+    def _build_frame(self, pkts: List[Packet], first_seq: int, seq: int, ack: int) -> bytes:
         try:
-            frame = Frame(protocol_declaration.FrameType.ENGINE, first_seq, seq, ack, pkts)
+            frame = Frame(self._frame_type(), first_seq, seq, ack, pkts)
             return frame.to_bytes()
         except Exception as e:
             logger.error("Failed to serialize frame. {}".format(e))
