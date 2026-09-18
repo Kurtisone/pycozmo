@@ -6,6 +6,7 @@ import argparse
 import logging
 import time
 import threading
+from typing import Tuple
 from fcntl import ioctl
 from struct import unpack
 from select import select
@@ -93,9 +94,10 @@ class InputThread(object):
         self._thread.daemon = True
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         logging.debug("Input thread stopping...")
         self._stop = True
+        assert self._thread is not None
         self._thread.join()
         logging.debug("Input thread joined.")
 
@@ -191,7 +193,7 @@ class RCApp(object):
         self.cli.drive_wheels(lwheel_speed=lw, rwheel_speed=rw)
 
     @staticmethod
-    def get_motor_thrust(r: float, theta: float):
+    def get_motor_thrust(r: float, theta: float) -> Tuple[float, float]:
         """
         Convert throttle and steering angle to left and right motor thrust.
 

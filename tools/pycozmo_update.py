@@ -5,7 +5,7 @@ Cozmo robot over-the-air (OTA) firmware update application.
 
 """
 
-from typing import Optional
+from typing import BinaryIO, Optional
 import sys
 import os
 import json
@@ -32,7 +32,8 @@ class UpdateError(Exception):
     pass
 
 
-def on_firmware_update_result(_, pkt: pycozmo.protocol_encoder.FirmwareUpdateResult) -> None:
+def on_firmware_update_result(_: pycozmo.conn.Connection,
+                              pkt: pycozmo.protocol_encoder.FirmwareUpdateResult) -> None:
     """ FirmwareUpdateResult packet handler. """
 
     global last_chunk_id
@@ -58,7 +59,7 @@ def wait_for_result(timeout: Optional[float] = None) -> None:
         raise UpdateError("Update failed with error code {}.".format(last_status))
 
 
-def send_chunk(cli: pycozmo.client.Client, f) -> True:
+def send_chunk(cli: pycozmo.client.Client, f: BinaryIO) -> bool:
     """ Read and send a chunk. """
 
     global chunk_id

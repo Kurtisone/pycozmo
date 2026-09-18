@@ -16,7 +16,9 @@ import shutil
 
 import pycozmo
 
-ssl._create_default_https_context = ssl._create_unverified_context  # noqa
+# The resource archive is served with a certificate this tool does not validate. The two factories differ in
+# signature, which is what the checker objects to.
+ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore[assignment]  # noqa
 
 
 OBB_URL = "https://media.githubusercontent.com/media/cristobalraya/cozmo-archive/" \

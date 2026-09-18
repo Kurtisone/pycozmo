@@ -4,7 +4,7 @@ Cozmo image run-length encoding and decoding.
 
 """
 
-from typing import Optional
+from typing import Optional, cast
 import sys
 from io import StringIO
 
@@ -47,6 +47,7 @@ def str_to_image(sim: str) -> Image.Image:
     s = StringIO(sim)
     im = Image.new("1", (128, 32), color=0)
     px = im.load()
+    assert px is not None
     for y in range(32):
         while True:
             line = s.readline().strip()
@@ -169,7 +170,9 @@ class ImageEncoder(object):
                 im.size[0], im.size[1]))
         if im.mode != "1":
             raise ValueError("Invalid pixel format. Only binary images are supported.")
-        self.px = im.load()
+        px = im.load()
+        assert px is not None
+        self.px = px
         self.buffer = bytearray()
         self.last_col = bytearray()
         self.cur_col = bytearray()
@@ -253,7 +256,8 @@ class ImageEncoder(object):
 
     def encode(self) -> bytearray:
         while self.x < 128 and self.y < 32:
-            color = self.px[self.x, self.y]
+            # The constructor rejects anything but mode "1", where a pixel is a single integer.
+            color = cast(int, self.px[self.x, self.y])
             self.y += 1
             cnt = self._count_color(color)
             cmd = self._encode_seq(color, cnt)

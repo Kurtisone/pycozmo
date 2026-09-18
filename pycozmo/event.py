@@ -235,7 +235,7 @@ class Dispatcher(object):
         for child in self.dispatch_children:
             child.dispatch(event, *args, **kwargs)
 
-    def wait_for(self, evt, timeout: Optional[float] = None) -> None:
+    def wait_for(self, evt: type, timeout: Optional[float] = None) -> None:
         e = threading.Event()
         self.add_handler(evt, lambda *args: e.set(), one_shot=True)
         if not e.wait(timeout):

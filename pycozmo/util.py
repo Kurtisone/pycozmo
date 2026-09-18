@@ -4,7 +4,7 @@ Utility classes and functions.
 
 """
 
-from typing import Iterator, Optional, Tuple
+from typing import Iterator, Optional, Tuple, Union
 import os
 import pathlib
 import math
@@ -251,7 +251,7 @@ class Vector2:
         self._x = x
         self._y = y
 
-    def set_to(self, rhs) -> None:
+    def set_to(self, rhs: "Vector2") -> None:
         """
         Copy the x and y components of the given vector.
 
@@ -839,7 +839,7 @@ class Pose:
         return self.is_valid and self._is_accurate
 
 
-def hex_dump(data: bytes) -> str:
+def hex_dump(data: Union[bytes, bytearray]) -> str:
     res = ":".join("{:02x}".format(b) for b in data)
     return res
 

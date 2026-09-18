@@ -35,8 +35,6 @@ jobs:
           flake8 . --count --statistics
 
       - name: Type check with mypy
-        # Advisory only: the project carries a backlog of pre-existing type errors.
-        continue-on-error: true
         run: |
           mypy --version
           mypy .

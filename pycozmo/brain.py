@@ -5,7 +5,9 @@ Brain class - high level behavior and emotion engine.
 """
 
 from typing import Optional
+from PIL import Image
 from threading import Thread
+from typing import Optional as _Optional
 from queue import Queue, Empty
 import time
 
@@ -55,19 +57,23 @@ class Brain:
         # TODO: ...
 
         # Reaction trigger queue
-        self.reaction_queue = Queue()
+        self.reaction_queue: Queue = Queue()
 
         self.stop_flag = False
-        self.reaction_thread = Thread(daemon=True, name="ReactionThread", target=self.reaction_thread_run)
-        self.heartbeat_thread = Thread(daemon=True, name="HeartbeatThread", target=self.heartbeat_thread_run)
+        self.reaction_thread: _Optional[Thread] = \
+            Thread(daemon=True, name="ReactionThread", target=self.reaction_thread_run)
+        self.heartbeat_thread: _Optional[Thread] = \
+            Thread(daemon=True, name="HeartbeatThread", target=self.heartbeat_thread_run)
 
         # Current activity
         self.activity = self.activities["Freeplay"]
         # Current behavior
         self.behavior: Optional[behavior.Behavior] = None
 
-    def start(self):
-        # Connect to robot
+    def start(self) -> None:
+        # Connect to robot. Both threads are created in __init__ and only cleared by stop(), which a Thread
+        # cannot be restarted after anyway.
+        assert self.reaction_thread is not None and self.heartbeat_thread is not None
         self.reaction_thread.start()
         self.heartbeat_thread.start()
 
@@ -75,7 +81,7 @@ class Brain:
         # TODO: Enable camera.
         # TODO: Drive off if on charger.
 
-    def stop(self):
+    def stop(self) -> None:
         # Disconnect from robot
         self.stop_flag = True
         if self.heartbeat_thread:
@@ -111,7 +117,7 @@ class Brain:
         if state:
             self.post_reaction("RobotPickedUp")
 
-    def on_robot_falling_change(self, cli: client.Client, state: bool):
+    def on_robot_falling_change(self, cli: client.Client, state: bool) -> None:
         if state:
             self.post_reaction("RobotFalling")
 
@@ -119,7 +125,7 @@ class Brain:
         if state:
             self.post_reaction("PlacedOnCharger")
 
-    def on_camera_image(self, cli: client.Client, new_im) -> None:
+    def on_camera_image(self, cli: client.Client, new_im: Image.Image) -> None:
         """ Process images, coming from the robot camera. """
         # TODO: See cozmo_resources/config/engine/vision_config.json
         # TODO: motion detection

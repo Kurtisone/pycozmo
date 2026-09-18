@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from PIL import Image
 import numpy as np
@@ -18,6 +18,7 @@ from . import anim_encoder
 from . import image_encoder
 from . import lights
 from . import procedural_face
+from . import protocol_base
 from . import protocol_encoder
 from . import robot
 from .json_loader import find_file, load_json_file
@@ -41,7 +42,7 @@ class PreprocessedClip(object):
         self.keyframes = keyframes or defaultdict(list)
 
     @classmethod
-    def keyframe_to_im(cls, keyframe) -> Image.Image:
+    def keyframe_to_im(cls, keyframe: anim_encoder.AnimProceduralFace) -> Image.Image:
         params = [keyframe.center_x, keyframe.center_y, keyframe.scale_x, keyframe.scale_y, keyframe.angle] + \
                  keyframe.left_eye + keyframe.right_eye
         face = procedural_face.ProceduralFace(params)
@@ -58,9 +59,10 @@ class PreprocessedClip(object):
         for keyframe in clip.keyframes:
             if isinstance(keyframe, anim_encoder.AnimHeadAngle):
                 # FIXME: Why can duration be larger than 255?
-                pkt = protocol_encoder.AnimHead(duration_ms=min(keyframe.duration_ms, 255),
-                                                variability_deg=keyframe.variability_deg,
-                                                angle_deg=keyframe.angle_deg)
+                pkt: protocol_base.Packet = protocol_encoder.AnimHead(
+                    duration_ms=min(keyframe.duration_ms, 255),
+                    variability_deg=keyframe.variability_deg,
+                    angle_deg=keyframe.angle_deg)
                 keyframes[keyframe.trigger_time_ms].append(pkt)
             elif isinstance(keyframe, anim_encoder.AnimLiftHeight):
                 # FIXME: Why can duration be larger than 255?
@@ -159,13 +161,13 @@ class CubeAnimation(LightAnimation):
         "rotation_period"
     ]
 
-    def __init__(self, duration: int, rotation_period: int, *args, **kwargs):
+    def __init__(self, duration: int, rotation_period: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.duration = int(duration)
         self.rotation_period = int(rotation_period)
 
     @classmethod
-    def from_json(cls, data: Dict):
+    def from_json(cls, data: Dict) -> "CubeAnimation":
         return cls(on_colors=data['pattern']['onColors'],
                    off_colors=data['pattern']['offColors'],
                    on_period=data['pattern']['onPeriod_ms'],
@@ -184,7 +186,7 @@ class BackpackAnimation(LightAnimation):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def from_json(cls, data: Dict):
+    def from_json(cls, data: Dict) -> "BackpackAnimation":
         return cls(on_colors=data['onColors'],
                    off_colors=data['offColors'],
                    on_period=data['onPeriod_ms'],
@@ -211,9 +213,9 @@ class AnimationGroupMember:
                  weight: float,
                  cooldown_time: float,
                  mood: str,
-                 use_head_angle: Optional[bool] = False,
-                 head_angle_min: Optional[float] = 0.0,
-                 head_angle_max: Optional[float] = 0.0) -> None:
+                 use_head_angle: bool = False,
+                 head_angle_min: float = 0.0,
+                 head_angle_max: float = 0.0) -> None:
         self.name = str(name)
         self.weight = float(weight)
         self.mood = str(mood)
@@ -225,7 +227,7 @@ class AnimationGroupMember:
         self.head_angle_max = float(head_angle_max)
 
     @classmethod
-    def from_json(cls, data: Dict):
+    def from_json(cls, data: Dict) -> "AnimationGroupMember":
         return cls(name=data['Name'],
                    weight=data['Weight'],
                    cooldown_time=data['CooldownTime_Sec'],
@@ -260,7 +262,7 @@ class AnimationGroup:
         assert math.isclose(sum(self.member_probabilities), 1.0)
 
     @classmethod
-    def from_json(cls, data: Dict):
+    def from_json(cls, data: Dict) -> "AnimationGroup":
         animations = [AnimationGroupMember.from_json(a) for a in data['Animations']]
         return cls(animations)
 
@@ -293,7 +295,7 @@ def load_animation_groups(resource_dir: str) -> Dict[str, AnimationGroup]:
 
 def load_cube_animation_groups(resource_dir: str) -> Dict[str, List[CubeAnimation]]:
     start_time = time.perf_counter()
-    cube_animation_groups = {}
+    cube_animation_groups: Dict[str, List[CubeAnimation]] = {}
     trigger_map_loader = load_trigger_map(resource_dir,
                                           os.path.join('cozmo_resources', 'assets',
                                                        'cubeAnimationGroupMaps', 'CubeAnimationTriggerMap.json'))

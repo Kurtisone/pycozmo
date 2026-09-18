@@ -105,7 +105,7 @@ class EmotionEvent:
         self.affectors = dict(affectors)
 
     @classmethod
-    def from_json(cls, data: Dict):
+    def from_json(cls, data: Dict) -> "EmotionEvent":
         affectors = {}
         for affector in data['emotionAffectors']:
             affectors[affector['emotionType']] = affector['value']

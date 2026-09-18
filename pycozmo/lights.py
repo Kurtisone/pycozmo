@@ -53,7 +53,7 @@ class Color:
     def __init__(self,
                  int_color: Optional[int] = None,
                  rgb: Optional[Tuple[int, int, int]] = None,
-                 name: str = Optional[None]) -> None:
+                 name: Optional[str] = None) -> None:
         self.name = name
         if int_color is not None:
             self._int_color = int(int_color) | 0xff

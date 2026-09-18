@@ -15,7 +15,8 @@ def load_json_file(filename: str) -> Dict:
         for line in f.readlines():
             # get all characters before '//'
             filtered_json += line.split('//')[0]
-        return json.loads(filtered_json)
+        parsed: Dict = json.loads(filtered_json)
+        return parsed
 
 
 def get_json_files(resource_dir: str, base_names: List[str]) -> List[str]:

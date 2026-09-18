@@ -8,6 +8,31 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.6 (Sep 18, 2026)
+---------------------
+
+Bug fixes:
+- Fixed Objective reading its completion maximum from the minimum. The two conversions are copies of one another
+    and the second was not fully edited, so an objective declaring a range stored the bottom of it as both ends,
+    and one with a maximum but no minimum reached int(None).
+- Fixed an unnamed Color holding the NoneType class as its name. The default was written as the typing form
+    Optional[None], which evaluates to that class, and a class is truthy, so testing a color's name answered the
+    opposite of what it should. The module's own predefined colors were unaffected.
+- Fixed the lift height keyframe crashing on animation clips that omit heightVariability_mm. Its sibling, the head
+    angle keyframe, already defaulted the equivalent field to zero.
+- Image.NEAREST and Image.FLIP_LEFT_RIGHT are now spelled through Image.Resampling and Image.Transpose. Both
+    survive in Pillow 12 only as aliases, and Image.ANTIALIAS from the same group was removed in Pillow 10.
+- Corrected the animation queue, which declared that it returns bytes where it returns packets, and several other
+    signatures that described neither what they took nor what they gave back.
+
+Maintenance:
+- The type checker now passes on every file in the tree and a failure fails the build. It was advisory because the
+    project could not pass it; the backlog stood at 556 reports when this fork started. The eleven that remain are
+    marked in place with the reason, and unused suppressions are reported.
+- The animation encoder tests assert which kind of keyframe a round trip produced. They previously read fields off
+    whatever came back, so a test for one keyframe type passed just as well on another whose field names matched.
+- Added test modules for util, lights, activity and the event dispatcher, none of which had any.
+
 v0.9.5 (Sep 17, 2026)
 ---------------------
 
@@ -81,6 +106,8 @@ signature that misdescribed the code, or to packaging.
     left out, as nothing in the tree imports cv2.
 - Removed debug output that the merged NV storage handler wrote to stdout, typed it, and gave the request it
     sends a name of its own rather than overwriting the incoming packet the following branch still inspects.
+- Corrected CameraConfig.get_camera_matrix(), which was annotated np.array, the array constructor, where the
+    array type np.ndarray was meant. This branch passes the type checker as master does.
 - Re-enabled test_send_30, disabled as intermittently failing since 2020. The transport was not at fault: the test
     stopped waiting one packet early, then asserted that all of them had arrived. The suite now has no skipped tests.
 - Pointed the README at the public GitHub mirror and described how that mirror works, so that clone URLs in the
