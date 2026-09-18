@@ -291,6 +291,13 @@ pytest pycozmo/
 
 All three are expected to pass, and CI treats any of them failing as a build failure.
 
+Test coverage, which CI does not gate on:
+
+```
+coverage run --source=pycozmo -m pytest pycozmo/
+coverage report --skip-covered --sort=cover
+```
+
  
 Support
 -------

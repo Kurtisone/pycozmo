@@ -267,9 +267,9 @@ class Client(event.Dispatcher):
             else:
                 data = camera.minigray_to_jpeg(data, width, height)
 
-        # numpy arrays implement the buffer protocol, but their stubs do not declare it. warn_unused_ignores is
-        # on, so this line will be flagged once that is fixed upstream.
-        image = Image.open(io.BytesIO(data)).convert('RGB')  # type: ignore[arg-type]
+        # data is a numpy array on both paths: the JPEG conversion returns one too. Arrays are only recognised
+        # as buffers by the type stubs from Python 3.12 on, so convert explicitly rather than depend on that.
+        image = Image.open(io.BytesIO(data.tobytes())).convert('RGB')
 
         # Color images need to be resized to the proper resolution
         if is_color_image:
