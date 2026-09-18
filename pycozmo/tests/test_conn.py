@@ -74,6 +74,30 @@ class TestConnection(unittest.TestCase):
         self.assertEqual(counts, list(range(COUNT)))
         self.stop()
 
+    def test_send_spanning_frames(self):
+        # A burst large enough to fill a frame must still arrive. The frame has to advertise the sequence of its
+        # own last packet: the peer numbers the packets it decodes starting from first_seq and rejects the whole
+        # frame when the count does not match, so an off-by-one here loses every packet in the frame silently.
+        COUNT = 20
+        payload = bytes([0x3f] * 200)
+        received = []
+
+        def on_display_image(cli, pkt):
+            del cli
+            received.append(bytes(pkt.image))
+            if len(received) == COUNT:
+                self.s_e.set()
+
+        self.s.add_handler(pycozmo.protocol_encoder.DisplayImage, on_display_image)
+        self.start()
+        self.connect()
+        for _ in range(COUNT):
+            self.c.send(pycozmo.protocol_encoder.DisplayImage(image=payload))
+        self.assertTrue(self.s_e.wait(5.0))
+        self.assertEqual(received, [payload] * COUNT)
+        self.assertEqual(self.s.recv_thread.discarded_frames, 0)
+        self.stop()
+
 
 class TestSendThread(unittest.TestCase):
 

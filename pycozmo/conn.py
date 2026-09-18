@@ -122,35 +122,34 @@ class SendThread(Thread):
         return pkts
 
     def _send_packets(self, pkts: List[Tuple[int, Packet]], last_ack: int) -> None:
-        to_frame = []
+        to_frame: List[Packet] = []
         frame_len = 0
         first_seq = None
-        seq = None
+        last_seq = None
         for seq, pkt in pkts:
 
-            # First packet in a frame?
+            pktlen = 4 + len(pkt)
+            if to_frame and frame_len + pktlen >= MAX_FRAME_PAYLOAD_SIZE:
+                # The frame is full. Flush what fits and let this packet open the next one. The frame must
+                # advertise the sequence of its own last packet: the peer numbers the packets it decodes from
+                # first_seq and rejects the whole frame when the count does not match.
+                assert first_seq is not None and last_seq is not None
+                self._send_frame(to_frame, first_seq, last_seq, last_ack)
+                to_frame = []
+                frame_len = 0
+                first_seq = None
+
             if first_seq is None:
                 first_seq = seq
+            frame_len += pktlen
+            to_frame.append(pkt)
+            last_seq = seq
 
-            # Add to current frame.
-            pktlen = 4 + len(pkt)
-            if frame_len + pktlen < MAX_FRAME_PAYLOAD_SIZE:
-                # Add to current frame.
-                frame_len += pktlen
-                to_frame.append(pkt)
-            else:
-                # Send current frame.
-                self._send_frame(to_frame, first_seq, seq, last_ack)
-                # Start new frame.
-                to_frame = [pkt]
-                frame_len = pktlen
-                first_seq = seq
-
-        if len(to_frame):
+        if to_frame:
             # Non-empty only if the loop body ran, which is what sets both sequence numbers.
-            assert first_seq is not None and seq is not None
-            # Send current frame.
-            self._send_frame(to_frame, first_seq, seq, last_ack)
+            assert first_seq is not None and last_seq is not None
+            self._send_frame(to_frame, first_seq, last_seq, last_ack)
+
 
     def _send_ping(self, pkt: Packet) -> None:
         self.sent_packets += 1
