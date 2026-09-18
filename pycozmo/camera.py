@@ -71,7 +71,8 @@ class CameraConfig:
         return camera_matrix
 
 
-def minigray_to_jpeg(minigray, width, height):
+def minigray_to_jpeg(minigray: np.ndarray, width: int, height: int) -> np.ndarray:
+
     """ Converts miniGrayToJpeg format to normal JPEG format. """
     header50 = np.array([
         0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
@@ -107,7 +108,7 @@ def minigray_to_jpeg(minigray, width, height):
     return mini_to_jpeg_helper(minigray, width, height, header50)
 
 
-def minicolor_to_jpeg(minicolor, width, height):
+def minicolor_to_jpeg(minicolor: np.ndarray, width: int, height: int) -> np.ndarray:
     """ Converts miniColorToJpeg format to normal JPEG format. """
     header = np.array([
         0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
@@ -148,7 +149,7 @@ def minicolor_to_jpeg(minicolor, width, height):
     return mini_to_jpeg_helper(minicolor, width, height, header)
 
 
-def mini_to_jpeg_helper(mini, width, height, header):
+def mini_to_jpeg_helper(mini: np.ndarray, width: int, height: int, header: np.ndarray) -> np.ndarray:
     """ Low-level mini*ToJpeg format to normal JPEG format conversion. """
     buffer_in = mini.tolist()
     curr_len = len(mini)

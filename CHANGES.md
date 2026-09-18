@@ -8,6 +8,19 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.7 (Sep 18, 2026)
+---------------------
+
+- Fixed the build failing on Python 3.12, 3.13 and 3.14. The type checker had only ever been run against 3.11, the
+    version its configuration declares, while the build matrix covers four. A suppression needed on 3.11 is
+    unnecessary from 3.12 on, where the stubs recognise numpy arrays as buffers, and unused suppressions are
+    errors. The array is now converted explicitly, which no version objects to. All four are verified.
+- Raised test coverage from 63% to 67%, concentrating on what this fork changed and had checked only by hand.
+    camera.py went from 21% to 97% and the JSON loader and the packet filter are now fully covered. New tests cover
+    the procedural face renderer, the camera frame assembly, the logging setup, the animation queue and the frame
+    rate timer.
+- Pinned coverage and documented how to run it.
+
 v0.9.6 (Sep 18, 2026)
 ---------------------
 
