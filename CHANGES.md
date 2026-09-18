@@ -8,6 +8,27 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.8 (Sep 18, 2026)
+---------------------
+
+Bug fixes:
+- Fixed every packet of a full frame being lost. A frame flushed because the next packet no longer fitted
+    advertised that next packet's sequence number while carrying only the packets before it. The peer numbers the
+    packets it decodes from first_seq and checks the count against the advertised sequence, so it rejected the
+    whole frame and logged a decode failure; the sender never found out, and the resent copies were rejected the
+    same way. Any burst large enough to fill a frame hit this, which a run of large packets such as DisplayImage
+    does in a handful of messages. Reported earlier as needing a robot to confirm, this turned out to be
+    reproducible on the loopback interface as soon as a server could answer as a robot.
+
+Other changes:
+- Connection(server=True) can now answer as a robot, not only echo as an engine. It sends ROBOT frames rather
+    than ENGINE ones, and sends out-of-band packets - RobotState, ImageChunk, AnimationState, ObjectAvailable -
+    outside the send window, where they belong. Previously those frames advertised a sequence their packets did
+    not consume and the peer discarded them, so the server side could not emulate a robot at all. Pings echoed by
+    the server now go out as PING frames instead of relying on a special case in the decoder.
+- The package now ships a py.typed marker. It is fully annotated and the type checker reports no issue on it, but
+    dependent projects saw no types and had to silence the import.
+
 v0.9.7 (Sep 18, 2026)
 ---------------------
 

@@ -28,6 +28,9 @@ def get_readme():
 setuptools.setup(
     name="pycozmo",
     packages=setuptools.find_packages(),
+    # PEP 561: the package is fully annotated, so let type checkers use it.
+    package_data={"pycozmo": ["py.typed"]},
+    zip_safe=False,
     version=get_package_variable("__version__"),
     license="MIT",
     license_files=["LICENSE.md"],
