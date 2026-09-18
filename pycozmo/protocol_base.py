@@ -157,7 +157,8 @@ class UnknownCommand(UnknownPacket):
         raise NotImplementedError
 
     def __repr__(self):
-        return "{type}({id:02x}, {data})".format(
+        # Both subclasses that reach here require an integer packet id in their constructor.
+        return "{type}({id:02x}, {data})".format(  # type: ignore[str-format]
             id=self.id, type=type(self).__name__, data=hex_dump(data=self._data))
 
 
@@ -177,5 +178,6 @@ class UnknownEvent(UnknownPacket):
         raise NotImplementedError
 
     def __repr__(self):
-        return "{type}({id:02x}, {data})".format(
+        # Both subclasses that reach here require an integer packet id in their constructor.
+        return "{type}({id:02x}, {data})".format(  # type: ignore[str-format]
             id=self.id, type=type(self).__name__, data=hex_dump(data=self._data))

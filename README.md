@@ -289,8 +289,7 @@ mypy .
 pytest pycozmo/
 ```
 
-`flake8` and `pytest` are expected to pass. `mypy` currently reports a backlog of pre-existing errors in project
-code and is advisory.
+All three are expected to pass, and CI treats any of them failing as a build failure.
 
  
 Support

@@ -48,7 +48,8 @@ class SendThread(Thread):
     def __init__(self,
                  sock: socket.socket,
                  receiver_address: Optional[Tuple[str, int]]) -> None:
-        super().__init__(daemon=True, name=__class__.__name__)
+        # __class__ is bound inside a method body; the checker does not model it.
+        super().__init__(daemon=True, name=__class__.__name__)  # type: ignore[name-defined]
         self.sock = sock
         self.lock = Lock()
         self.receiver_address = receiver_address
@@ -146,6 +147,8 @@ class SendThread(Thread):
                 first_seq = seq
 
         if len(to_frame):
+            # Non-empty only if the loop body ran, which is what sets both sequence numbers.
+            assert first_seq is not None and seq is not None
             # Send current frame.
             self._send_frame(to_frame, first_seq, seq, last_ack)
 
@@ -217,7 +220,8 @@ class ReceiveThread(Thread):
                  sender_address: Optional[Tuple[str, int]],
                  delivery_handler: Callable[[Packet], None],
                  buffer_size: int = 2048) -> None:
-        super().__init__(daemon=True, name=__class__.__name__)
+        # __class__ is bound inside a method body; the checker does not model it.
+        super().__init__(daemon=True, name=__class__.__name__)  # type: ignore[name-defined]
         self.sock = sock
         self.sender_address = sender_address
         self.server = sender_address is None
@@ -361,7 +365,8 @@ class Connection(Thread, event.Dispatcher):
                  robot_addr: Optional[Tuple[str, int]] = None,
                  protocol_log_messages: Optional[list] = None,
                  server: bool = False) -> None:
-        super().__init__(daemon=True, name=__class__.__name__)
+        # __class__ is bound inside a method body; the checker does not model it.
+        super().__init__(daemon=True, name=__class__.__name__)  # type: ignore[name-defined]
         # Thread is an old-style class and does not propagate initialization.
         event.Dispatcher.__init__(self)
         self.robot_addr = robot_addr or (SERVER_ADDR if server else ROBOT_ADDR)

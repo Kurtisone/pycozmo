@@ -535,8 +535,10 @@ class {name}(Packet):
         self.f.write('\n\nPACKETS_BY_GROUP = {\n')
         for group, pkt_set in sorted(packet_map.items()):
             self.f.write('    "{group}": {{\n'.format(group=group))
-            for pkt in sorted(pkt_set, key=lambda pkt2: pkt2.id):
-                self.f.write('        0x{id:02x},  # {name}\n'.format(id=pkt.id, name=pkt.name))
+            # Every packet in the map carries an id; it is optional only on the base class.
+            for pkt in sorted(pkt_set, key=lambda pkt2: pkt2.id):  # type: ignore[arg-type,return-value]
+                self.f.write(
+                    '        0x{id:02x},  # {name}\n'.format(id=pkt.id, name=pkt.name))  # type: ignore[str-format]
             self.f.write('    },\n')
         self.f.write('}\n')
 

@@ -103,7 +103,9 @@ class AnimationController:
         self.last_image_pkt = protocol_encoder.DisplayImage(image=b"\x3f\x3f")
 
     def start(self):
-        self.thread = Thread(daemon=True, name=__class__.__name__, target=self._run)
+        # __class__ is bound inside a method body; the checker does not model it.
+        self.thread = Thread(
+            daemon=True, name=__class__.__name__, target=self._run)  # type: ignore[name-defined]
         self.stop_flag = False
         self.thread.start()
         self.cli.add_handler(protocol_encoder.AnimationState, self._on_animation_state)
