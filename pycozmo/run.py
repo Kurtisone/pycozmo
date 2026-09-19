@@ -10,7 +10,8 @@ import os
 import logging
 from contextlib import contextmanager
 
-from .logger import logger, logger_protocol, logger_robot, logger_reaction, logger_behavior, logger_animation
+from .logger import logger, logger_protocol, logger_robot, logger_reaction, logger_behavior, \
+    logger_animation, logger_emotion
 from . import client
 from . import exception
 
@@ -54,6 +55,8 @@ def setup_basic_logging(
     logger_behavior.setLevel(robot_log_level)
     logger_animation.addHandler(handler)
     logger_animation.setLevel(robot_log_level)
+    logger_emotion.addHandler(handler)
+    logger_emotion.setLevel(robot_log_level)
 
 
 @contextmanager

@@ -6,7 +6,7 @@ Emotion representation and reading.
 
 import os
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -61,23 +61,58 @@ class DecayGraph:
 
 
 class EmotionType:
-    """ Emotion type class. """
+    """
+    Emotion type class.
+
+    An emotion holds a value between -1.0 and 1.0 that emotion events shift and that decays back
+    to nothing on its own. Together, the seven emotions are the robot's mood.
+    """
+
+    #: Bounds an emotion value is held within.
+    MIN_VALUE = -1.0
+    MAX_VALUE = 1.0
 
     __slots__ = [
         "name",
         "decay_graph",
-        "repetition_penalty"
+        "repetition_penalty",
+        "value",
+        "base_value",
+        "last_change_time",
     ]
 
     def __init__(self, name: str, decay_graph: DecayGraph, repetition_penaly: DecayGraph) -> None:
         self.name = str(name)
         self.decay_graph = decay_graph
         self.repetition_penalty = repetition_penaly
+        #: Current value, between MIN_VALUE and MAX_VALUE.
+        self.value = 0.0
+        # The value the decay is measured from, and when it was set.
+        self.base_value = 0.0
+        self.last_change_time = time.perf_counter()
 
-    def update(self):
-        """ Update from decay function. """
-        # TODO
-        pass
+    def update(self, now: Optional[float] = None) -> None:
+        """
+        Update the value from the decay function.
+
+        A decay graph maps the time since the value last changed to the fraction of it that is
+        left. The default graph holds the value for 10 s and is down to nothing by 150 s; Confident
+        is gone by 70 s; WantToPlay, a single node at 1.0, never decays at all. Past its last node
+        a graph extrapolates below zero, so the fraction is clamped - otherwise a forgotten emotion
+        would come back with the opposite sign and grow without bound.
+        """
+        now = time.perf_counter() if now is None else now
+        fraction = self.decay_graph.get_increment(now - self.last_change_time)
+        fraction = min(max(fraction, 0.0), 1.0)
+        self.value = self.base_value * fraction
+
+    def add(self, value: float, now: Optional[float] = None) -> None:
+        """ Shift the value by an emotion event affector, and start its decay afresh. """
+        now = time.perf_counter() if now is None else now
+        self.update(now)
+        self.value = min(max(self.value + value, self.MIN_VALUE), self.MAX_VALUE)
+        self.base_value = self.value
+        self.last_change_time = now
 
 
 class EmotionEvent:

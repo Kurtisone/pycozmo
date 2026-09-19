@@ -4,14 +4,14 @@ Brain class - high level behavior and emotion engine.
 
 """
 
-from typing import Optional
+from typing import Dict, Optional
 from PIL import Image
 from threading import Thread
 from typing import Optional as _Optional
 from queue import Queue, Empty
 import time
 
-from .logger import logger, logger_reaction, logger_behavior
+from .logger import logger, logger_reaction, logger_behavior, logger_emotion
 from . import client
 from . import event
 from . import emotions
@@ -58,6 +58,7 @@ class Brain:
         logger.info("Loaded resources in {:.02f} s.".format(time.perf_counter() - start_time))
 
         self.cli.add_handler(event.EvtBehaviorDone, self.on_behavior_done)
+        self.cli.add_handler(event.EvtEmotionEvent, self.on_emotion_event)
         self.cli.add_handler(event.EvtCliffDetectedChange, self.on_cliff_detected)
         self.cli.add_handler(event.EvtRobotOrientationChange, self.on_robot_orientation_change)
         self.cli.add_handler(event.EvtRobotPickedUpChange, self.on_robot_picked_up_change)
@@ -78,6 +79,8 @@ class Brain:
         self.activity = self.activities["Freeplay"]
         # Current behavior
         self.behavior: Optional[behavior.Behavior] = None
+        # Behavior a reaction interrupted, to put back once the reaction is over
+        self.behavior_to_resume: Optional[behavior.Behavior] = None
 
     def start(self) -> None:
         # Connect to robot. Both threads are created in __init__ and only cleared by stop(), which a Thread
@@ -104,6 +107,10 @@ class Brain:
         if self.behavior:
             logger_reaction.info("Done.")
             self.deactivate_behavior()
+            self.resume_behavior()
+
+    def on_emotion_event(self, cli: client.Client, name: str) -> None:
+        self.post_emotion_event(name)
 
     def on_cliff_detected(self, cli: client.Client, state: bool) -> None:
         if state and not cli.robot_picked_up and cli.robot_moving:
@@ -170,20 +177,62 @@ class Brain:
         logger_reaction.info("Processing {}".format(reaction_trigger))
         reaction = self.reaction_trigger_beahvior_map.get(reaction_trigger)
         if reaction:
-            # TODO: Handle should_resume_last.
-            self.activate_behavior(reaction.behavior_id)
+            # Some triggers have an emotion event of the same name - CliffDetected costs the robot
+            # some Happy, Calm and Brave. The behavior a reaction runs may post one of its own.
+            self.post_emotion_event(reaction_trigger)
+            self.activate_behavior(reaction.behavior_id, resume_last=reaction.should_resume_last)
         else:
             logger_reaction.error("Failed to find reaction for {}.".format(reaction_trigger))
 
-    def activate_behavior(self, behavior_id: str) -> None:
-        behavior = self.behaviors.get(behavior_id)
-        if behavior:
-            self.deactivate_behavior()
-            logger_behavior.info("Activating {}".format(behavior_id))
-            self.behavior = behavior
-            self.cli.activate_behavior(self.behavior)
-        else:
+    def post_emotion_event(self, name: str) -> None:
+        """ Apply an emotion event to the mood, by name. Names with no event are ignored. """
+        emotion_event = self.emotion_events.get(name)
+        if emotion_event is None:
+            return
+        for emotion_type_name, value in emotion_event.affectors.items():
+            emotion_type = self.emotion_types.get(emotion_type_name)
+            if emotion_type is None:
+                logger.error("Emotion event '{}' affects unknown emotion '{}'.".format(
+                    name, emotion_type_name))
+                continue
+            emotion_type.add(value)
+        logger_emotion.info("{}: {}".format(name, self.get_mood_description()))
+
+    def get_mood(self) -> Dict[str, float]:
+        """ The current value of every emotion. """
+        return {name: emotion_type.value for name, emotion_type in self.emotion_types.items()}
+
+    def get_mood_description(self) -> str:
+        """ The emotions that are not at rest, for logging. """
+        mood = {name: value for name, value in self.get_mood().items() if round(value, 3)}
+        if not mood:
+            return "neutral"
+        return ", ".join("{} {:+.2f}".format(name, value) for name, value in sorted(mood.items()))
+
+    def activate_behavior(self, behavior_id: str, resume_last: bool = False) -> None:
+        new_behavior = self.behaviors.get(behavior_id)
+        if new_behavior is None:
             logger_reaction.error("Failed to find behavior {}.".format(behavior_id))
+            return
+        # A reaction marked shouldResumeLast puts back what it interrupted once it is over: a
+        # cliff, a shove or a motor calibration interrupts what the robot was doing rather than
+        # ending it. The other eighteen reaction triggers do not resume anything.
+        interrupted = self.behavior if resume_last and self.behavior is not new_behavior else None
+        self.deactivate_behavior()
+        self.behavior_to_resume = interrupted
+        logger_behavior.info("Activating {}".format(behavior_id))
+        self.behavior = new_behavior
+        self.cli.activate_behavior(new_behavior)
+
+    def resume_behavior(self) -> None:
+        """ Put back the behavior a reaction interrupted, if there is one. """
+        resumed, self.behavior_to_resume = self.behavior_to_resume, None
+        if resumed is None:
+            return
+        # A behavior has no notion of being suspended, so a resumed one starts over.
+        logger_behavior.info("Resuming {}".format(resumed.get_id()))
+        self.behavior = resumed
+        self.cli.activate_behavior(resumed)
 
     def deactivate_behavior(self) -> None:
         if self.behavior:

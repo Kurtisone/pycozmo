@@ -9,7 +9,7 @@ import pycozmo
 class TestSetupBasicLogging(unittest.TestCase):
 
     LOGGERS = ("pycozmo.general", "pycozmo.protocol", "pycozmo.robot",
-               "pycozmo.reaction", "pycozmo.behavior", "pycozmo.animation")
+               "pycozmo.reaction", "pycozmo.behavior", "pycozmo.animation", "pycozmo.emotion")
 
     def setUp(self):
         # setup_basic_logging() mutates process wide loggers, so put them back afterwards.

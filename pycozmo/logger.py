@@ -14,6 +14,7 @@ __all__ = [
     "logger_reaction",
     "logger_behavior",
     "logger_animation",
+    "logger_emotion",
 ]
 
 
@@ -29,5 +30,7 @@ logger_reaction = logging.getLogger("pycozmo.reaction")
 logger_behavior = logging.getLogger("pycozmo.behavior")
 # Animation logger.
 logger_animation = logging.getLogger("pycozmo.animation")
+# Emotion logger - mood changes.
+logger_emotion = logging.getLogger("pycozmo.emotion")
 
 # TODO: See cozmo_resources/config/engine/console_filter_config.json
