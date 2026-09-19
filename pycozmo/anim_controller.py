@@ -133,9 +133,17 @@ class AnimationController:
 
     def _on_animation_started(self, cli: conn.Connection, pkt: protocol_encoder.AnimationStarted) -> None:
         self.playing_animation = True
+        # The robot acknowledges every animation it starts, whoever started it, so its answer is
+        # what the end is matched against. An application is free to send StartAnimation itself.
+        self.expected_anim_id = pkt.anim_id
 
     def expect_anim(self, anim_id: int) -> None:
-        """ Note the animation whose end is to be reported as a completion. """
+        """
+        Note the animation whose end is to be reported as a completion.
+
+        The acknowledgement from the robot sets this as well. Recording it here too means an
+        animation still completes on a robot that does not acknowledge having started it.
+        """
         self.expected_anim_id = anim_id
 
     def _on_animation_ended(self, cli: conn.Connection, pkt: protocol_encoder.AnimationEnded) -> None:

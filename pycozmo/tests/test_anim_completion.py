@@ -64,6 +64,25 @@ class TestAnimationCompletion(AnimationTestCase):
         self.end(7)
         self.assertEqual(self.posted(), [])
 
+    def start(self, anim_id):
+        """ The robot acknowledging an animation it has started. """
+        self.controller._on_animation_started(
+            self.cli.conn, pycozmo.protocol_encoder.AnimationStarted(anim_id=anim_id))
+
+    def test_an_animation_the_robot_acknowledges_completes(self):
+        # pycozmo is a protocol library: an application may send StartAnimation itself rather than
+        # going through play_anim(). The robot acknowledges whatever it starts, and that answer is
+        # what the end is matched against, so such an animation still completes.
+        self.start(3)
+        self.end(3)
+        self.assertEqual(self.posted(), [pycozmo.event.EvtAnimationCompleted])
+
+    def test_the_acknowledgement_wins_over_a_stale_expectation(self):
+        self.controller.expect_anim(7)
+        self.start(3)
+        self.end(3)
+        self.assertEqual(self.posted(), [pycozmo.event.EvtAnimationCompleted])
+
     def test_the_animation_started_after_a_cancel_still_completes(self):
         self.controller.expect_anim(7)
         self.controller.cancel_anim()
