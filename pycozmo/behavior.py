@@ -31,18 +31,49 @@ class ReactionTrigger:
         "name",
         "behavior_id",
         "should_resume_last",
+        "max_confidence",
+        "cooldown_time",
+        "conf",
+        "last_run",
     ]
 
-    def __init__(self, name: str, behavior_id: str, should_resume_last: Optional[bool] = False):
+    def __init__(self, name: str, behavior_id: str, should_resume_last: Optional[bool] = False,
+                 max_confidence: Optional[float] = None, cooldown_time: float = 0.0,
+                 conf: Optional[Dict] = None):
         self.name = str(name)
         self.behavior_id = str(behavior_id)
         self.should_resume_last = bool(should_resume_last)
+        #: Confidence at or below which the reaction applies, when a trigger names several.
+        self.max_confidence = None if max_confidence is None else float(max_confidence)
+        #: Seconds before the reaction may run again. Zero for no cooldown at all.
+        self.cooldown_time = float(cooldown_time)
+        #: The whole configuration entry, which carries parameters nothing reads yet.
+        self.conf = dict(conf or {})
+        # When the reaction last ran, from time.perf_counter(). 0.0 until it runs once.
+        self.last_run = 0.0
 
     @classmethod
     def from_json(cls, data: Dict) -> "ReactionTrigger":
+        # The confidence and the cooldown only ever come under frustrationParams in the resources,
+        # Frustration being the only trigger that grades its reaction.
+        frustration = data.get('frustrationParams', {})
         return cls(name=data['reactionTrigger'],
                    behavior_id=data['behaviorID'],
-                   should_resume_last=data.get('genericStrategyParams', {}).get('shouldResumeLast'))
+                   should_resume_last=data.get('genericStrategyParams', {}).get('shouldResumeLast'),
+                   max_confidence=frustration.get('maxConfidence'),
+                   cooldown_time=frustration.get('cooldownTime_s', 0.0),
+                   conf=data)
+
+    def is_on_cooldown(self, now: Optional[float] = None) -> bool:
+        """ Whether the reaction ran too recently to run again. """
+        if not self.cooldown_time or not self.last_run:
+            return False
+        now = time.perf_counter() if now is None else now
+        return now - self.last_run < self.cooldown_time
+
+    def ran(self, now: Optional[float] = None) -> None:
+        """ Record the reaction as just run, which starts its cooldown. """
+        self.last_run = time.perf_counter() if now is None else now
 
 
 class Behavior(event.Dispatcher):
@@ -402,19 +433,27 @@ def load_behaviors(resource_dir: str, cli: client.Client) -> Dict[str, Behavior]
     return behaviors
 
 
-def load_reaction_trigger_behavior_map(resource_dir: str) -> Dict[str, ReactionTrigger]:
+def load_reaction_trigger_behavior_map(resource_dir: str) -> Dict[str, List[ReactionTrigger]]:
+    """
+    Load the reaction trigger behavior map.
+
+    A trigger can name more than one behavior, to be chosen between when it fires. Frustration names
+    two, a minor and a major variant, each declaring the confidence at or below which it applies.
+    Keeping one behavior per trigger silently dropped all but the last, so the map holds a list.
+    """
 
     start_time = time.perf_counter()
 
-    reaction_trigger_behavior_map = {}
+    reaction_trigger_behavior_map: Dict[str, List[ReactionTrigger]] = {}
     filename = os.path.join(resource_dir, 'cozmo_resources', 'config',
                             'engine', 'behaviorSystem', 'reactionTrigger_behavior_map.json')
 
     json_data = load_json_file(filename)
     for trigger in json_data['reactionTriggerBehaviorMap']:
-        reaction_trigger_behavior_map[trigger['reactionTrigger']] = ReactionTrigger.from_json(trigger)
+        reaction = ReactionTrigger.from_json(trigger)
+        reaction_trigger_behavior_map.setdefault(reaction.name, []).append(reaction)
 
     logger.debug("Loaded {} entry reaction trigger behavior map in {:.02f} s.".format(
-        len(reaction_trigger_behavior_map), time.perf_counter() - start_time))
+        sum(len(r) for r in reaction_trigger_behavior_map.values()), time.perf_counter() - start_time))
 
     return reaction_trigger_behavior_map

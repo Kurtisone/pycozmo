@@ -1,6 +1,6 @@
 import os
 import unittest
-from typing import Dict, Set, cast
+from typing import Dict, List, Set, cast
 
 import pycozmo
 
@@ -347,7 +347,7 @@ class TestAgainstCozmoAssets(unittest.TestCase):
     resource_dir: str
     anim_triggers: Set[str]
     behaviors: Dict[str, pycozmo.behavior.Behavior]
-    reaction_triggers: Dict[str, pycozmo.behavior.ReactionTrigger]
+    reaction_triggers: Dict[str, List[pycozmo.behavior.ReactionTrigger]]
 
     @classmethod
     def setUpClass(cls):
@@ -416,9 +416,21 @@ class TestAgainstCozmoAssets(unittest.TestCase):
                 self.assertIs(type(self.behaviors[behavior_id]), pycozmo.behavior.Behavior)
 
     def test_every_reaction_trigger_has_a_behavior(self):
-        for reaction in self.reaction_triggers.values():
-            with self.subTest(reaction=reaction.name):
-                self.assertIn(reaction.behavior_id, self.behaviors)
+        for reactions in self.reaction_triggers.values():
+            for reaction in reactions:
+                with self.subTest(reaction=reaction.name, behavior=reaction.behavior_id):
+                    self.assertIn(reaction.behavior_id, self.behaviors)
+
+    def test_frustration_keeps_both_of_its_behaviors(self):
+        # The map is keyed by trigger and Frustration appears twice, so keeping one behavior per
+        # trigger dropped the minor variant and always ran the major one.
+        frustration = self.reaction_triggers["Frustration"]
+        self.assertEqual({reaction.behavior_id for reaction in frustration},
+                         {"ReactToFrustrationMinor", "ReactToFrustrationMajor"})
+        by_id = {reaction.behavior_id: reaction for reaction in frustration}
+        self.assertEqual(by_id["ReactToFrustrationMinor"].max_confidence, -0.6)
+        self.assertEqual(by_id["ReactToFrustrationMajor"].max_confidence, -0.9)
+        self.assertEqual(by_id["ReactToFrustrationMinor"].cooldown_time, 60.0)
 
 
 class TestEmotionEvents(BehaviorTestCase):
