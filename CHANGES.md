@@ -8,6 +8,45 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.12 (Sep 20, 2026)
+----------------------
+
+Bug fixes:
+- Fixed the robot's screen freezing after an animation was cancelled. v0.9.9 moved the clearing of
+    the playing flag behind the identifier check it added, so an end that was dropped left it set,
+    and nothing redrew the procedural face - it is only drawn while no animation is playing. A
+    behavior preempted mid-animation by one that plays no animation at all, such as
+    ReactToReturnedToTreads, reaches this; v0.9.11 made it last longer, an unchanged image going out
+    every 5 s rather than thirty times a second. The flag now goes whichever animation the robot
+    reports ending, only the completion event staying behind the identifier.
+- Fixed all but one of the behaviors a reaction trigger names being dropped on load. The map was
+    read into a dictionary keyed by trigger, and Frustration appears in it twice, so
+    ReactToFrustrationMinor was overwritten and the harsher reaction was the only one that trigger
+    could run. The map holds a list per trigger now, and the choice is made when it fires.
+- Fixed Brain.stop() leaving the robot in the brain's hands. The running behavior stayed active, so
+    its animation kept playing and, since ReactToOnCharger gained its timers in v0.9.9, one could
+    fire into a session being torn down. The brain's own event handlers stayed registered too, so a
+    reaction posted afterwards queued up for a thread that no longer ran, and a behavior reporting
+    itself done would have had the brain start another one.
+
+Other changes:
+- The frustration reaction is graded on how confident the robot is, which the resources have always
+    asked for: the minor variant applies at or below -0.6 confidence, the major one at or below
+    -0.9, and the minor one carries a 60 s cooldown. Grading it only became possible once the
+    emotions held a value, which they did not before v0.9.9. Too confident for either and the
+    mildest runs anyway, a trigger that fired being better answered than ignored. A reaction held
+    back by its cooldown is skipped, and the trigger passes if every variant is.
+- Hiccups come in bouts, as hiccupParams asks: five to ten of them, four and a half to eight seconds
+    apart, then five to fifty-five minutes of quiet. One was posted every sixty seconds, which is
+    both far too often and not the shape of it - often enough to cut into whatever was running, as
+    it did to a charger sleep sequence while this was being measured.
+- Brain.reaction_trigger_beahvior_map is spelled reaction_trigger_behavior_map, and holds a list of
+    reactions per trigger rather than one. ReactionTrigger carries the confidence, the cooldown and
+    the configuration entry it was read from. Nothing outside the brain read any of it.
+
+Maintenance:
+- Added tests for the reaction choice, the hiccup bouts and stopping the brain.
+
 v0.9.11 (Sep 20, 2026)
 ----------------------
 
