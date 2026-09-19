@@ -4,11 +4,12 @@ Brain class - high level behavior and emotion engine.
 
 """
 
-from typing import Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 from PIL import Image
 from threading import Thread
 from typing import Optional as _Optional
 from queue import Queue, Empty
+import random
 import time
 
 from .logger import logger, logger_reaction, logger_behavior, logger_emotion
@@ -28,6 +29,16 @@ __all__ = [
 
 class Brain:
     """ Cozmo robot brain class. """
+
+    #: Hiccup parameters, should the resources not carry them.
+    HICCUP_DEFAULTS: Dict[str, float] = {
+        "minHiccupOccurrenceFrequency_s": 300.0,
+        "maxHiccupOccurrenceFrequency_s": 3300.0,
+        "minNumberOfHiccupsToDo": 5,
+        "maxNumberOfHiccupsToDo": 10,
+        "minHiccupSpacing_ms": 4500.0,
+        "maxHiccupSpacing_ms": 8000.0,
+    }
 
     #: Reaction posted for each orientation the robot can end up in.
     ORIENTATION_REACTIONS = {
@@ -51,19 +62,21 @@ class Brain:
         resource_dir = str(util.get_cozmo_asset_dir())
         self.activities = activity.load_activities(resource_dir)
         self.behaviors = behavior.load_behaviors(resource_dir, self.cli)
-        self.reaction_trigger_beahvior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
+        self.reaction_trigger_behavior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
         self.emotion_types = emotions.load_emotion_types(resource_dir)
         self.emotion_events = emotions.load_emotion_events(resource_dir)
         self.cli.load_anims()
         logger.info("Loaded resources in {:.02f} s.".format(time.perf_counter() - start_time))
 
-        self.cli.add_handler(event.EvtBehaviorDone, self.on_behavior_done)
-        self.cli.add_handler(event.EvtEmotionEvent, self.on_emotion_event)
-        self.cli.add_handler(event.EvtCliffDetectedChange, self.on_cliff_detected)
-        self.cli.add_handler(event.EvtRobotOrientationChange, self.on_robot_orientation_change)
-        self.cli.add_handler(event.EvtRobotPickedUpChange, self.on_robot_picked_up_change)
-        self.cli.add_handler(event.EvtRobotFallingChange, self.on_robot_falling_change)
-        self.cli.add_handler(event.EvtRobotOnChargerChange, self.on_robot_on_charger_change)
+        # Kept so that stop() can stop listening.
+        self.handlers: List[Tuple[type, event.Handler]] = []
+        self.listen(event.EvtBehaviorDone, self.on_behavior_done)
+        self.listen(event.EvtEmotionEvent, self.on_emotion_event)
+        self.listen(event.EvtCliffDetectedChange, self.on_cliff_detected)
+        self.listen(event.EvtRobotOrientationChange, self.on_robot_orientation_change)
+        self.listen(event.EvtRobotPickedUpChange, self.on_robot_picked_up_change)
+        self.listen(event.EvtRobotFallingChange, self.on_robot_falling_change)
+        self.listen(event.EvtRobotOnChargerChange, self.on_robot_on_charger_change)
         # TODO: ...
 
         # Reaction trigger queue
@@ -81,6 +94,10 @@ class Brain:
         self.behavior: Optional[behavior.Behavior] = None
         # Behavior a reaction interrupted, to put back once the reaction is over
         self.behavior_to_resume: Optional[behavior.Behavior] = None
+        # Hiccups left in the bout under way, and when the next one is due. See update_hiccups() .
+        self.hiccups_left = 0
+        self.next_hiccup_time = 0.0
+        self.schedule_hiccup_bout()
 
     def start(self) -> None:
         # Connect to robot. Both threads are created in __init__ and only cleared by stop(), which a Thread
@@ -93,6 +110,10 @@ class Brain:
         # TODO: Enable camera.
         # TODO: Drive off if on charger.
 
+    def listen(self, evt: type, f: Callable) -> None:
+        """ Handle an event from the client, and remember it so that stop() can undo it. """
+        self.handlers.append((evt, self.cli.add_handler(evt, f)))
+
     def stop(self) -> None:
         # Disconnect from robot
         self.stop_flag = True
@@ -102,6 +123,14 @@ class Brain:
         if self.reaction_thread:
             self.reaction_thread.join()
             self.reaction_thread = None
+        # Stop listening. A reaction posted from here on would queue up for nobody to process, and a
+        # behavior reporting itself done would have the brain start another one.
+        for evt, handler in self.handlers:
+            self.cli.del_handler(evt, handler)
+        self.handlers = []
+        # Whatever was running keeps its animation playing and its timers armed otherwise.
+        self.behavior_to_resume = None
+        self.deactivate_behavior()
 
     def on_behavior_done(self, cli: client.Client) -> None:
         if self.behavior:
@@ -175,14 +204,42 @@ class Brain:
 
     def process_reaction(self, reaction_trigger: str) -> None:
         logger_reaction.info("Processing {}".format(reaction_trigger))
-        reaction = self.reaction_trigger_beahvior_map.get(reaction_trigger)
-        if reaction:
-            # Some triggers have an emotion event of the same name - CliffDetected costs the robot
-            # some Happy, Calm and Brave. The behavior a reaction runs may post one of its own.
-            self.post_emotion_event(reaction_trigger)
-            self.activate_behavior(reaction.behavior_id, resume_last=reaction.should_resume_last)
-        else:
+        reactions = self.reaction_trigger_behavior_map.get(reaction_trigger)
+        if not reactions:
             logger_reaction.error("Failed to find reaction for {}.".format(reaction_trigger))
+            return
+        reaction = self.choose_reaction(reactions)
+        if reaction is None:
+            logger_reaction.debug("{} is on cooldown.".format(reaction_trigger))
+            return
+        reaction.ran()
+        # Some triggers have an emotion event of the same name - CliffDetected costs the robot
+        # some Happy, Calm and Brave. The behavior a reaction runs may post one of its own.
+        self.post_emotion_event(reaction_trigger)
+        self.activate_behavior(reaction.behavior_id, resume_last=reaction.should_resume_last)
+
+    def choose_reaction(
+            self, reactions: List[behavior.ReactionTrigger]) -> Optional[behavior.ReactionTrigger]:
+        """
+        Choose between the behaviors a reaction trigger names, or nothing if none may run.
+
+        Frustration is the only trigger in the resources that names more than one: a minor and a
+        major variant, each declaring the confidence at or below which it applies, -0.6 and -0.9.
+        The most severe variant the mood allows wins. When the robot is too confident for any of
+        them the mildest runs anyway, a trigger that fired being better answered than ignored.
+        """
+        ready = [reaction for reaction in reactions if not reaction.is_on_cooldown()]
+        if not ready:
+            return None
+        if len(ready) == 1:
+            return ready[0]
+        confidence = self.emotion_types["Confident"].value
+        # Most severe first, those that grade nothing last.
+        graded = sorted(ready, key=lambda r: (r.max_confidence is None, r.max_confidence or 0.0))
+        for reaction in graded:
+            if reaction.max_confidence is not None and confidence <= reaction.max_confidence:
+                return reaction
+        return graded[-1]
 
     def post_emotion_event(self, name: str) -> None:
         """ Apply an emotion event to the mood, by name. Names with no event are ignored. """
@@ -248,20 +305,54 @@ class Brain:
         angle = (robot.MAX_HEAD_ANGLE.radians - robot.MIN_HEAD_ANGLE.radians) / 2.0
         self.cli.set_head_angle(angle)
 
-        cnt = 1
         timer = util.FPSTimer(robot.FRAME_RATE)
         while not self.stop_flag:
 
             self.update_emotion_types()
+            self.update_hiccups()
             # TODO: Timers
 
-            if cnt % (30 * 60) == 0:
-                self.post_reaction("Hiccup")
-
-            cnt += 1
             timer.sleep()
 
     def update_emotion_types(self) -> None:
         """ Update emotion types from their decay functions. """
         for emotion_type in self.emotion_types.values():
             emotion_type.update()
+
+    def get_hiccup_params(self) -> Dict[str, float]:
+        """ Hiccup parameters, from the reaction trigger map, over the defaults kept here. """
+        params = dict(self.HICCUP_DEFAULTS)
+        for reaction in self.reaction_trigger_behavior_map.get("Hiccup", []):
+            params.update(reaction.conf.get("hiccupParams", {}))
+        return params
+
+    def schedule_hiccup_bout(self, now: Optional[float] = None) -> None:
+        """ Put the next bout of hiccups off to its own time, and decide how long it will be. """
+        now = time.perf_counter() if now is None else now
+        params = self.get_hiccup_params()
+        self.hiccups_left = random.randint(int(params["minNumberOfHiccupsToDo"]),
+                                           int(params["maxNumberOfHiccupsToDo"]))
+        self.next_hiccup_time = now + random.uniform(
+            float(params["minHiccupOccurrenceFrequency_s"]),
+            float(params["maxHiccupOccurrenceFrequency_s"]))
+
+    def update_hiccups(self, now: Optional[float] = None) -> None:
+        """
+        Hiccup in bouts, the way the reaction trigger map asks.
+
+        The robot hiccups five to ten times in a row, four and a half to eight seconds apart, then
+        goes five to fifty-five minutes without. It used to hiccup once every sixty seconds, often
+        enough to cut into whatever it was doing - a charger sleep sequence, in one measurement.
+        """
+        now = time.perf_counter() if now is None else now
+        if now < self.next_hiccup_time:
+            return
+        self.post_reaction("Hiccup")
+        self.hiccups_left -= 1
+        if self.hiccups_left > 0:
+            params = self.get_hiccup_params()
+            self.next_hiccup_time = now + random.uniform(
+                float(params["minHiccupSpacing_ms"]) / 1000.0,
+                float(params["maxHiccupSpacing_ms"]) / 1000.0)
+        else:
+            self.schedule_hiccup_bout(now)
