@@ -561,7 +561,7 @@ class Client(event.Dispatcher):
         if not animation_group:
             logger_animation.error("Failed to find animation group {}.".format(anim_group_name))
             return
-        member = animation_group.choose_member()
+        member = animation_group.choose_member(self.head_angle)
         logger_animation.info("Playing animation {}".format(member.name))
         self.play_anim(member.name)
 

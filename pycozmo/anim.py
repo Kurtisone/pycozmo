@@ -21,6 +21,7 @@ from . import procedural_face
 from . import protocol_base
 from . import protocol_encoder
 from . import robot
+from . import util
 from .json_loader import find_file, load_json_file
 
 
@@ -206,6 +207,7 @@ class AnimationGroupMember:
         "use_head_angle",
         "head_angle_max",
         "head_angle_min",
+        "last_played",
     ]
 
     def __init__(self,
@@ -225,6 +227,25 @@ class AnimationGroupMember:
         # Degrees
         self.head_angle_min = float(head_angle_min)
         self.head_angle_max = float(head_angle_max)
+        # When the member was last played, from time.perf_counter(). 0.0 until it is played once.
+        self.last_played = 0.0
+
+    def matches_head_angle(self, head_angle: util.Angle) -> bool:
+        """ Whether the member suits a head angle. A member that declares no band suits any. """
+        if not self.use_head_angle:
+            return True
+        return self.head_angle_min <= head_angle.degrees <= self.head_angle_max
+
+    def is_on_cooldown(self, now: Optional[float] = None) -> bool:
+        """ Whether the member was played too recently to be played again. """
+        if not self.cooldown_time or not self.last_played:
+            return False
+        now = time.perf_counter() if now is None else now
+        return now - self.last_played < self.cooldown_time
+
+    def played(self, now: Optional[float] = None) -> None:
+        """ Record the member as just played, which starts its cooldown. """
+        self.last_played = time.perf_counter() if now is None else now
 
     @classmethod
     def from_json(cls, data: Dict) -> "AnimationGroupMember":
@@ -241,35 +262,46 @@ class AnimationGroup:
 
     __slots__ = [
         "members",
-        "member_probabilities",
     ]
 
     def __init__(self, members: Iterable[AnimationGroupMember]) -> None:
         self.members = list(members)
-        self.member_probabilities = []
-
-        # Calculate normalized probabilities for members.
-        weight_sum = 0.0
-        for member in self.members:
-            self.member_probabilities.append(member.weight)
-            weight_sum += member.weight
-        if not weight_sum and len(self.members) == 1:
-            # Fix special case of a single member with weight 0.
-            weight_sum = 1.0
-            self.member_probabilities[0] = 1.0
-        for i in range(len(self.member_probabilities)):
-            self.member_probabilities[i] /= weight_sum
-        assert math.isclose(sum(self.member_probabilities), 1.0)
 
     @classmethod
     def from_json(cls, data: Dict) -> "AnimationGroup":
         animations = [AnimationGroupMember.from_json(a) for a in data['Animations']]
         return cls(animations)
 
-    def choose_member(self):
-        """ Choose member by weight. """
-        i = np.random.choice(len(self.members), p=self.member_probabilities)
-        member = self.members[i]
+    def get_candidates(self, head_angle: Optional[util.Angle] = None) -> List[AnimationGroupMember]:
+        """
+        Members that may be played right now.
+
+        Some groups hold one animation per head angle band. The angle is baked into the animation -
+        43 of the 507 groups are built that way - so playing the member that does not match the
+        current angle makes the head jump. A member played less recently than its cooldown is
+        skipped, unless skipping it would leave nothing to play.
+        """
+        candidates = self.members
+        if head_angle is not None:
+            suitable = [member for member in candidates if member.matches_head_angle(head_angle)]
+            if suitable:
+                candidates = suitable
+        now = time.perf_counter()
+        ready = [member for member in candidates if not member.is_on_cooldown(now)]
+        return ready or candidates
+
+    def choose_member(self, head_angle: Optional[util.Angle] = None) -> AnimationGroupMember:
+        """ Choose a member by weight, among those that may be played right now. """
+        candidates = self.get_candidates(head_angle)
+        weights = [member.weight for member in candidates]
+        weight_sum = sum(weights)
+        if weight_sum:
+            probabilities = [weight / weight_sum for weight in weights]
+        else:
+            # A group whose candidates all carry no weight is still playable.
+            probabilities = [1.0 / len(candidates)] * len(candidates)
+        member = candidates[np.random.choice(len(candidates), p=probabilities)]
+        member.played()
         return member
 
 
