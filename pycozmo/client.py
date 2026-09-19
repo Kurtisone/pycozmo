@@ -493,13 +493,16 @@ class Client(event.Dispatcher):
 
     def play_anim_ppclip(self, ppclip: anim.PreprocessedClip) -> None:
 
-        # Ensure no other animation is playing.
+        # Ensure no other animation is playing. Cancelling drops the expectation, so the end of
+        # the animation being cancelled cannot be taken for the end of this one.
         self.cancel_anim()
 
-        # Start animation.
-        pkt: protocol_base.Packet = protocol_encoder.StartAnimation(anim_id=self._next_anim_id)
+        # Start animation. The identifier is what tells the two apart; it is a uint8 on the wire.
+        anim_id = self._next_anim_id
+        self._next_anim_id = self._next_anim_id % 255 + 1
+        self.anim_controller.expect_anim(anim_id)
+        pkt: protocol_base.Packet = protocol_encoder.StartAnimation(anim_id=anim_id)
         self.anim_controller.play_anim_frame(None, None, (pkt, ))
-        self._next_anim_id += 1
 
         # Send frames to the animation controller.
         frames = list(sorted(ppclip.keyframes.keys()))

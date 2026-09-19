@@ -4,7 +4,7 @@ Animation controller for audio, image, and animation playback.
 
 """
 
-from typing import Deque, Iterable, List, Optional, Tuple
+from typing import Any, Deque, Iterable, List, Optional, Tuple
 from threading import Thread, Lock
 from collections import deque
 
@@ -94,6 +94,9 @@ class AnimationController:
         self.num_frames_played = -1
         self.playing_audio = False
         self.playing_animation = False
+        # Identifier of the animation whose end is to be reported as a completion. See
+        # expect_anim() and _on_animation_ended() .
+        self.expected_anim_id: Optional[int] = None
         self.last_image_pkt = protocol_encoder.DisplayImage(image=b"\x3f\x3f")
         self.face_generator = iter(procedural_face.ProceduralFaceGenerator())
         self.animations_enabled = False
@@ -131,18 +134,34 @@ class AnimationController:
     def _on_animation_started(self, cli: conn.Connection, pkt: protocol_encoder.AnimationStarted) -> None:
         self.playing_animation = True
 
+    def expect_anim(self, anim_id: int) -> None:
+        """ Note the animation whose end is to be reported as a completion. """
+        self.expected_anim_id = anim_id
+
     def _on_animation_ended(self, cli: conn.Connection, pkt: protocol_encoder.AnimationEnded) -> None:
+        if pkt.anim_id != self.expected_anim_id:
+            # The end of an animation that was cancelled or abandoned. EndAnimation carries no
+            # identifier, so the robot answers with the one that was actually playing; passing that
+            # on would have whatever plays next take its own animation for already finished.
+            logger.debug("Ignoring the end of animation %s, expecting %s.",
+                         pkt.anim_id, self.expected_anim_id)
+            return
+        self.expected_anim_id = None
         self.playing_animation = False
         self._clear_last_image_pkt()
         self.cli.conn.post_event(event.EvtAnimationCompleted, self.cli)
 
-    def _on_animating_change(self):
+    # These three are registered for status flag change events, which the client dispatches with
+    # itself and the new state. Taking no argument raised TypeError out of the dispatch, which
+    # aborted the rest of the robot state handling - the remaining flag changes and the orientation
+    # update included. The client is typed Any because importing it here would be circular.
+    def _on_animating_change(self, cli: Any, state: bool) -> None:
         pass
 
-    def _on_anim_buffer_full_change(self):
+    def _on_anim_buffer_full_change(self, cli: Any, state: bool) -> None:
         pass
 
-    def _on_amimating_idle_change(self):
+    def _on_amimating_idle_change(self, cli: Any, state: bool) -> None:
         pass
 
     def _get_face_image(self):
@@ -217,6 +236,8 @@ class AnimationController:
 
     def cancel_anim(self):
         self.queue.clear()
+        # Nothing is to be reported for an animation that is being abandoned.
+        self.expected_anim_id = None
         pkt = protocol_encoder.EndAnimation()
         self.cli.conn.send(pkt)
 
