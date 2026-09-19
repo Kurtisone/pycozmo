@@ -8,6 +8,28 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.11 (Sep 20, 2026)
+----------------------
+
+Other changes:
+- The screen image is no longer sent thirty times a second when it has not changed. The robot keeps
+    the last image and only blanks its screen after 30 s with nothing new, so an image identical to
+    the one already displayed now goes out only every 5 s, to beat that deadline. Measured against
+    an emulated robot, the packets sent now match the images that genuinely differ: five to nine a
+    second where thirty went out before, the procedural face being redrawn on every frame but
+    changing far less often than that. With the face off the screen is static, and one packet every
+    five seconds replaces thirty a second. The screen is treated as unknown again whenever the
+    animation controller starts, a robot just connected to being free to show anything.
+    The 30 s figure is the one the code has always carried; it has not been checked against a real
+    robot, hence a refresh six times inside it.
+- pycozmo_app.py takes --robot-addr HOST[:PORT], to run the personality engine against an emulator
+    rather than the fixed address of a real robot, and --no-face, which leaves the procedural face
+    undrawn. Both were reachable only by writing a wrapper around the application and reassigning
+    pycozmo.conn.ROBOT_ADDR, or patching connect(), before importing it.
+
+Maintenance:
+- Added a test module for pycozmo_app.py, which had none. The tools were untested altogether.
+
 v0.9.10 (Sep 19, 2026)
 ----------------------
 
