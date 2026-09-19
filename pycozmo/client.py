@@ -77,6 +77,9 @@ class Client(event.Dispatcher):
         self.gyro = util.Vector3(0.0, 0.0, 0.0)
         self.robot_status = 0
         self.robot_orientation = robot.RobotOrientation.ON_THREADS
+        # Orientation being considered, and since when. See _update_orientation() .
+        self._candidate_orientation = robot.RobotOrientation.ON_THREADS
+        self._candidate_orientation_time = 0.0
         self.robot_picked_up = False
         self.robot_moving = False
         # Animation state
@@ -302,20 +305,21 @@ class Client(event.Dispatcher):
                 state = (pkt.status & flag) != 0
                 logger.debug("%s: %i", robot.RobotStatusFlagNames[flag], state)
                 self.dispatch(evt, self, state)
-        # Orientation
-        if pkt.pose_angle_rad < -0.4:
-            robot_orientation = robot.RobotOrientation.ON_LEFT_SIDE
-        elif pkt.pose_angle_rad > 0.4:
-            robot_orientation = robot.RobotOrientation.ON_RIGHT_SIDE
-        elif pkt.pose_pitch_rad < -1.0:
-            robot_orientation = robot.RobotOrientation.ON_FACE
-        elif pkt.pose_pitch_rad > 1.0:
-            robot_orientation = robot.RobotOrientation.ON_BACK
-        else:
-            robot_orientation = robot.RobotOrientation.ON_THREADS
-        if self.robot_orientation != robot_orientation:
-            self.robot_orientation = robot_orientation
-            self.dispatch(event.EvtRobotOrientationChange, self, robot_orientation)
+        # Orientation. The lateral axis used to be read from pose_angle_rad, which is the heading
+        # in the world frame, so every turn of more than 23 degrees reported the robot as lying on
+        # a side. Only the accelerometer tells a roll apart from a turn.
+        self._update_orientation(robot.get_orientation(self.accel, pkt.pose_pitch_rad))
+
+    def _update_orientation(self, orientation: robot.RobotOrientation) -> None:
+        """ Accept a new orientation once it has held for long enough, and announce it. """
+        now = time.perf_counter()
+        if orientation != self._candidate_orientation:
+            self._candidate_orientation = orientation
+            self._candidate_orientation_time = now
+        elif orientation != self.robot_orientation and \
+                now - self._candidate_orientation_time >= robot.ORIENTATION_HOLD_TIME:
+            self.robot_orientation = orientation
+            self.dispatch(event.EvtRobotOrientationChange, self, orientation)
 
     def _on_robot_picked_up(self, cli, state):
         del cli

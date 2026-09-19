@@ -29,6 +29,15 @@ __all__ = [
 class Brain:
     """ Cozmo robot brain class. """
 
+    #: Reaction posted for each orientation the robot can end up in.
+    ORIENTATION_REACTIONS = {
+        robot.RobotOrientation.ON_THREADS: "ReturnedToTreads",
+        robot.RobotOrientation.ON_BACK: "RobotOnBack",
+        robot.RobotOrientation.ON_FACE: "RobotOnFace",
+        robot.RobotOrientation.ON_LEFT_SIDE: "RobotOnSide",
+        robot.RobotOrientation.ON_RIGHT_SIDE: "RobotOnSide",
+    }
+
     def __init__(self, cli: client.Client):
         super().__init__()
 
@@ -101,17 +110,9 @@ class Brain:
             self.post_reaction("CliffDetected")
 
     def on_robot_orientation_change(self, cli: client.Client, orientation: robot.RobotOrientation) -> None:
-        # FIXME: These are not working well at present.
-        # if orientation == robot.RobotOrientation.ON_THREADS:
-        #     self.post_reaction("ReturnedToTreads")
-        # elif orientation == robot.RobotOrientation.ON_BACK:
-        #     self.post_reaction("RobotOnBack")
-        # elif orientation == robot.RobotOrientation.ON_FACE:
-        #     self.post_reaction("RobotOnFace")
-        # elif orientation == robot.RobotOrientation.ON_LEFT_SIDE or \
-        #         orientation == robot.RobotOrientation.ON_RIGHT_SIDE:
-        #     self.post_reaction("RobotOnSide")
-        pass
+        reaction = self.ORIENTATION_REACTIONS.get(orientation)
+        if reaction:
+            self.post_reaction(reaction)
 
     def on_robot_picked_up_change(self, cli: client.Client, state: bool) -> None:
         if state:

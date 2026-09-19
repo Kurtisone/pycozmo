@@ -22,9 +22,17 @@ __all__ = [
     "MAX_WHEEL_SPEED",
     "TRACK_WIDTH",
     "FRAME_RATE",
+    "GRAVITY_MM_S2",
+    "SIDE_ACCEL_RATIO",
+    "ON_FACE_PITCH",
+    "ON_BACK_PITCH",
+    "ORIENTATION_HOLD_TIME",
 
     "RobotStatusFlag",
     "RobotStatusFlagNames",
+    "RobotOrientation",
+
+    "get_orientation",
 
     "LiftPosition",
 ]
@@ -58,6 +66,22 @@ TRACK_WIDTH = util.Distance(mm=45.0)
 
 #: Number of frames per second for animations.
 FRAME_RATE = 30
+
+#: Acceleration the accelerometer reads along the vertical, at rest, in mm/s^2.
+GRAVITY_MM_S2 = 9810.0
+
+#: Fraction of gravity along the robot's lateral axis beyond which it is lying on a side.
+SIDE_ACCEL_RATIO = 0.5
+
+#: Pitch, in radians, below which the robot is resting on its face.
+ON_FACE_PITCH = -1.0
+
+#: Pitch, in radians, above which the robot is resting on its back.
+ON_BACK_PITCH = 1.0
+
+#: How long an orientation has to hold before it is accepted, in seconds. Righting animations
+#: throw the robot around, and without this the transients retrigger the reactions.
+ORIENTATION_HOLD_TIME = 0.5
 
 
 class RobotStatusFlag(object):
@@ -110,6 +134,27 @@ class RobotOrientation(enum.Enum):
     ON_FACE = 2
     ON_LEFT_SIDE = 3
     ON_RIGHT_SIDE = 4
+
+
+def get_orientation(accel: util.Vector3, pitch: float) -> RobotOrientation:
+    """
+    Get the orientation of the robot from its accelerometer and its own pitch estimate.
+
+    The accelerometer measures the reaction to gravity, so at rest it reads the direction of "up"
+    in the robot's own frame - x forward, y left, z up - which is the only signal that tells a
+    roll apart from a turn. Lying on the left side puts "up" to the robot's right, hence the
+    negative lateral reading. Nose down and nose up are taken from the pitch the robot reports,
+    which is filtered on the robot and steadier than the accelerometer while the treads run.
+    """
+    if accel.y < -SIDE_ACCEL_RATIO * GRAVITY_MM_S2:
+        return RobotOrientation.ON_LEFT_SIDE
+    if accel.y > SIDE_ACCEL_RATIO * GRAVITY_MM_S2:
+        return RobotOrientation.ON_RIGHT_SIDE
+    if pitch < ON_FACE_PITCH:
+        return RobotOrientation.ON_FACE
+    if pitch > ON_BACK_PITCH:
+        return RobotOrientation.ON_BACK
+    return RobotOrientation.ON_THREADS
 
 
 class LiftPosition(object):
