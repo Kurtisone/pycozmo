@@ -156,16 +156,19 @@ class AnimationController:
         self.expected_anim_id = anim_id
 
     def _on_animation_ended(self, cli: conn.Connection, pkt: protocol_encoder.AnimationEnded) -> None:
+        # Whichever animation the robot reports ending, nothing is playing on it any more, and the
+        # procedural face is free to take the screen back.
+        self.playing_animation = False
+        self._clear_last_image_pkt()
         if pkt.anim_id != self.expected_anim_id:
             # The end of an animation that was cancelled or abandoned. EndAnimation carries no
-            # identifier, so the robot answers with the one that was actually playing; passing that
-            # on would have whatever plays next take its own animation for already finished.
+            # identifier, so the robot answers with the one that was actually playing; reporting
+            # that as a completion would have whatever plays next take its own animation for
+            # already finished.
             logger.debug("Ignoring the end of animation %s, expecting %s.",
                          pkt.anim_id, self.expected_anim_id)
             return
         self.expected_anim_id = None
-        self.playing_animation = False
-        self._clear_last_image_pkt()
         self.cli.conn.post_event(event.EvtAnimationCompleted, self.cli)
 
     # These three are registered for status flag change events, which the client dispatches with

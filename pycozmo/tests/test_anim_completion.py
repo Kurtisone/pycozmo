@@ -56,6 +56,17 @@ class TestAnimationCompletion(AnimationTestCase):
         self.end(7)
         self.assertEqual(self.posted(), [pycozmo.event.EvtAnimationCompleted])
 
+    def test_a_dropped_end_still_stops_the_animation(self):
+        # The robot is telling us nothing is playing on it any more. Leaving the flag set kept the
+        # procedural face from ever taking the screen back, freezing it on the last frame of the
+        # animation that was cancelled.
+        self.start(7)
+        self.assertTrue(self.controller.playing_animation)
+        self.controller.cancel_anim()
+        self.end(7)
+        self.assertFalse(self.controller.playing_animation)
+        self.assertEqual(self.posted(), [], "and no completion is reported")
+
     def test_cancelling_drops_the_expectation(self):
         # A behavior cancels its animation when it is deactivated. The end that comes back belongs
         # to an animation nobody is waiting for any more.
