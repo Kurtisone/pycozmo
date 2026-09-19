@@ -70,6 +70,70 @@ cli.stop()
 ```
 
 
+Cozmo's Own Behavior
+--------------------
+
+Cozmo's personality engine runs off-board, in the Cozmo app, not on the robot. PyCozmo replaces that app, so
+reproducing the robot's own behavior means reading Anki's resource files and driving the robot from them. Download the
+resources once, then run the application:
+
+```
+pycozmo_resources.py download
+pycozmo_app.py
+```
+
+The robot then behaves on its own. Pick it up, set it down on an edge, put it on the charger or turn it on its back,
+and it reacts the way it did with the Cozmo app, playing the animation Anki authored for that reaction:
+
+```
+pycozmo.reaction     INFO     Processing CliffDetected
+pycozmo.emotion      INFO     CliffDetected: Brave -0.12, Calm -0.12, Happy -0.12
+pycozmo.behavior     INFO     Activating ReactToCliff
+pycozmo.animation    INFO     Playing animation group ReactToCliff
+pycozmo.animation    INFO     Playing animation anim_reacttocliff_edgeliftup_01
+```
+
+In a program of your own, the engine is one class:
+
+```python
+import time
+import pycozmo
+
+with pycozmo.connect() as cli:
+    brain = pycozmo.brain.Brain(cli)
+    brain.start()
+    time.sleep(120.0)
+    brain.stop()
+```
+
+The `reaction`, `behavior`, `animation` and `emotion` loggers sit at the *robot* log level, which defaults to
+`WARNING`, so that snippet reacts silently. `pycozmo_app.py` raises it to `INFO` itself; elsewhere, pass
+`robot_log_level="INFO"` to `connect()` or set `PYCOZMO_ROBOT_LOG_LEVEL=INFO` in the environment.
+
+### What is reproduced
+
+`reactionTrigger_behavior_map.json` maps 21 reaction triggers to a behavior. 18 of them play the animation group Anki
+gave them, resolved through `AnimationTriggerMap.json`. The remaining three - `MotorCalibration`, `RobotPlacedOnSlope`
+and `ReturnedToTreads` - have no animation anywhere in the resources, under their behavior ID, their trigger name or
+any name close to either, so they log a warning and end.
+
+Of those 21 triggers, eight are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
+`Hiccup`, and the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
+`ReturnedToTreads`. The rest wait on parts that are not implemented: the vision triggers need face, object, pet and
+motion detection, and the others come from game and engine states the activity engine does not reach yet.
+
+Two details matter for the result to look right rather than merely work:
+
+- Animations are chosen for the current head angle. 43 of the animation groups hold one animation per head angle band,
+  with the angle baked into the animation, so playing the wrong one makes the head jump. Per-animation cooldowns are
+  honoured too, which is what keeps a reaction from repeating itself.
+- A reaction marked `shouldResumeLast` puts back what it interrupted. A cliff, a shove or a motor calibration
+  interrupts what the robot was doing rather than ending it.
+
+The mood engine works: emotion events shift the seven emotions and each decays on its own schedule. It does not yet
+steer which behavior or activity is chosen, which is what the emotions are for on the real robot.
+
+
 Documentation
 -------------
 
@@ -119,8 +183,9 @@ On-board functions (see [docs/functions.md](docs/functions.md) for details:
 Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md) for details:
 - [x] Procedural face generation
 - [x] Cozmo animations from FlatBuffers .bin files
-- [ ] Personality engine - work in progress
-- [ ] Cozmo behaviors - work in progress
+- [ ] Personality engine - the mood engine works, but does not steer behavior choice yet
+- [ ] Cozmo behaviors - reactions play Cozmo's own animations, see
+    [Cozmo's Own Behavior](#cozmos-own-behavior)
 - [ ] Motion detection
 - [ ] Object (cube and platform) detection
 - [ ] Cube marker recognition
