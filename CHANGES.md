@@ -8,6 +8,67 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.9 (Sep 19, 2026)
+---------------------
+
+Bug fixes:
+- Fixed the end of one animation being taken for the end of another. EndAnimation carries no identifier, so the robot
+    answers with the identifier of whatever was actually playing, and starting an animation cancels the one before it.
+    Every interruption therefore produced an end for the old animation, dispatched as EvtAnimationCompleted after the
+    new one had already been started, and whatever played next took that for the end of its own. A behavior
+    interrupted mid-animation collapsed: against an emulated robot, a cliff reaction preempting a running behavior
+    reported itself done 7 ms after starting instead of playing its eleven seconds, and the behavior resumed after it
+    ran through two animations in 380 ms. Nothing exercised this before, because a reaction only ever interrupted an
+    idle robot. The identifier now decides which end is whose, and cancelling drops the expectation altogether.
+- Fixed the animation identifier never wrapping. It was incremented without bound, so StartAnimation refused it on
+    the 255th animation of a session, its field being a uint8.
+- Fixed the robot orientation being read from pose_angle_rad, which is the heading in the world frame, not the roll.
+    Every turn of more than 23 degrees reported the robot as lying on a side: driving 49 degrees round on the spot,
+    with the accelerometer reading dead flat throughout, produced four orientation changes and left the client
+    believing the robot was on its right side. That is what the orientation reactions in the brain were commented out
+    over. The accelerometer is the only signal that tells a roll apart from a turn; nose up and nose down stay on the
+    pitch the robot reports, which is filtered on the robot. An orientation now also has to hold for half a second
+    before it is accepted, the righting animations throwing the robot around enough to retrigger the reactions
+    otherwise.
+- Fixed three animation controller handlers taking no argument, while the status flag change events they are
+    registered for are dispatched with the client and the new state. The TypeError propagated out of the dispatch and
+    aborted the rest of the robot state handling, losing every flag change after the animating one, and the
+    orientation update that follows them.
+
+Other changes:
+- The reaction behaviors are implemented. reactionTrigger_behavior_map.json maps 21 reaction triggers to a behavior,
+    each with a behavior class of its own, and four of those classes existed; every other reaction logged "not
+    implemented" and ended at once. Eighteen now play the animation group Anki gave them, taken from
+    AnimationTriggerMap.json rather than guessed. MotorCalibration, RobotPlacedOnSlope and ReturnedToTreads have no
+    animation anywhere in the resources, under their behavior ID, their trigger name, or anything close to either, so
+    they keep the warning. ReactToOnCharger is not only an animation: its configuration gives the delay before the
+    robot falls asleep on the charger and the delay before it lets the connection go, and it ends early if the robot
+    is taken off the charger.
+- BehaviorPlayAnim plays the whole sequence of animation triggers rather than only the first, and drops a trigger the
+    resources do not define instead of waiting forever for a completion that can never arrive.
+- Animations are chosen for the current head angle. 281 of the 1047 animation group members declare the band they
+    were authored for, and 43 of the 507 groups hold one animation per band with the angle baked in, so drawing at
+    random made the head jump. Per-animation cooldowns, which 43 members declare, are honoured too. Either filter
+    gives way rather than leaving nothing to play. Mood is still ignored, every member carrying Mood "Default".
+- The mood engine works. The brain loaded the seven emotion types and the 34 emotion events and decayed them on every
+    heartbeat, but nothing ever shifted one: EmotionType held no value and its update() was a stub. An emotion now
+    holds a value between -1 and 1 that events shift and that decays along its graph from mood_config.json. What
+    posts an event is taken from the data: a reaction trigger posts the event of its own name, and behaviors post
+    theirs through the new EvtEmotionEvent. The mood is reported on a logger of its own, pycozmo.emotion. It does not
+    yet steer which behavior or activity is chosen.
+- Reactions marked shouldResumeLast put back the behavior they interrupted, which was a TODO. Three of the 21
+    triggers are marked with it - CliffDetected, MotorCalibration and UnexpectedMovement, exactly the set the
+    TooManyResumesCliffOrMovement emotion event is named after.
+- AnimationGroup.member_probabilities is gone, weights now being normalised over the members actually in the running,
+    and AnimationGroup.choose_member() takes an optional head angle. This is the only part of the public surface that
+    changed shape.
+- The README documents how to run Cozmo's own behavior, which was reachable only by reading brain.py, including that
+    the reaction, behavior, animation and emotion loggers sit at the robot log level and so default to silence.
+
+Maintenance:
+- Added test modules for the behaviors, the brain, the emotions, the orientation, the animation groups and the
+    animation completions, none of which had any. The suite goes from 213 to 305 tests.
+
 v0.9.8 (Sep 18, 2026)
 ---------------------
 
