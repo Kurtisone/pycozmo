@@ -134,3 +134,65 @@ class TestAnimationId(AnimationTestCase):
         self.assertEqual(
             sum(1 for call in self.send.call_args_list
                 if isinstance(call.args[0], pycozmo.protocol_encoder.EndAnimation)), 2)
+
+
+class TestScreenImage(AnimationTestCase):
+    """
+    An image already on the robot's screen is not sent again thirty times a second.
+
+    The robot keeps the last image and only blanks it after DISPLAY_BLANKING_TIME, so resending an
+    identical one is only needed to beat that deadline. The procedural face is redrawn on every
+    frame but comes out different about nine times a second, so two thirds of these packets used to
+    carry an image that was already on the screen.
+    """
+
+    def image(self, payload):
+        return pycozmo.protocol_encoder.DisplayImage(image=payload)
+
+    def sent_images(self):
+        return [call.args[0].image for call in self.send.call_args_list
+                if isinstance(call.args[0], pycozmo.protocol_encoder.DisplayImage)]
+
+    def test_the_first_image_is_sent(self):
+        self.assertTrue(self.controller._send_image(self.image(b"aa"), 0.0))
+        self.assertEqual(self.sent_images(), [b"aa"])
+
+    def test_an_identical_image_is_not_sent_again(self):
+        self.controller._send_image(self.image(b"aa"), 0.0)
+        for frame in range(1, 30):
+            with self.subTest(frame=frame):
+                self.assertFalse(self.controller._send_image(self.image(b"aa"), frame / 30.0))
+        self.assertEqual(self.sent_images(), [b"aa"])
+
+    def test_a_changed_image_is_sent(self):
+        self.controller._send_image(self.image(b"aa"), 0.0)
+        self.assertTrue(self.controller._send_image(self.image(b"bb"), 0.1))
+        self.assertEqual(self.sent_images(), [b"aa", b"bb"])
+
+    def test_an_identical_image_is_refreshed_before_the_screen_blanks(self):
+        self.controller._send_image(self.image(b"aa"), 0.0)
+        self.assertLess(pycozmo.robot.DISPLAY_REFRESH_TIME, pycozmo.robot.DISPLAY_BLANKING_TIME,
+                        "the refresh has to beat the blanking deadline")
+        just_before = pycozmo.robot.DISPLAY_REFRESH_TIME - 0.001
+        self.assertFalse(self.controller._send_image(self.image(b"aa"), just_before))
+        self.assertTrue(
+            self.controller._send_image(self.image(b"aa"), pycozmo.robot.DISPLAY_REFRESH_TIME))
+        self.assertEqual(self.sent_images(), [b"aa", b"aa"])
+
+    def test_a_static_screen_is_sent_about_once_per_refresh(self):
+        # Thirty frames a second for a minute, with nothing ever changing.
+        sent = sum(1 for frame in range(30 * 60)
+                   if self.controller._send_image(self.image(b"aa"), frame / 30.0))
+        expected = 60.0 / pycozmo.robot.DISPLAY_REFRESH_TIME
+        self.assertAlmostEqual(sent, expected, delta=1)
+        self.assertLess(sent, 30 * 60 / 10, "the whole point is to send far fewer")
+
+    def test_starting_forgets_what_was_on_the_screen(self):
+        # A robot just connected to may be showing anything, so the first image always goes out.
+        self.controller._send_image(self.image(b"aa"), 0.0)
+        self.patch(self.controller, "_run")
+        self.controller.start()
+        self.addCleanup(setattr, self.controller, "stop_flag", True)
+        self.assertIsNone(self.controller.displayed_image)
+        self.assertIsNone(self.controller.expected_anim_id)
+        self.assertTrue(self.controller._send_image(self.image(b"aa"), 0.1))

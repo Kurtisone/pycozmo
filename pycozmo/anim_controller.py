@@ -6,6 +6,7 @@ Animation controller for audio, image, and animation playback.
 
 from typing import Any, Deque, Iterable, List, Optional, Tuple
 from threading import Thread, Lock
+import time
 from collections import deque
 
 from .logger import logger
@@ -98,6 +99,9 @@ class AnimationController:
         # expect_anim() and _on_animation_ended() .
         self.expected_anim_id: Optional[int] = None
         self.last_image_pkt = protocol_encoder.DisplayImage(image=b"\x3f\x3f")
+        # Image believed to be on the robot's screen, and when it was sent. See _send_image() .
+        self.displayed_image: Optional[bytes] = None
+        self.displayed_time = 0.0
         self.face_generator = iter(procedural_face.ProceduralFaceGenerator())
         self.animations_enabled = False
         self.procedural_face_enabled = False
@@ -106,6 +110,11 @@ class AnimationController:
         self.last_image_pkt = protocol_encoder.DisplayImage(image=b"\x3f\x3f")
 
     def start(self):
+        # Nothing is known about the screen of a robot that was just connected to, and no animation
+        # is awaited, whatever a previous run left behind.
+        self.displayed_image = None
+        self.displayed_time = 0.0
+        self.expected_anim_id = None
         # __class__ is bound inside a method body; the checker does not model it.
         self.thread = Thread(
             daemon=True, name=__class__.__name__, target=self._run)  # type: ignore[name-defined]
@@ -172,6 +181,24 @@ class AnimationController:
     def _on_amimating_idle_change(self, cli: Any, state: bool) -> None:
         pass
 
+    def _send_image(self, image_pkt: protocol_encoder.DisplayImage, now: float) -> bool:
+        """
+        Send a screen image if it has to go out, and say whether it did.
+
+        The robot keeps the last image on its screen and only blanks it after
+        DISPLAY_BLANKING_TIME with nothing new, so an image identical to the one already displayed
+        goes out only to beat that deadline. The procedural face is redrawn on every frame but only
+        comes out different about nine times a second, so two thirds of these packets used to carry
+        an image that was already on the screen.
+        """
+        if image_pkt.image == self.displayed_image and \
+                now - self.displayed_time < robot.DISPLAY_REFRESH_TIME:
+            return False
+        self.cli.conn.send(image_pkt)
+        self.displayed_image = image_pkt.image
+        self.displayed_time = now
+        return True
+
     def _get_face_image(self):
         im = next(self.face_generator)
         if not im:
@@ -213,11 +240,8 @@ class AnimationController:
                     image_pkt = self._get_face_image()
 
                 if image_pkt:
-                    self.cli.conn.send(image_pkt)
                     self.last_image_pkt = image_pkt
-                else:
-                    # If not refreshed, the robot stops displaying an image after 30 s.
-                    self.cli.conn.send(self.last_image_pkt)
+                self._send_image(self.last_image_pkt, time.perf_counter())
 
                 if pkts:
                     for pkt in pkts:

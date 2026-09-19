@@ -22,6 +22,8 @@ __all__ = [
     "MAX_WHEEL_SPEED",
     "TRACK_WIDTH",
     "FRAME_RATE",
+    "DISPLAY_BLANKING_TIME",
+    "DISPLAY_REFRESH_TIME",
     "GRAVITY_MM_S2",
     "SIDE_ACCEL_RATIO",
     "ON_FACE_PITCH",
@@ -66,6 +68,12 @@ TRACK_WIDTH = util.Distance(mm=45.0)
 
 #: Number of frames per second for animations.
 FRAME_RATE = 30
+
+#: How long the robot keeps an image on its screen before blanking it, with nothing new coming.
+DISPLAY_BLANKING_TIME = 30.0
+
+#: How often an image already on the screen is sent again, comfortably inside the blanking time.
+DISPLAY_REFRESH_TIME = 5.0
 
 #: Acceleration the accelerometer reads along the vertical, at rest, in mm/s^2.
 GRAVITY_MM_S2 = 9810.0
