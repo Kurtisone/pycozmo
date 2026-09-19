@@ -42,6 +42,7 @@ __all__ = [
     "EvtAnimationCompleted",
     "EvtReactionTrigger",
     "EvtBehaviorDone",
+    "EvtEmotionEvent",
 
     "STATUS_EVENTS",
 
@@ -188,6 +189,10 @@ class EvtReactionTrigger(Event):
 
 class EvtBehaviorDone(Event):
     pass
+
+
+class EvtEmotionEvent(Event):
+    """ Triggered with the name of an emotion event, to be applied to the mood. """
 
 
 class Dispatcher(object):
