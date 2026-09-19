@@ -8,6 +8,19 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.10 (Sep 19, 2026)
+----------------------
+
+Bug fixes:
+- Fixed EvtAnimationCompleted no longer reaching an animation the application started itself. The
+    previous release matched the end of an animation against the identifier the client had recorded
+    while playing one, so an animation started by sending StartAnimation directly - pycozmo being a
+    protocol library, an ordinary thing to do - never completed, and whatever waited on it waited
+    for good. The robot acknowledges every animation it starts, whoever started it, so its answer is
+    now what the end is matched against. The identifier the client records is kept alongside, so an
+    animation still completes on a robot that does not acknowledge a start. Caught by the cozmo-emu
+    integration suite, which exercises the whole stack and had not been run before v0.9.9 went out.
+
 v0.9.9 (Sep 19, 2026)
 ---------------------
 
