@@ -271,8 +271,9 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
 - [ ] Navigation map building
 - [ ] Text-to-speech
 - [ ] Songs
-- [ ] Animation audio - two thirds of what the animations trigger plays, see
-    [Sound](#sound); the WWise Vorbis files stay silent for want of codebooks
+- [x] Animation audio - two thirds of what the animations trigger plays from the robot's own
+    resources, and 98% once the WWise Vorbis files have been converted with the codebooks from the
+    Cozmo application, see [Sound](#sound)
 
 Extra off-board functions:
 - [ ] Vector animations from FlatBuffers .bin files
