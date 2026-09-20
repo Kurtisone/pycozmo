@@ -4,7 +4,9 @@ Behavior representation and reading.
 
 """
 
+import math
 import os
+import random
 import threading
 import time
 from typing import Dict, List, Optional, Sequence, Any
@@ -86,14 +88,14 @@ class Behavior(event.Dispatcher):
         super().__init__()
         self.cli = cli
         self.conf = conf
+        # The robot's nurture needs, for the behaviors that ask about them. The brain owns them and
+        # hands them over when it loads the behaviors; None means nothing tracks them.
+        self.needs = robot_needs
         # Whether the behavior has been taken off the robot. A behavior that waits on a timer can
         # have its callback run just after that, and one that then reported itself done would end
         # whatever had taken its place - a reaction, usually. It starts False so that a behavior
         # driven straight rather than through the client works as it always did.
         self.deactivated = False
-        # The robot's nurture needs, for the behaviors that ask about them. The brain owns them and
-        # hands them over when it loads the behaviors; None means nothing tracks them.
-        self.needs = robot_needs
 
     def get_id(self) -> str:
         behavior_id: str = self.conf["behaviorID"]
@@ -484,6 +486,122 @@ class BehaviorPlayAnimOnNeedsChange(BehaviorPlayAnim):
         super().activate()
 
 
+class BehaviorWait(Behavior):
+    """
+    Do nothing, for a while.
+
+    Two behaviors in the resources, both carrying no configuration at all, and only Needs_Wait is
+    named by anything: it is the last resort of the two severe needs activities, for when the robot
+    has asked for help and there is nothing else left to do.
+
+    Anki's engine could take a behavior off the robot part way through, so a wait there could last
+    until something else wanted the robot. This engine only looks for something to do once nothing
+    is running, so waiting for ever would be waiting for ever. It waits for DURATION instead and
+    reports itself done, which leaves the robot just as still while letting the engine think again.
+    """
+
+    #: How long one wait lasts, in seconds. The resources name no duration.
+    DURATION = 5.0
+
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
+        self.timer: Optional[threading.Timer] = None
+
+    def wants_to_run(self) -> bool:
+        return True
+
+    def activate(self) -> None:
+        self.timer = threading.Timer(self.DURATION, self.done)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def deactivate(self) -> None:
+        self._cancel_timer()
+
+    def _cancel_timer(self) -> None:
+        if self.timer is not None:
+            self.timer.cancel()
+            self.timer = None
+
+    def done(self) -> None:
+        self.timer = None
+        super().done()
+
+
+class BehaviorDriveInDesperation(BehaviorPlayAnim):
+    """
+    Wander about asking for help, which is what a robot in real trouble does.
+
+    The state behavior of the two severe needs activities: Needs_SevereLowEnergyState and
+    Needs_SevereLowRepairState. One activation is one round of it - turn, drive, then play the
+    request animation the configuration names - and then the behavior reports itself done so that
+    the engine can think again. While the need is still critical its activity is chosen again and
+    the round starts over, so the robot keeps wandering and asking; the moment the need is met,
+    something else takes the robot. Neither configuration names the need it belongs to, so watching
+    one is not on offer, and holding the robot until it recovered would have held it for ever.
+
+    What is read from the configuration: minTimeToIdle and maxTimeToIdle, which bound how long the
+    robot drives before it stops to ask, the motion profile's speed_mmps and
+    pointTurnSpeed_rad_per_sec, and requestAnimTrigger. How far it turns is not in there; a random
+    part of a half turn either way is what keeps the robot milling about rather than setting off in
+    one direction and driving off the table. useCubes is not read: on a real robot it sent a hungry
+    Cozmo towards a cube to be fed from, and nothing here sees cubes.
+    """
+
+    #: Widest turn between two drives, in radians. Not from the resources.
+    MAX_TURN = math.pi
+
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
+        self.min_time_to_idle = float(conf.get("minTimeToIdle", 1.5))
+        self.max_time_to_idle = float(conf.get("maxTimeToIdle", 6.5))
+        profile = conf.get("motionProfile") or {}
+        self.speed = float(profile.get("speed_mmps", 40.0))
+        self.turn_speed = float(profile.get("pointTurnSpeed_rad_per_sec", 1.5))
+        self.timer: Optional[threading.Timer] = None
+
+    def get_anim_triggers(self) -> Sequence[str]:
+        trigger = self.conf.get("requestAnimTrigger")
+        return (trigger, ) if trigger else ()
+
+    def activate(self) -> None:
+        # Turn first, so that one round after another does not add up to a straight line.
+        angle = random.uniform(-self.MAX_TURN, self.MAX_TURN)
+        # One wheel forward and the other back turns the robot on the spot, at twice the wheel speed
+        # over the track width.
+        wheel_speed = self.turn_speed * robot.TRACK_WIDTH.mm / 2.0
+        if angle < 0.0:
+            wheel_speed = -wheel_speed
+        self.cli.drive_wheels(-wheel_speed, wheel_speed)
+        self._after(abs(angle) / self.turn_speed, self._turned)
+
+    def _turned(self) -> None:
+        self.cli.drive_wheels(self.speed, self.speed)
+        self._after(random.uniform(self.min_time_to_idle, self.max_time_to_idle), self._arrived)
+
+    def _arrived(self) -> None:
+        self.cli.stop_all_motors()
+        if self.deactivated:
+            # Something took the robot between the timer firing and this running.
+            return
+        # And now ask, which is what the round was for.
+        super().activate()
+
+    def _after(self, delay: float, f: Any) -> None:
+        self.timer = threading.Timer(delay, f)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def deactivate(self) -> None:
+        if self.timer is not None:
+            self.timer.cancel()
+            self.timer = None
+        self.cli.stop_all_motors()
+        super().deactivate()
+
+
 class BehaviorDriveOffCharger(Behavior):
     """
     DriveOffCharger behavior - get off the charger.
@@ -575,12 +693,10 @@ def get_behavior_class_from_dict(data):
         "ReactToUnexpectedMovement": BehaviorReactToUnexpectedMovement,
         "ExpressNeeds": BehaviorExpressNeeds,
         "PlayAnimOnNeedsChange": BehaviorPlayAnimOnNeedsChange,
+        "DriveInDesperation": BehaviorDriveInDesperation,
+        "Wait": BehaviorWait,
         # Not implemented, for lack of an animation in AnimationTriggerMap.json:
         # ReactToMotorCalibration, ReactToPlacedOnSlope, ReactToReturnedToTreads.
-        # Not implemented on purpose: Wait, which is what the severe needs activities fall back on
-        # once they have asked for help. It holds the robot until the need is met, and with
-        # DriveInDesperation missing there would be nothing between the get-in and sitting still
-        # forever, so the activity is left with nothing to offer and the engine moves on.
     }
     cls = class_map.get(data["behaviorClass"], Behavior)
     return cls

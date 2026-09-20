@@ -174,9 +174,26 @@ pycozmo.behavior     INFO     Activating Needs_MildLowPlayRequest
 pycozmo.animation    INFO     Playing animation group NeedsMildLowPlayRequest
 ```
 
-Once a need is critical, two activities of their own take the robot over and announce it. `Repair` outranks `Energy`,
-so a robot both broken and starving asks to be mended rather than fed - that is `needsSevereLowEnergy` standing aside
-through its `higherPriorityStrategyConfig`.
+**Once a need is critical**, an activity of its own takes the robot and keeps it. The announcement plays once, and then
+the robot wanders and asks for help, over and over, until the need is met:
+
+```
+pycozmo.behavior     INFO     Starting activity NeedsSevereLowEnergy
+pycozmo.behavior     INFO     Activating Needs_SevereLowEnergyGetIn
+pycozmo.animation    INFO     Playing animation group NeedsSevereLowEnergyGetIn
+pycozmo.behavior     INFO     Activating Needs_SevereLowEnergyState
+pycozmo.animation    INFO     Playing animation group NeedsSevereLowEnergyRequest
+pycozmo.behavior     INFO     Activating Needs_SevereLowEnergyState
+```
+
+One round of that is a turn, a drive of 1.5 to 6.5 seconds, and the request animation - and then the round ends, which
+is what lets a fed robot get on with its life. Neither of Anki's two `DriveInDesperation` behaviors names the need it
+belongs to, so watching one is not on offer; ending each round and letting the engine think again does the same job
+without risking a robot that begs for ever because nothing was watching. `useCubes` is not read: on a real robot it
+sent a hungry Cozmo towards a cube to be fed from.
+
+`Repair` outranks `Energy`, so a robot both broken and starving asks to be mended rather than fed - that is
+`needsSevereLowEnergy` standing aside through its `higherPriorityStrategyConfig`.
 
 **Putting a need back** is something no part of this library does on its own, because on a real robot it was a thing
 the player did in the app: `Feed` is worth a third of `Energy`, and `RepairHead`, `RepairLift` and `RepairTreads` a
@@ -191,11 +208,8 @@ applied from here already: a fall costs 0.15 of `Repair`, being laid on its side
 name is also an action - `FistBump`, `PopAWheelie` - is worth that action when it finishes. The rest wait on the games
 and the cube work they belong to.
 
-Two pieces of the needs are deliberately left out. `Wait`, which is what a severe-needs activity falls back on after
-it has asked for help, holds the robot until the need is met; with `DriveInDesperation` not implemented there would be
-nothing between the announcement and sitting still forever, so the activity is left with nothing to offer and the
-engine moves on to the next one. And `needs_handlers_config.json` describes the face glitching as `Repair` falls,
-which is not read yet.
+`needs_handlers_config.json`, which describes the face glitching as `Repair` falls, is the one part of the needs not
+read yet.
 
 ### Sound
 

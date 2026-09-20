@@ -438,6 +438,137 @@ class TestActivityEngine(unittest.TestCase):
 
 
 @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestSevereNeeds(unittest.TestCase):
+    """
+    What the engine does with a robot in real trouble, end to end.
+
+    A critical need takes the robot over: it announces the trouble once, then wanders and asks for
+    help over and over until the need is met. The asking has to end each time round, or the engine
+    would never look at the needs again and a fed robot would go on begging.
+    """
+
+    brain: pycozmo.brain.Brain
+
+    @classmethod
+    def setUpClass(cls):
+        cls.brain = pycozmo.brain.Brain(pycozmo.client.Client())
+
+    def setUp(self):
+        self.brain.behavior = None
+        self.brain.behavior_to_resume = None
+        self.brain.sub_activity = None
+        self.brain.next_choice_time = 0.0
+        for activity in self.brain.activities.values():
+            activity.start_time = None
+            activity.cooldown_end_time = 0.0
+            if activity.strategy.wants_to_run_config is not None:
+                activity.strategy.wants_to_run_config.expressed_bracket = None
+            for chooser in (activity.behavior_chooser, activity.interlude_chooser):
+                if chooser is not None:
+                    chooser.reset()
+        for need in self.brain.needs.needs.values():
+            need.level = need.maximum
+            need.full_since = None
+        for behavior in self.brain.behaviors.values():
+            if isinstance(behavior, pycozmo.behavior.BehaviorPlayAnimOnNeedsChange):
+                behavior.announced_bracket = None
+        # The robot is never driven or spoken to for real.
+        for name in ("play_anim_group", "drive_wheels", "stop_all_motors", "cancel_anim"):
+            patcher = mock.patch.object(self.brain.cli, name)
+            self.addCleanup(patcher.stop)
+            patcher.start()
+        self.addCleanup(self.stop_behavior)
+
+    def stop_behavior(self):
+        """ Take whatever is running off the robot, so no timer outlives the test. """
+        if self.brain.behavior is not None:
+            self.brain.behavior.deactivate()
+            self.brain.behavior = None
+
+    def run_one(self, now):
+        """ Let the engine choose, and report what it picked. """
+        self.brain.behavior = None
+        self.brain.next_choice_time = 0.0
+        self.brain.update_activity(now)
+        activity = self.brain.sub_activity.id if self.brain.sub_activity else None
+        behavior = self.brain.behavior.get_id() if self.brain.behavior else None
+        return activity, behavior
+
+    def starve(self, need="Energy"):
+        self.brain.needs[need].level = 0.05
+
+    def test_a_robot_with_its_needs_met_is_left_alone(self):
+        activity, _ = self.run_one(1000.0)
+        self.assertNotIn(activity, ("NeedsSevereLowEnergy", "NeedsSevereLowRepair"))
+
+    def test_a_critical_need_takes_the_robot_over(self):
+        self.starve()
+        self.assertEqual(("NeedsSevereLowEnergy", "Needs_SevereLowEnergyGetIn"),
+                         self.run_one(1000.0))
+
+    def test_it_announces_once_and_then_asks_over_and_over(self):
+        self.starve()
+        self.assertEqual("Needs_SevereLowEnergyGetIn", self.run_one(1000.0)[1])
+        for i in range(3):
+            self.stop_behavior()
+            self.assertEqual(("NeedsSevereLowEnergy", "Needs_SevereLowEnergyState"),
+                             self.run_one(1001.0 + i), "round {}".format(i))
+
+    def posted_events(self):
+        """ The events waiting on the connection, which nothing drains without a robot. """
+        queue = self.brain.cli.conn.queue
+        out = []
+        while not queue.empty():
+            out.append(queue.get_nowait()[0])
+        return out
+
+    def test_asking_ends_so_that_the_engine_thinks_again(self):
+        self.starve()
+        self.run_one(1000.0)
+        self.stop_behavior()
+        self.posted_events()
+        self.run_one(1001.0)
+        behavior = self.brain.behavior
+        self.assertIsInstance(behavior, pycozmo.behavior.BehaviorDriveInDesperation)
+        assert isinstance(behavior, pycozmo.behavior.BehaviorDriveInDesperation)
+        # One round is a turn, a drive, then the request animation - and then it is done.
+
+        def step(f):
+            assert behavior.timer is not None
+            behavior.timer.cancel()
+            f()
+
+        step(behavior._turned)
+        step(behavior._arrived)
+        self.brain.cli.dispatch(pycozmo.event.EvtAnimationCompleted, self.brain.cli)
+        self.assertIn(pycozmo.event.EvtBehaviorDone, self.posted_events(), "the round ended")
+        # Which is what gives the robot back to the engine.
+        self.brain.on_behavior_done(self.brain.cli)
+        self.assertIsNone(self.brain.behavior)
+
+    def test_feeding_the_robot_gives_it_its_life_back(self):
+        self.starve()
+        self.assertEqual("NeedsSevereLowEnergy", self.run_one(1000.0)[0])
+        self.stop_behavior()
+        self.assertTrue(self.brain.apply_need_action("Feed"))
+        self.brain.needs["Energy"].level = 1.0
+        activity, _ = self.run_one(1001.0)
+        self.assertNotEqual("NeedsSevereLowEnergy", activity)
+
+    def test_being_broken_outranks_being_hungry(self):
+        self.starve("Energy")
+        self.starve("Repair")
+        self.assertEqual("NeedsSevereLowRepair", self.run_one(1000.0)[0])
+
+    def test_waiting_is_never_what_it_comes_to(self):
+        # Needs_Wait sits below the state behavior, which always has something to do.
+        self.starve()
+        for i in range(4):
+            self.stop_behavior()
+            self.assertNotEqual("Needs_Wait", self.run_one(1000.0 + i)[1])
+
+
+@unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
 class TestStopGivesTheActivityUp(unittest.TestCase):
 
     def test_the_activity_is_ended(self):

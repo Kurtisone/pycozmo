@@ -390,6 +390,141 @@ class TestNeedsBehaviors(BehaviorTestCase):
         self.assertTrue(behavior.wants_to_run())
 
 
+class TestWait(BehaviorTestCase):
+    """ The last resort of a severe needs activity: stand still and let the engine think again. """
+
+    def make_wait(self):
+        return self.make(pycozmo.behavior.BehaviorWait, {}, "Needs_Wait")
+
+    def test_waiting_is_always_something_it_can_do(self):
+        self.assertTrue(self.make_wait().wants_to_run())
+
+    def test_it_holds_the_robot_rather_than_ending_at_once(self):
+        # Reporting itself done straight away would have the engine offer it the robot again on the
+        # next frame, thirty times a second.
+        behavior = self.make_wait()
+        behavior.activate()
+        self.assertEqual(behavior.DURATION, behavior.timer.interval)
+        self.assertNotDone()
+        self.assertEqual([], self.cli.played)
+        behavior.timer.cancel()
+
+    def test_it_ends_once_it_has_waited(self):
+        behavior = self.make_wait()
+        behavior.activate()
+        behavior.timer.cancel()
+        behavior.done()
+        self.assertDone()
+
+    def test_being_taken_off_the_robot_stops_the_wait(self):
+        behavior = self.make_wait()
+        behavior.activate()
+        behavior.deactivate()
+        self.assertIsNone(behavior.timer)
+        self.assertNotDone()
+
+
+class TestDriveInDesperation(BehaviorTestCase):
+    """
+    One round of wandering and asking for help.
+
+    Neither of the two behaviors in the resources names the need it belongs to, so a round ends and
+    the engine decides whether to start another. That is what lets a fed robot get on with its life.
+    """
+
+    TRIGGER = "ReactToCliff"
+
+    PROFILE = {
+        "speed_mmps": 40.0,
+        "pointTurnSpeed_rad_per_sec": 1.5,
+    }
+
+    def make_drive(self, **conf):
+        data = {"minTimeToIdle": 1.5, "maxTimeToIdle": 6.5,
+                "requestAnimTrigger": self.TRIGGER, "motionProfile": dict(self.PROFILE)}
+        data.update(conf)
+        return self.make(pycozmo.behavior.BehaviorDriveInDesperation, data,
+                         "Needs_SevereLowEnergyState")
+
+    def test_it_reads_its_configuration(self):
+        behavior = self.make_drive()
+        self.assertEqual(1.5, behavior.min_time_to_idle)
+        self.assertEqual(6.5, behavior.max_time_to_idle)
+        self.assertEqual(40.0, behavior.speed)
+        self.assertEqual(1.5, behavior.turn_speed)
+        self.assertEqual((self.TRIGGER, ), tuple(behavior.get_anim_triggers()))
+
+    def test_it_will_not_run_without_an_animation_to_ask_with(self):
+        self.assertFalse(self.make_drive(requestAnimTrigger="NoSuchTrigger").wants_to_run())
+        self.assertTrue(self.make_drive().wants_to_run())
+
+    def test_it_turns_before_it_drives(self):
+        # Setting off straight every time would take the robot off the table in one direction.
+        behavior = self.make_drive()
+        behavior.activate()
+        self.assertEqual(1, len(self.cli.wheel_speeds))
+        left, right = self.cli.wheel_speeds[0]
+        self.assertAlmostEqual(-left, right, msg="one wheel each way turns it on the spot")
+        # Twice the wheel speed over the track width is the turn rate the profile asks for.
+        rate = 2.0 * abs(right) / pycozmo.robot.TRACK_WIDTH.mm
+        self.assertAlmostEqual(behavior.turn_speed, rate)
+        self.assertLessEqual(behavior.timer.interval, behavior.MAX_TURN / behavior.turn_speed)
+        self.assertNotDone()
+        behavior.timer.cancel()
+
+    def test_it_drives_forward_for_a_while(self):
+        behavior = self.make_drive()
+        behavior.activate()
+        behavior.timer.cancel()
+        behavior._turned()
+        self.assertEqual((40.0, 40.0), self.cli.wheel_speeds[-1])
+        self.assertGreaterEqual(behavior.timer.interval, behavior.min_time_to_idle)
+        self.assertLessEqual(behavior.timer.interval, behavior.max_time_to_idle)
+        behavior.timer.cancel()
+
+    def test_it_stops_and_asks(self):
+        behavior = self.make_drive()
+        behavior.activate()
+        behavior.timer.cancel()
+        behavior._turned()
+        behavior.timer.cancel()
+        behavior._arrived()
+        self.assertEqual(1, self.cli.stopped)
+        self.assertEqual([self.TRIGGER], self.cli.played)
+        self.assertNotDone()
+
+    def test_one_round_ends_when_it_has_asked(self):
+        # The round has to end, or the engine would never look at the needs again and a fed robot
+        # would go on begging.
+        behavior = self.make_drive()
+        behavior.activate()
+        behavior.timer.cancel()
+        behavior._turned()
+        behavior.timer.cancel()
+        behavior._arrived()
+        self.complete_animation()
+        self.assertDone()
+
+    def test_being_taken_off_the_robot_stops_the_motors(self):
+        behavior = self.make_drive()
+        behavior.activate()
+        behavior.deactivate()
+        self.assertIsNone(behavior.timer)
+        self.assertEqual(1, self.cli.stopped)
+        self.assertEqual(1, self.cli.cancelled)
+
+    def test_it_wanders_rather_than_repeating_itself(self):
+        turns = set()
+        for _ in range(40):
+            behavior = self.make_drive()
+            behavior.activate()
+            turns.add(self.cli.wheel_speeds[-1])
+            behavior.timer.cancel()
+        self.assertGreater(len(turns), 1, "the turn is drawn afresh each round")
+        self.assertTrue(any(left < 0 for left, _ in turns), "it turns both ways")
+        self.assertTrue(any(left > 0 for left, _ in turns))
+
+
 class TestAgainstCozmoAssets(unittest.TestCase):
     """ The needs as Anki configured them, which is what the timings above are drawn from. """
 
