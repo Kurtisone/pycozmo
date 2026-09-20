@@ -101,6 +101,15 @@ class Behavior(event.Dispatcher):
         """ Post an emotion event, by name, for the brain to apply to the mood. """
         self.cli.conn.post_event(event.EvtEmotionEvent, self.cli, name)
 
+    def wants_to_run(self) -> bool:
+        """
+        Whether the behavior would take the robot if the activity engine offered it now.
+
+        A behavior whose class is not implemented never would: activating it only logs that and
+        reports it done, and the engine would offer it the robot again straight away.
+        """
+        return False
+
     def activate(self) -> None:
         self.give_up("not implemented")
 
@@ -133,6 +142,18 @@ class BehaviorPlayAnim(Behavior):
     def get_anim_triggers(self) -> Sequence[str]:
         """ Animation triggers to play, in order, on activation. """
         return self.anim_triggers or self.default_anim_triggers
+
+    def wants_to_run(self) -> bool:
+        # A strategy this library cannot evaluate holds the behavior back. ReactToObstacle is the
+        # only behavior in the resources carrying one, and it asks for ObstacleDetected.
+        strategy = self.conf.get("wantsToRunStrategyConfig")
+        if strategy is not None:
+            logger.debug("Behavior '{}' wants a {} strategy, which is not implemented.".format(
+                self.get_id(), strategy.get("strategyType")))
+            return False
+        # Playing nothing at all would leave the engine looking for something to do again at once.
+        groups = self.cli.animation_groups or {}
+        return any(trigger in groups for trigger in self.get_anim_triggers())
 
     def activate(self) -> None:
         # An animation group the assets do not define never completes, which would leave the

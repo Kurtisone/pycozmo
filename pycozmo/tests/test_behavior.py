@@ -289,6 +289,36 @@ class TestBehaviorReactToOnCharger(BehaviorTestCase):
         self.assertEqual(self.cli.cancelled, 1)
 
 
+class TestWantsToRun(BehaviorTestCase):
+    """
+    What a behavior answers when the activity engine offers it the robot.
+
+    Nothing consults this for a reaction: a trigger names its behavior and the brain runs it. It is
+    the activity engine, choosing what to do when nothing has happened, that asks.
+    """
+
+    def test_an_unimplemented_behavior_never_runs(self):
+        # Activating one only logs that and reports it done, and the engine would offer it the
+        # robot again at once.
+        self.assertFalse(self.make(pycozmo.behavior.Behavior).wants_to_run())
+
+    def test_an_animation_behavior_runs_when_its_animation_is_there(self):
+        behavior = self.make(pycozmo.behavior.BehaviorPlayAnim, {"animTriggers": ["ReactToCliff"]})
+        self.assertTrue(behavior.wants_to_run())
+
+    def test_an_animation_behavior_holds_back_without_its_animation(self):
+        behavior = self.make(pycozmo.behavior.BehaviorPlayAnim, {"animTriggers": ["NoSuchTrigger"]})
+        self.assertFalse(behavior.wants_to_run())
+
+    def test_a_strategy_this_library_cannot_read_holds_a_behavior_back(self):
+        # ReactToObstacle is the only behavior in the resources carrying one, and it asks for
+        # ObstacleDetected. Nothing here sees an obstacle.
+        behavior = self.make(pycozmo.behavior.BehaviorPlayAnim, {
+            "animTriggers": ["ReactToCliff"],
+            "wantsToRunStrategyConfig": {"strategyType": "ObstacleDetected"}})
+        self.assertFalse(behavior.wants_to_run())
+
+
 class TestGetBehaviorClassFromDict(unittest.TestCase):
     """ Every reaction behavior of reactionTrigger_behavior_map.json that has an animation. """
 
