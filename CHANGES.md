@@ -8,6 +8,60 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.15 (Sep 20, 2026)
+----------------------
+
+New features:
+- The animations have sound. An animation does not carry audio: it names a WWise event by the 32 bit
+    identifier WWise hashed its name into, and working out what that event plays was a TODO left
+    where the keyframe was read, untouched since 2019. 893 of the 993 animations now come with
+    sound. Getting there takes three steps - the sound banks map an event to a container of takes and
+    each take to a media file, the media file is decoded, and the samples are resampled to the
+    22050 Hz the speaker runs at and U-law encoded into the 744 sample frames OutputAudio carries,
+    one per animation frame. Against an emulated robot, seventy seconds of ordinary idling streamed
+    578 audio frames, nineteen seconds of sound.
+- pycozmo.audiokinetic.wem reads WEM files. WWise declares its ADPCM with Microsoft's format tag but
+    does not use Microsoft's layout: there is no coefficient table in the format chunk and each block
+    opens with four bytes of IMA state per channel rather than Microsoft's seven, which is why
+    ffmpeg's decoder rejects these files outright. The layout was settled from the resources
+    themselves - the byte rate implies exactly 64 samples per 36 byte mono block, which leaves four
+    bytes of header and makes every remaining nibble a sample - and the nibble order was settled by
+    measuring the decoded spectrum: taking the low nibble first leaves 0.112% of the energy above
+    18 kHz against 0.976% the other way round, on 48 kHz audio that should have almost none. All 227
+    ADPCM files decode to exactly the sample count their headers imply. The stereo interleave was
+    settled the same way, four byte groups per channel against contiguous halves, 0.17% against
+    1.22%.
+- The WWise Vorbis files are reported rather than guessed at. WWise strips the Vorbis setup header
+    out of its files and keeps the codebooks in its own sound engine, which shipped inside the Cozmo
+    application: there is not one codebook sync pattern anywhere under cozmo_resources, in any of the
+    banks or the 2214 media files. Those files cannot be decoded from what the robot came with, so
+    wem reports them and the animation plays without them. Weighted by how often the animations
+    trigger them, that is 34% of the audio events silent against 64% playing - the ADPCM side is the
+    screen, the servos, the blinks; the Vorbis side is most of Cozmo's voice.
+- The sound bank reader follows containers. An event points at a container of takes far more often
+    than straight at a sound - 331 of the 380 events Cozmo's animations name do - and containers were
+    skipped, so those events resolved to nothing. A container's child list does not sit at a fixed
+    offset, NodeBaseParams being variable length, so it is found by what it has to look like: a count
+    followed by exactly that many distinct object identifiers. That is unambiguous for 491 of the 514
+    containers in Cozmo's bank, and resolving the events this way agrees with the file names WWise
+    recorded in SoundbanksInfo.xml. Cozmo's own bank, the one holding those 380 events, is also the
+    one bank the resources do not unpack, so it is read out of AudioAssets.zip.
+
+Bug fixes:
+- Fixed the U-law encoder producing noise. It negated the complement of the sign, exponent and
+    mantissa instead of masking it, which is the same as adding one to the uncomplemented byte:
+    fed a 440 Hz sine and decoded by ffmpeg, the samples came back with a correlation of -0.05
+    against the input, where the corrected encoder gives +0.9999. Everything that has ever called
+    play_audio() sent noise to the speaker. A byte of 0xFF also overflowed the bytearray it was
+    stored into, which is how this surfaced: an animation crashed on it.
+- Frames are padded with silence rather than noughts. A short final frame is filled out to 744
+    samples, and now that the encoder complements properly a nought byte is very nearly full scale
+    negative - it decodes to -32124 - so the padding clicked. U-law silence is 0xFF.
+- The speaker is given a volume on connection. The robot comes up silent, nothing else set one, and
+    an emulated robot confirmed it: the volume read nought while the audio frames arrived. Half range
+    is a robot you can hear across a desk; applications can call set_volume() for something else.
+
+
 v0.9.14 (Sep 20, 2026)
 ----------------------
 
