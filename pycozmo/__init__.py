@@ -39,7 +39,7 @@ from . import audiokinetic
 from . import expressions
 
 
-__version__ = "0.9.16"
+__version__ = "0.9.17"
 
 __all__ = [
     "logger",

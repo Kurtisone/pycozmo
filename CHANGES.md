@@ -8,6 +8,42 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.17 (Sep 20, 2026)
+----------------------
+
+New features:
+- The WWise Vorbis sounds play. They are a third of what Cozmo's animations reach for and most of its
+    voice, and they were silent because WWise does not store playable Vorbis: it strips the setup
+    header's codebooks out and leaves 10 bit indices into a library that lives in its sound engine,
+    which shipped inside the Cozmo application rather than with the robot's resources. There is not
+    one codebook anywhere under cozmo_resources, so nothing in the resources alone could ever have
+    decoded them.
+
+    With a copy of the application they can be decoded, and tools/pycozmo_convert_audio.py does it
+    once: it finds the library of 598 codebooks in the sound engine, rebuilds each file into a real
+    Ogg Vorbis stream - identification and comment headers written afresh, codebooks widened back out
+    of their packed form, the bits marking an audio packet and joining its windows worked out again,
+    and an Ogg container built around the lot - and leaves a WAV per sound under
+    util.get_converted_sound_dir(), which the audio library then plays in place of the file it cannot
+    read. All 1987 files convert, in 159 s, for 255 MB, and every one comes out within 50 ms of the
+    length its own header states. Animation sound goes from 66 % of triggers to 98 %; the 2 % left are
+    events the sound banks do not resolve to a file at all, which is not a codec problem.
+
+    Nothing from the application is copied: the codebooks are read while converting and never stored.
+    The Vorbis decoding is left to ffmpeg, which is why this is a tool and not part of the library -
+    PyCozmo gains no dependency from it.
+
+    New: pycozmo.audiokinetic.bits, .ogg, .codebooks and .vorbis; util.get_converted_sound_dir() and
+    audiolib.add_converted_sound().
+
+Other changes:
+- The audio library no longer keeps decoded samples. It answers whether a take can be played from the
+    file's header instead of by decoding it, which is what choosing between an event's takes needs,
+    and keeps only the encoded frames - capped now at FRAME_CACHE_SIZE, since Cozmo's sounds run to
+    97 minutes once the converted Vorbis is counted and holding all of them decoded would not fit.
+- Wem now keeps the format chunk's extension, where WWise describes a Vorbis stream.
+
+
 v0.9.16 (Sep 20, 2026)
 ----------------------
 
