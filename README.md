@@ -82,8 +82,21 @@ pycozmo_resources.py download
 pycozmo_app.py
 ```
 
-The robot then behaves on its own. Pick it up, set it down on an edge, put it on the charger or turn it on its back,
-and it reacts the way it did with the Cozmo app, playing the animation Anki authored for that reaction:
+Left alone, the robot keeps itself busy: it gets off its charger, looks around, and settles into the idle and bored
+animations Anki wrote for a Cozmo with nothing to do.
+
+```
+pycozmo.behavior     INFO     Starting activity Hiking
+pycozmo.behavior     INFO     Activating Hiking_FirstLookIntro
+pycozmo.animation    INFO     Playing animation group HikingIntro
+pycozmo.animation    INFO     Playing animation anim_hiking_getin_01
+pycozmo.behavior     INFO     Ending activity Hiking
+pycozmo.behavior     INFO     Starting activity NothingToDo
+pycozmo.behavior     INFO     Activating NothingToDo_BoredAnim
+```
+
+Pick it up, set it down on an edge, put it on the charger or turn it on its back, and it reacts the way it did with the
+Cozmo app, playing the animation Anki authored for that reaction, then goes back to what it was doing:
 
 ```
 pycozmo.reaction     INFO     Processing CliffDetected
@@ -130,8 +143,34 @@ Two details matter for the result to look right rather than merely work:
 - A reaction marked `shouldResumeLast` puts back what it interrupted. A cliff, a shove or a motor calibration
   interrupts what the robot was doing rather than ending it.
 
-The mood engine works: emotion events shift the seven emotions and each decays on its own schedule. It does not yet
-steer which behavior or activity is chosen, which is what the emotions are for on the real robot.
+The mood engine works: emotion events shift the seven emotions and each decays on its own schedule. It gates the one
+activity whose configuration asks it to - see below - and does not yet weigh anything else.
+
+### What the robot does when nothing has happened
+
+Reactions answer events. Between them, the activity engine decides what the robot does of its own accord. `Freeplay`
+lists 25 sub-activities in priority order, and the first one that wants to run and has a behavior to offer gets the
+robot:
+
+- 14 spark activities, which need the application to send a spark.
+- 3 severe-need activities, which need the nurture needs (Energy, Repair, Play). Those are not read, so these never
+  run - which is also what the robot does while its needs are full.
+- `PutDownDispatch`, when the robot was set down on its treads in the last 5 s.
+- `Socialize`, when the robot has not been social lately: its configuration scores the `Social` emotion through a graph
+  and asks for 0.5, which the graph gives while `Social` is at or below 0.3. This is the only place in Anki's resources
+  where the mood decides an activity.
+- `Singing`, `PlayWithHumans`, `BuildPyramid`, whose strategies need a need level, a player or a pyramid of cubes.
+- `PlayAlone`, `Hiking` and `NothingToDo`.
+
+Within an activity, behaviors are drawn in a random order weighted by their score. A behavior that has just run loses
+part of its score and wins it back over time: `GuardDog` scores nothing for 5 minutes and is whole again a quarter of
+an hour on, and the bored animations keep half their score for 9 seconds, which is what keeps the robot from playing
+two bored sequences in a row.
+
+What actually runs today is what needs no cube, no face and no player: `DriveOffCharger`, the hiking intro, and the
+`NothingToDo` idle and bored animations. An activity that wants the robot but can offer nothing is passed over rather
+than entered, since entering it would leave the robot still for as long as its duration - 25 s for `PlayAlone`, a
+minute for `Hiking`.
 
 
 Documentation
@@ -183,9 +222,9 @@ On-board functions (see [docs/functions.md](docs/functions.md) for details:
 Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md) for details:
 - [x] Procedural face generation
 - [x] Cozmo animations from FlatBuffers .bin files
-- [ ] Personality engine - the mood engine works, but does not steer behavior choice yet
-- [ ] Cozmo behaviors - reactions play Cozmo's own animations, see
-    [Cozmo's Own Behavior](#cozmos-own-behavior)
+- [ ] Personality engine - the mood engine works and gates the one activity whose configuration asks it to
+- [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
+    them, see [Cozmo's Own Behavior](#cozmos-own-behavior)
 - [ ] Motion detection
 - [ ] Object (cube and platform) detection
 - [ ] Cube marker recognition

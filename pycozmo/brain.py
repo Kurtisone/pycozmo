@@ -6,7 +6,7 @@ Brain class - high level behavior and emotion engine.
 
 from typing import Callable, Dict, List, Optional, Tuple
 from PIL import Image
-from threading import Thread
+from threading import RLock, Thread
 from typing import Optional as _Optional
 from queue import Queue, Empty
 import random
@@ -39,6 +39,10 @@ class Brain:
         "minHiccupSpacing_ms": 4500.0,
         "maxHiccupSpacing_ms": 8000.0,
     }
+
+    #: How long the brain waits before looking for something to do again, once it has found
+    #: nothing. Every activity is consulted each time, so this is not free.
+    IDLE_RETRY_TIME = 1.0
 
     #: Reaction posted for each orientation the robot can end up in.
     ORIENTATION_REACTIONS = {
@@ -88,12 +92,23 @@ class Brain:
         self.heartbeat_thread: _Optional[Thread] = \
             Thread(daemon=True, name="HeartbeatThread", target=self.heartbeat_thread_run)
 
-        # Current activity
-        self.activity = self.activities["Freeplay"]
+        # Current activity, the one that holds the others as sub-activities in priority order
+        self.activity: Optional[activity.Activity] = self.activities["Freeplay"]
+        # Sub-activity of the above that has the robot, if any
+        self.sub_activity: Optional[activity.Activity] = None
         # Current behavior
         self.behavior: Optional[behavior.Behavior] = None
         # Behavior a reaction interrupted, to put back once the reaction is over
         self.behavior_to_resume: Optional[behavior.Behavior] = None
+        # Three threads activate behaviors: the heartbeat looking for something to do, the reaction
+        # thread answering a trigger, and the client's dispatcher reporting a behavior done.
+        self.behavior_lock = RLock()
+        # When the engine may look for something to do again. See update_activity() .
+        self.next_choice_time = 0.0
+        # When the robot last came to rest on its treads and last drove off its charger. Two
+        # behaviors and one activity in the resources ask to run only just after one of those.
+        self.on_treads_time: Optional[float] = None
+        self.drive_off_charger_time: Optional[float] = None
         # Hiccups left in the bout under way, and when the next one is due. See update_hiccups() .
         self.hiccups_left = 0
         self.next_hiccup_time = 0.0
@@ -129,12 +144,18 @@ class Brain:
             self.cli.del_handler(evt, handler)
         self.handlers = []
         # Whatever was running keeps its animation playing and its timers armed otherwise.
-        self.behavior_to_resume = None
-        self.deactivate_behavior()
+        with self.behavior_lock:
+            self.behavior_to_resume = None
+            self.deactivate_behavior()
+            self.end_sub_activity()
 
     def on_behavior_done(self, cli: client.Client) -> None:
-        if self.behavior:
+        with self.behavior_lock:
+            if not self.behavior:
+                return
             logger_reaction.info("Done.")
+            if isinstance(self.behavior, behavior.BehaviorDriveOffCharger):
+                self.drive_off_charger_time = time.perf_counter()
             self.deactivate_behavior()
             self.resume_behavior()
 
@@ -146,6 +167,8 @@ class Brain:
             self.post_reaction("CliffDetected")
 
     def on_robot_orientation_change(self, cli: client.Client, orientation: robot.RobotOrientation) -> None:
+        if orientation == robot.RobotOrientation.ON_THREADS:
+            self.on_treads_time = time.perf_counter()
         reaction = self.ORIENTATION_REACTIONS.get(orientation)
         if reaction:
             self.post_reaction(reaction)
@@ -267,6 +290,10 @@ class Brain:
         return ", ".join("{} {:+.2f}".format(name, value) for name, value in sorted(mood.items()))
 
     def activate_behavior(self, behavior_id: str, resume_last: bool = False) -> None:
+        with self.behavior_lock:
+            self._activate_behavior(behavior_id, resume_last)
+
+    def _activate_behavior(self, behavior_id: str, resume_last: bool = False) -> None:
         new_behavior = self.behaviors.get(behavior_id)
         if new_behavior is None:
             logger_reaction.error("Failed to find behavior {}.".format(behavior_id))
@@ -296,7 +323,123 @@ class Brain:
             logger_behavior.info("Deactivating {}".format(self.behavior.get_id()))
             self.cli.deactivate_behavior(self.behavior)
             self.behavior = None
-            # TODO: Choose behavior from activity?
+
+    def update_activity(self, now: Optional[float] = None) -> None:
+        """
+        Keep something running while no reaction is.
+
+        The current activity - Freeplay, unless the application says otherwise - lists
+        sub-activities in priority order, and the first one that wants to run and has a behavior to
+        offer gets the robot. A behavior runs to completion: the engine only looks again once
+        nothing is running, so an animation is never cut short by anything but a reaction.
+        """
+        now = time.perf_counter() if now is None else now
+        with self.behavior_lock:
+            if self.behavior is not None or self.behavior_to_resume is not None:
+                return
+            if now < self.next_choice_time:
+                return
+            if self.sub_activity is not None and self.sub_activity.should_end(now):
+                self.end_sub_activity(now)
+            chosen = self.choose_activity(now)
+            if chosen is None:
+                # Nothing to do, which is the ordinary state of a robot with no cube to play with
+                # and nobody in sight: most of what it could do needs one or the other.
+                self.next_choice_time = now + self.IDLE_RETRY_TIME
+                return
+            chosen_activity, behavior_id = chosen
+            if chosen_activity is not self.sub_activity:
+                self.end_sub_activity(now)
+                self.start_sub_activity(chosen_activity, now)
+            self._activate_behavior(behavior_id)
+            chosen_activity.ran(behavior_id, now)
+
+    def get_candidate_activities(self) -> List[activity.Activity]:
+        """ The sub-activities to consider, best first, or the activity itself if it has none. """
+        current = self.activity
+        if current is None:
+            return []
+        if not current.sub_activities:
+            return [current]
+        candidates = []
+        # The lower priority number comes first: the sparks the application asks for, then the
+        # severe needs, then the freeplay activities from the most engaging to the least.
+        for entry in sorted(current.sub_activities, key=lambda e: e.get("activityPriority", 0)):
+            candidate = self.activities.get(entry["activityID"])
+            if candidate is None:
+                logger_behavior.error("Activity {} names unknown sub-activity {}.".format(
+                    current.id, entry["activityID"]))
+                continue
+            candidates.append(candidate)
+        return candidates
+
+    def choose_activity(self, now: Optional[float] = None) -> Optional[Tuple[activity.Activity, str]]:
+        """
+        The best sub-activity that has something to run, and what it would run.
+
+        An activity that wants the robot but can offer no behavior is passed over rather than
+        entered. Most of what the resources give it needs a cube, a face or a player, none of which
+        this library sees, and entering it would leave the robot doing nothing for as long as its
+        should-end duration - twenty-five seconds for PlayAlone, a minute for Hiking.
+        """
+        now = time.perf_counter() if now is None else now
+        mood = self.get_mood()
+        for candidate in self.get_candidate_activities():
+            if not candidate.wants_to_run(mood, now=now, on_treads_time=self.on_treads_time):
+                continue
+            # A behavior that asks to run just after the switch to its activity gets its chance:
+            # the activity is about to start unless it is the one already running.
+            start_time = now
+            if candidate is self.sub_activity and candidate.start_time is not None:
+                start_time = candidate.start_time
+            behavior_id = candidate.choose(
+                lambda behavior_id: self.can_run_behavior(behavior_id, start_time, now), now)
+            if behavior_id is None:
+                logger_behavior.debug("Activity {} has nothing to run.".format(candidate.id))
+                continue
+            return candidate, behavior_id
+        return None
+
+    def can_run_behavior(self, behavior_id: str, activity_start_time: float, now: float) -> bool:
+        """
+        Whether the engine may offer a behavior the robot now.
+
+        On top of the behavior's own answer, two behaviors in the resources ask for something to
+        have just happened: the hiking intro wants to run within a quarter of a second of its
+        activity being entered, the hiking wake-up within a second of driving off the charger.
+        """
+        # TODO: Honour requiredUnlockId. Seventy-seven behaviors carry one, nothing here tracks
+        #  which sparks have been earned, and none of those behaviors is reachable for now.
+        candidate = self.behaviors.get(behavior_id)
+        if candidate is None:
+            logger_behavior.error("Failed to find behavior {}.".format(behavior_id))
+            return False
+        if not candidate.wants_to_run():
+            return False
+        recent_switch = candidate.conf.get("requiredRecentSwitchToParent_sec")
+        if recent_switch is not None and now - activity_start_time > float(recent_switch):
+            return False
+        recent_drive_off = candidate.conf.get("requiredRecentDriveOffCharger_sec")
+        if recent_drive_off is not None and \
+                (self.drive_off_charger_time is None or
+                 now - self.drive_off_charger_time > float(recent_drive_off)):
+            return False
+        return True
+
+    def start_sub_activity(self, new_activity: activity.Activity, now: Optional[float] = None) -> None:
+        """ Give an activity the robot. """
+        now = time.perf_counter() if now is None else now
+        logger_behavior.info("Starting activity {}".format(new_activity.id))
+        self.sub_activity = new_activity
+        new_activity.started(now)
+
+    def end_sub_activity(self, now: Optional[float] = None) -> None:
+        """ Take the robot back from the activity that has it, and put that one on cooldown. """
+        if self.sub_activity is None:
+            return
+        logger_behavior.info("Ending activity {}".format(self.sub_activity.id))
+        self.sub_activity.ended(now)
+        self.sub_activity = None
 
     def heartbeat_thread_run(self) -> None:
         """ Heartbeat thread loop. """
@@ -310,6 +453,7 @@ class Brain:
 
             self.update_emotion_types()
             self.update_hiccups()
+            self.update_activity()
             # TODO: Timers
 
             timer.sleep()

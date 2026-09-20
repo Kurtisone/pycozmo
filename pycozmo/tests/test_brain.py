@@ -1,4 +1,6 @@
 import unittest
+from typing import List
+from unittest import mock
 
 import pycozmo
 
@@ -298,3 +300,149 @@ class TestStop(unittest.TestCase):
         # A reaction posted now would queue up for a thread that no longer runs.
         self.brain.cli.dispatch(pycozmo.event.EvtRobotPickedUpChange, self.brain.cli, True)
         self.assertTrue(self.brain.reaction_queue.empty())
+
+
+@unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestActivityEngine(unittest.TestCase):
+    """
+    What the robot does when nothing has happened to it.
+
+    Freeplay lists twenty-five sub-activities in priority order, and nearly all of them need a cube,
+    a face or a player asking for a game. What is left is the hiking intro and, at the bottom of the
+    list, the bored animations - which is close to what a real Cozmo does when left alone.
+    """
+
+    brain: pycozmo.brain.Brain
+
+    @classmethod
+    def setUpClass(cls):
+        cls.brain = pycozmo.brain.Brain(pycozmo.client.Client())
+
+    def setUp(self):
+        self.brain.behavior = None
+        self.brain.behavior_to_resume = None
+        self.brain.sub_activity = None
+        self.brain.next_choice_time = 0.0
+        self.brain.on_treads_time = None
+        self.brain.drive_off_charger_time = None
+        for activity in self.brain.activities.values():
+            activity.start_time = None
+            activity.cooldown_end_time = 0.0
+            for chooser in (activity.behavior_chooser, activity.interlude_chooser):
+                if chooser is not None:
+                    chooser.reset()
+        self.played: List[str] = []
+        patcher = mock.patch.object(self.brain.cli, "play_anim_group", self.played.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def choose(self, now):
+        """ The activity and behavior the engine would run, by identifier. """
+        chosen = self.brain.choose_activity(now)
+        return (chosen[0].id, chosen[1]) if chosen else None
+
+    def current_activity(self):
+        return self.brain.sub_activity.id if self.brain.sub_activity else None
+
+    def current_behavior(self):
+        return self.brain.behavior.get_id() if self.brain.behavior else None
+
+    def test_the_robot_looks_around_first(self):
+        self.assertEqual(self.choose(1000.0), ("Hiking", "Hiking_FirstLookIntro"))
+
+    def test_an_activity_that_can_offer_nothing_is_passed_over(self):
+        # Socialize outranks Hiking and its mood gate is open at rest, but everything it names needs
+        # a cube or a face. Entering it would leave the robot doing nothing for five minutes.
+        socialize = self.brain.activities["Socialize"]
+        self.assertTrue(socialize.wants_to_run(self.brain.get_mood(), now=1000.0))
+        self.assertEqual(self.choose(1000.0)[0], "Hiking")
+
+    def test_the_hiking_intro_only_runs_just_after_the_switch(self):
+        # It asks for a quarter of a second since the activity was entered.
+        self.assertTrue(self.brain.can_run_behavior("Hiking_FirstLookIntro", 1000.0, 1000.1))
+        self.assertFalse(self.brain.can_run_behavior("Hiking_FirstLookIntro", 1000.0, 1001.0))
+
+    def test_the_hiking_wake_up_needs_a_recent_drive_off_the_charger(self):
+        self.assertFalse(self.brain.can_run_behavior("Hiking_FirstLookWakeUp", 1000.0, 1000.0))
+        self.brain.drive_off_charger_time = 1000.0
+        self.assertTrue(self.brain.can_run_behavior("Hiking_FirstLookWakeUp", 1000.0, 1000.5))
+        self.assertFalse(self.brain.can_run_behavior("Hiking_FirstLookWakeUp", 1000.0, 1002.0))
+
+    def test_only_the_animations_of_nothing_to_do_can_run(self):
+        # The other four need to drive into a cube, see an obstacle or be holding something.
+        chooser = self.brain.activities["NothingToDo"].behavior_chooser
+        assert chooser is not None
+        runnable = [behavior_id for behavior_id in chooser.behavior_names
+                    if self.brain.can_run_behavior(behavior_id, 1000.0, 1000.0)]
+        self.assertEqual(sorted(runnable), ["NothingToDo_BoredAnim", "NothingToDo_Idle"])
+
+    def test_it_settles_into_the_bored_animations(self):
+        now = 1000.0
+        self.brain.update_activity(now)
+        self.assertEqual(self.current_activity(), "Hiking")
+        self.assertEqual(self.played, ["HikingIntro"])
+        # Hiking has nothing else to offer once its intro is behind it.
+        self.brain.behavior = None
+        now += 3.0
+        self.brain.update_activity(now)
+        self.assertEqual(self.current_activity(), "NothingToDo")
+        self.assertIn(self.current_behavior(), ("NothingToDo_Idle", "NothingToDo_BoredAnim"))
+
+    def test_hiking_goes_on_cooldown_when_it_is_passed_over(self):
+        self.brain.update_activity(1000.0)
+        self.brain.behavior = None
+        self.brain.update_activity(1003.0)
+        # Fifteen seconds, as hiking.json asks.
+        self.assertEqual(self.brain.activities["Hiking"].cooldown_end_time, 1018.0)
+
+    def test_a_behavior_runs_to_completion(self):
+        self.brain.update_activity(1000.0)
+        running = self.brain.behavior
+        self.brain.update_activity(1001.0)
+        self.assertIs(self.brain.behavior, running)
+        self.assertEqual(self.played, ["HikingIntro"], "an animation was cut short")
+
+    def test_nothing_starts_while_a_reaction_has_something_to_put_back(self):
+        self.brain.behavior_to_resume = self.brain.behaviors["Hiccup"]
+        self.brain.update_activity(1000.0)
+        self.assertIsNone(self.brain.behavior)
+
+    def test_it_waits_before_looking_again_when_it_finds_nothing(self):
+        # Every activity is consulted each time, which is not free at thirty times a second.
+        with mock.patch.object(self.brain, "choose_activity", return_value=None) as choose:
+            self.brain.update_activity(1000.0)
+            self.brain.update_activity(1000.5)
+            self.assertEqual(choose.call_count, 1)
+            self.brain.update_activity(1001.0)
+            self.assertEqual(choose.call_count, 2)
+
+    def test_running_a_behavior_holds_it_back(self):
+        chooser = self.brain.activities["NothingToDo"].behavior_chooser
+        assert chooser is not None
+        self.brain.activities["NothingToDo"].ran("NothingToDo_BoredAnim", now=1000.0)
+        bored = chooser.behavior_names.index("NothingToDo_BoredAnim")
+        self.assertEqual(chooser.get_scores(now=1000.0)[bored], 0.5)
+        self.assertEqual(chooser.get_scores(now=1009.0)[bored], 1.0)
+
+    def test_the_robot_gets_off_its_charger(self):
+        # Nothing did before: the brain's start() carried a note to do it and the behavior reported
+        # itself done without moving.
+        self.brain.cli.robot_status = pycozmo.robot.RobotStatusFlag.IS_ON_CHARGER
+        self.addCleanup(setattr, self.brain.cli, "robot_status", 0)
+        with mock.patch.object(self.brain.cli, "drive_wheels") as drive_wheels:
+            self.brain.update_activity(1000.0)
+            self.assertEqual(self.current_behavior(), "DriveOffCharger")
+            drive_wheels.assert_called_once()
+        assert self.brain.behavior is not None
+        self.brain.behavior.deactivate()
+
+
+@unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestStopGivesTheActivityUp(unittest.TestCase):
+
+    def test_the_activity_is_ended(self):
+        brain = pycozmo.brain.Brain(pycozmo.client.Client())
+        brain.start()
+        brain.start_sub_activity(brain.activities["NothingToDo"])
+        brain.stop()
+        self.assertIsNone(brain.sub_activity)
