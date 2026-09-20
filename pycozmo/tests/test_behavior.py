@@ -49,14 +49,23 @@ class FakeClient(pycozmo.event.Dispatcher):
         self.conn = FakeConnection()
         self.animation_groups = {name: None for name in self.ANIMATION_GROUPS}
         self.robot_orientation = pycozmo.robot.RobotOrientation.ON_THREADS
+        self.robot_status = 0
         self.played = []
         self.cancelled = 0
+        self.wheel_speeds = []
+        self.stopped = 0
 
     def play_anim_group(self, name):
         self.played.append(name)
 
     def cancel_anim(self):
         self.cancelled += 1
+
+    def drive_wheels(self, lwheel_speed, rwheel_speed, *args, **kwargs):
+        self.wheel_speeds.append((lwheel_speed, rwheel_speed))
+
+    def stop_all_motors(self):
+        self.stopped += 1
 
 
 class BehaviorTestCase(unittest.TestCase):
@@ -319,6 +328,75 @@ class TestWantsToRun(BehaviorTestCase):
         self.assertFalse(behavior.wants_to_run())
 
 
+class TestBehaviorDriveOffCharger(BehaviorTestCase):
+
+    def make_behavior(self, extra_distance=60.0):
+        return self.make(pycozmo.behavior.BehaviorDriveOffCharger,
+                         {"extraDistanceToDrive_mm": extra_distance}, "DriveOffCharger")
+
+    def test_it_only_runs_on_the_charger(self):
+        behavior = self.make_behavior()
+        self.assertFalse(behavior.wants_to_run())
+        self.cli.robot_status = pycozmo.robot.RobotStatusFlag.IS_ON_CHARGER
+        self.assertTrue(behavior.wants_to_run())
+
+    def test_it_drives_forward(self):
+        # It used to report itself done without moving, so a robot on its charger stayed on it -
+        # and, offered the robot by the engine, would have been offered it again straight away.
+        behavior = self.make_behavior()
+        behavior.activate()
+        self.assertEqual(behavior.timer.interval, (40.0 + 60.0) / behavior.SPEED)
+        self.assertEqual(self.cli.wheel_speeds, [(behavior.SPEED, behavior.SPEED)])
+        self.assertEqual(self.posted_emotion_events(), ["DriveOffCharger"])
+        self.assertNotDone()
+
+    def test_it_stops_where_the_configuration_says(self):
+        behavior = self.make_behavior(extra_distance=0.0)
+        behavior.activate()
+        self.assertEqual(behavior.timer.interval, 40.0 / behavior.SPEED)
+
+    def test_it_stops_when_it_has_gone_far_enough(self):
+        behavior = self.make_behavior()
+        behavior.activate()
+        behavior.timer.cancel()
+        behavior._arrived()
+        self.assertEqual(self.cli.stopped, 1)
+        self.assertDone()
+
+    def test_it_does_not_set_off_again_at_once(self):
+        # The robot's status takes a moment to show the charger clear, and a second attempt in the
+        # meantime would drive it twice as far as the configuration asks.
+        behavior = self.make_behavior()
+        self.cli.robot_status = pycozmo.robot.RobotStatusFlag.IS_ON_CHARGER
+        behavior.activate()
+        behavior.timer.cancel()
+        self.assertFalse(behavior.wants_to_run())
+
+    def test_it_gives_up_rather_than_driving_across_the_table(self):
+        # A status stuck on the charger would otherwise have the robot drive off it for ever.
+        behavior = self.make_behavior()
+        self.cli.robot_status = pycozmo.robot.RobotStatusFlag.IS_ON_CHARGER
+        for attempt in range(behavior.MAX_ATTEMPTS):
+            behavior.last_run = 0.0
+            self.assertTrue(behavior.wants_to_run(), attempt)
+            behavior.activate()
+            behavior.timer.cancel()
+        behavior.last_run = 0.0
+        self.assertFalse(behavior.wants_to_run())
+        # Taken off the charger, it is willing again.
+        self.cli.robot_status = 0
+        self.assertFalse(behavior.wants_to_run())
+        self.cli.robot_status = pycozmo.robot.RobotStatusFlag.IS_ON_CHARGER
+        self.assertTrue(behavior.wants_to_run())
+
+    def test_being_deactivated_stops_the_motors(self):
+        behavior = self.make_behavior()
+        behavior.activate()
+        behavior.deactivate()
+        self.assertIsNone(behavior.timer)
+        self.assertEqual(self.cli.stopped, 1)
+
+
 class TestGetBehaviorClassFromDict(unittest.TestCase):
     """ Every reaction behavior of reactionTrigger_behavior_map.json that has an animation. """
 
@@ -496,8 +574,8 @@ class TestEmotionEvents(BehaviorTestCase):
     def test_driving_off_the_charger_builds_confidence(self):
         behavior = self.make(pycozmo.behavior.BehaviorDriveOffCharger)
         behavior.activate()
+        self.addCleanup(behavior.deactivate)
         self.assertEqual(self.posted_emotion_events(), ["DriveOffCharger"])
-        self.assertDone()
 
     def test_a_plain_reaction_posts_none(self):
         behavior = self.make(pycozmo.behavior.BehaviorReactToPickup)

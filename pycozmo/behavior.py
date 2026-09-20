@@ -392,18 +392,67 @@ class BehaviorReactToOnCharger(BehaviorPlayAnim):
 
 
 class BehaviorDriveOffCharger(Behavior):
+    """
+    DriveOffCharger behavior - get off the charger.
+
+    The robot backs onto its charger, so leaving it means driving forward: off the contacts, then
+    the extra distance the configuration asks for. The distance is timed rather than measured, the
+    robot reporting no odometry a behavior could wait on.
+    """
+
+    #: Speed the robot drives off at, in mm/s.
+    SPEED = 50.0
+    #: Distance covered before the extra distance the configuration asks for, in mm. That is about
+    #: how far back the charger holds the treads from its lip.
+    CONTACTS_DISTANCE = 40.0
+    #: How long the behavior leaves the robot's status to catch up before trying again, in seconds.
+    #: Without it, a status not yet showing the charger clear would have the robot drive off twice.
+    SETTLE_TIME = 1.0
+    #: How many times in a row the robot will try. The resources say nothing about retrying; this
+    #: is here so that a status stuck on the charger cannot drive the robot across the table.
+    MAX_ATTEMPTS = 3
+
+    def __init__(self, cli: client.Client, conf: Any):
+        super().__init__(cli, conf)
+        self.extra_distance = float(conf.get("extraDistanceToDrive_mm", 60.0))
+        self.attempts = 0
+        self.last_run = 0.0
+        self.timer: Optional[threading.Timer] = None
+
+    def wants_to_run(self) -> bool:
+        if not self.cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
+            # Off the charger, so whatever it took to get there is behind us.
+            self.attempts = 0
+            return False
+        if self.attempts >= self.MAX_ATTEMPTS:
+            return False
+        return time.perf_counter() - self.last_run >= self.SETTLE_TIME
 
     def activate(self) -> None:
-        # extraDistanceToDrive_mm = float(self.conf["extraDistanceToDrive_mm"])
-        # TODO: Play wake up animation?
-        # TODO: Drive and wait for completion.
+        # TODO: Play a wake up animation. The resources name none for this behavior.
         # Getting going under its own steam makes the robot more confident.
+        self.attempts += 1
+        self.last_run = time.perf_counter()
         self.post_emotion_event("DriveOffCharger")
+        self.cli.drive_wheels(self.SPEED, self.SPEED)
+        self.timer = threading.Timer(
+            (self.CONTACTS_DISTANCE + self.extra_distance) / self.SPEED, self._arrived)
+        self.timer.daemon = True
+        self.timer.start()
+
+    def _arrived(self) -> None:
+        self.cli.stop_all_motors()
+        if self.attempts >= self.MAX_ATTEMPTS:
+            logger.warning(
+                "Behavior '{}' has driven off the charger {} times and the robot still reads as on "
+                "it. Leaving it there.".format(self.get_id(), self.attempts))
         self.done()
 
     def deactivate(self) -> None:
-        # TODO: Cancel
-        pass
+        if self.timer is not None:
+            self.timer.cancel()
+            self.timer = None
+        self.cli.stop_all_motors()
 
 
 def get_behavior_class_from_dict(data):
