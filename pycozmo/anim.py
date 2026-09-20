@@ -55,7 +55,14 @@ class PreprocessedClip(object):
         return im
 
     @classmethod
-    def from_anim_clip(cls, clip: anim_encoder.AnimClip) -> "PreprocessedClip":
+    def from_anim_clip(cls, clip: anim_encoder.AnimClip,
+                       audio_library: Optional[Any] = None) -> "PreprocessedClip":
+        """
+        Preprocess an animation clip into the packets that play it.
+
+        The audio library, when given, resolves the WWise events the clip names into sound. Without
+        one the animation plays silently, which is what happened before there was a library at all.
+        """
         keyframes: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
         for keyframe in clip.keyframes:
             if isinstance(keyframe, anim_encoder.AnimHeadAngle):
@@ -116,8 +123,8 @@ class PreprocessedClip(object):
                 pkt = protocol_encoder.DisplayImage(image=buf)
                 keyframes[keyframe.trigger_time_ms].append(pkt)
             elif isinstance(keyframe, anim_encoder.AnimRobotAudio):
-                # TODO
-                pass
+                if audio_library is not None:
+                    cls._add_audio(keyframes, keyframe, audio_library)
             elif isinstance(keyframe, anim_encoder.AnimEvent):
                 # TODO
                 pass
@@ -125,6 +132,24 @@ class PreprocessedClip(object):
                 raise RuntimeError("Unexpected keyframe type '{}'".format(type(keyframe)))
         ppclip = cls(keyframes=keyframes)
         return ppclip
+
+    @classmethod
+    def _add_audio(cls, keyframes: Dict[int, List[protocol_encoder.Packet]],
+                   keyframe: anim_encoder.AnimRobotAudio, audio_library: Any) -> None:
+        """
+        Lay a keyframe's sound out over the animation frames that follow its trigger.
+
+        A keyframe can name several events, which play together on a real robot; the robot has one
+        speaker and OutputAudio carries one frame, so the last one placed on a frame is the one
+        heard. Frames are laid on the 33 ms animation grid rather than the 33.74 ms an OutputAudio
+        frame actually lasts, so a long sound drifts about 2% late against its animation.
+        """
+        for event_id in keyframe.audio_event_ids:
+            frames = audio_library.get_frames(event_id, keyframe.volume)
+            if not frames:
+                continue
+            for i, pkt in enumerate(frames):
+                keyframes[keyframe.trigger_time_ms + i * 33].append(pkt)
 
 
 class LightAnimation:

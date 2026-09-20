@@ -30,6 +30,7 @@ from . import image_encoder
 from . import anim
 from . import anim_encoder
 from . import audio
+from . import audiolib
 from . import anim_controller
 from . import robot_debug
 
@@ -37,6 +38,10 @@ from . import robot_debug
 __all__ = [
     "Client",
 ]
+
+
+#: Speaker volume set on connection, out of 65535.
+DEFAULT_VOLUME = 32767
 
 
 class Client(event.Dispatcher):
@@ -104,6 +109,7 @@ class Client(event.Dispatcher):
         self._ppclips: Dict[str, anim.PreprocessedClip] = {}
         self._next_anim_id = 1
         self.animation_groups: Dict[str, anim.AnimationGroup] = {}
+        self.audio_library = audiolib.AudioLibrary()
 
     def start(self) -> None:
         logger.debug("Starting client...")
@@ -144,6 +150,11 @@ class Client(event.Dispatcher):
         # Set world frame origin to (0,0,0), frame ID to 0, and origin ID to 1.
         pkt: protocol_base.Packet = protocol_encoder.SetOrigin()
         self.conn.send(pkt)
+        # Give the speaker a volume. The robot comes up silent and nothing else sets one, so
+        # animation sound and play_audio() went out to a speaker turned off. The Cozmo application
+        # set a volume of its own; half range is a robot you can hear across a desk without it
+        # being startling. Applications can call set_volume() for something else.
+        self.set_volume(DEFAULT_VOLUME)
         # Set timestamp to 0. Also enables RobotState and ObjectAvailable events. Requires Enable (0x25).
         pkt = protocol_encoder.SyncTime()
         self.conn.send(pkt)
@@ -547,7 +558,7 @@ class Client(event.Dispatcher):
             if name not in self._clips:
                 self._load_clips(self._clip_metadata[name].fspec)
             clip = self._clips[name]
-            self._ppclips[name] = anim.PreprocessedClip.from_anim_clip(clip)
+            self._ppclips[name] = anim.PreprocessedClip.from_anim_clip(clip, self.audio_library)
 
         ppclip = self._ppclips[name]
         self.play_anim_ppclip(ppclip)
@@ -572,6 +583,7 @@ class Client(event.Dispatcher):
         self._clips = {}
         resource_dir = str(util.get_cozmo_asset_dir())
         self.animation_groups = anim.load_animation_groups(resource_dir)
+        self.audio_library = audiolib.load_audio_library(resource_dir)
 
     def get_anim_names(self) -> set:
         return set(self._clip_metadata.keys())

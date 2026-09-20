@@ -146,6 +146,23 @@ Two details matter for the result to look right rather than merely work:
 The mood engine works: emotion events shift the seven emotions and each decays on its own schedule. It gates the one
 activity whose configuration asks it to - see below - and does not yet weigh anything else.
 
+### Sound
+
+An animation does not carry its sound. It names a WWise event by the 32 bit identifier WWise hashed its name into, and
+the application has to work out what that event plays and stream the samples to the robot's speaker. PyCozmo now does:
+893 of the 993 animations come with sound, and the speaker is given a volume on connection, which nothing did before -
+the robot came up silent and stayed that way.
+
+Two thirds of it plays. Weighted by how often the animations actually trigger them, 64% of the audio events resolve to
+IMA ADPCM, which `pycozmo.audiokinetic.wem` decodes; the other 34% are WWise Vorbis, and **those stay silent**. WWise
+strips the Vorbis setup header out of its files and keeps the codebooks in its own sound engine, which shipped inside
+the Cozmo application rather than in the robot's resources - there is not one codebook anywhere under
+`cozmo_resources`, so they cannot be decoded from what the robot itself came with. The ADPCM side is the screen, the
+servos, the blinks, the bored noises; the Vorbis side is most of Cozmo's voice.
+
+Getting from an identifier to samples also needs Cozmo's own sound bank, which holds all 380 events its animations
+name and is the one bank the resources do not unpack - it is read straight out of `AudioAssets.zip`.
+
 ### What the robot does when nothing has happened
 
 Reactions answer events. Between them, the activity engine decides what the robot does of its own accord. `Freeplay`
@@ -236,6 +253,8 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
 - [ ] Navigation map building
 - [ ] Text-to-speech
 - [ ] Songs
+- [ ] Animation audio - two thirds of what the animations trigger plays, see
+    [Sound](#sound); the WWise Vorbis files stay silent for want of codebooks
 
 Extra off-board functions:
 - [ ] Vector animations from FlatBuffers .bin files
