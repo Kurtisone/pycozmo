@@ -4,8 +4,9 @@ Cozmo protocol client and high-level API.
 
 """
 
+from collections import defaultdict
 from threading import Event
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import json
 import time
 import io
@@ -519,15 +520,24 @@ class Client(event.Dispatcher):
         pkt: protocol_base.Packet = protocol_encoder.StartAnimation(anim_id=anim_id)
         self.anim_controller.play_anim_frame(None, None, (pkt, ))
 
-        # Send frames to the animation controller.
-        frames = list(sorted(ppclip.keyframes.keys()))
-        num_frames = len(frames)
-        time_ms = 0
+        # Send frames to the animation controller. The robot plays one frame every
+        # robot.FRAME_MS, so a keyframe belongs to the frame its time falls on, and a frame no
+        # keyframe falls on is sent empty. 97 % of the keyframes in the resources sit exactly on
+        # that grid; the rest are rounded to the nearest frame, and the few that then land on the
+        # same frame share it - the robot has one slot per frame - rather than being spread over
+        # consecutive ones, which would stretch the animation.
+        frames: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
+        for time_ms in sorted(ppclip.keyframes.keys()):
+            frames[round(time_ms / robot.FRAME_MS)] += ppclip.keyframes[time_ms]
+        num_frames = max(frames) + 1 if frames else 0
+
         for i in range(num_frames):
             audio_pkt = None
             image_pkt = None
             pkts = []
-            for action in ppclip.keyframes[frames[i]]:
+            # A frame has one speaker and one screen, so the last of each wins; everything else
+            # goes out together.
+            for action in frames[i]:
                 if isinstance(action, protocol_encoder.OutputAudio):
                     audio_pkt = action
                 elif isinstance(action, protocol_encoder.DisplayImage):
@@ -535,14 +545,6 @@ class Client(event.Dispatcher):
                 elif isinstance(action, protocol_encoder.Packet):
                     pkts.append(action)
             self.anim_controller.play_anim_frame(audio_pkt, image_pkt, pkts)
-            time_ms += 33
-
-            # Pause.
-            if i < num_frames - 1:
-                target_ms = time_ms + frames[i + 1] - frames[i]
-                while target_ms > time_ms:
-                    self.anim_controller.play_anim_frame(None, None, None)
-                    time_ms += 33
 
         # End animation.
         pkt = protocol_encoder.EndAnimation()

@@ -141,15 +141,16 @@ class PreprocessedClip(object):
 
         A keyframe can name several events, which play together on a real robot; the robot has one
         speaker and OutputAudio carries one frame, so the last one placed on a frame is the one
-        heard. Frames are laid on the 33 ms animation grid rather than the 33.74 ms an OutputAudio
-        frame actually lasts, so a long sound drifts about 2% late against its animation.
+        heard. One frame holds 744 samples, which is 33.74 ms of sound at the speaker's rate but
+        goes out on a 33.33 ms animation frame, so the robot is handed sound about 1 % faster than
+        it plays it and a long one ends a little behind its animation.
         """
         for event_id in keyframe.audio_event_ids:
             frames = audio_library.get_frames(event_id, keyframe.volume)
             if not frames:
                 continue
             for i, pkt in enumerate(frames):
-                keyframes[keyframe.trigger_time_ms + i * 33].append(pkt)
+                keyframes[keyframe.trigger_time_ms + i * robot.FRAME_MS].append(pkt)
 
 
 class LightAnimation:

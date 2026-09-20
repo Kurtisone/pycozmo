@@ -22,6 +22,7 @@ __all__ = [
     "MAX_WHEEL_SPEED",
     "TRACK_WIDTH",
     "FRAME_RATE",
+    "FRAME_MS",
     "DISPLAY_BLANKING_TIME",
     "DISPLAY_REFRESH_TIME",
     "GRAVITY_MM_S2",
@@ -68,6 +69,11 @@ TRACK_WIDTH = util.Distance(mm=45.0)
 
 #: Number of frames per second for animations.
 FRAME_RATE = 30
+
+#: Length of an animation frame, in milliseconds, as the animation resources count it. They are
+#: authored at FRAME_RATE and their keyframe times are whole milliseconds, so the grid they sit on
+#: is 33 ms rather than the 33.33 ms a thirtieth of a second actually lasts.
+FRAME_MS = 33
 
 #: How long the robot keeps an image on its screen before blanking it, with nothing new coming.
 DISPLAY_BLANKING_TIME = 30.0
