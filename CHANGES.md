@@ -8,6 +8,66 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.13 (Sep 20, 2026)
+----------------------
+
+New features:
+- The activity engine chooses what the robot does when nothing has happened to it. The brain only ever ran a behavior
+    because a reaction trigger named one; between reactions it did nothing, and deactivate_behavior() carried a note
+    asking whether a behavior should be chosen from the activity. Freeplay lists 25 sub-activities in priority order,
+    and the first one that wants to run and has a behavior to offer now gets the robot. Against an emulated robot, the
+    result over seventy seconds is the hiking intro, then the NothingToDo idle and bored animations, Hiking coming
+    round again each time its fifteen second cooldown is up: eleven behaviors, no warnings, nothing spinning.
+- An activity's strategy is read rather than reduced to its type name. "Simple" is the only one evaluated: it carries
+    how long the activity may and should run, how long it rests afterwards, whether it starts in cooldown, and two
+    conditions on the world - that the robot was set down on its treads in the last few seconds, and that the mood
+    scores high enough. Socialize is the only activity in Anki's resources that gates on mood, scoring the Social
+    emotion through a graph that gives 1.0 while Social is at or below 0.3 against a required 0.5, so the robot goes
+    looking for company when it has not had any. The other six strategy types gate on a spark from the application,
+    the nurture needs, a pyramid of cubes or a player asking for a game, none of which this library has; an activity
+    carrying one never wants to run, which is what the robot does while nothing has sparked it and its needs are full.
+- A behavior says whether it would take the robot. An unimplemented behavior class never does - activating one only
+    logs that and reports it done, and the engine would offer it the robot again straight away - and an animation
+    behavior wants the animations it names to be on disk. ReactToObstacle, the one behavior in the resources carrying
+    a wantsToRunStrategyConfig, asks for ObstacleDetected and so holds back. Two more ask for something to have just
+    happened: the hiking intro wants a quarter of a second since its activity was entered, the hiking wake-up a second
+    since the robot drove off its charger.
+- DriveOffCharger drives off the charger. It used to report itself done without moving, which is why the brain's
+    start() carried a note to drive off if on the charger. The robot backs onto its charger, so leaving it means
+    driving forward, over the contacts and then the extra distance the configuration asks for - 60 mm for
+    DriveOffCharger, 45 for Hiking_DriveOffCharger - timed at 50 mm/s, the robot reporting no odometry a behavior
+    could wait on. It gives the status a second to catch up before trying again, and gives up after three attempts:
+    the resources say nothing about retrying, and a status stuck on the charger would otherwise drive the robot across
+    the table. Each of the two behaviors counts its own attempts.
+
+Bug fixes:
+- Fixed a behavior's repetition penalty never wearing off. The graph was read at the number of times the behavior had
+    run and subtracted from its score, which took the bored animations to nothing for good after two runs. The x axis
+    is seconds since the behavior last ran, and the y axis the fraction of its score it has won back - the three
+    hundreds and nine hundreds in the graphs are not repetition counts - so GuardDog scores nothing for five minutes
+    and is whole again a quarter of an hour on, and the bored animations keep half their score for nine seconds. That
+    is what the comment in nothingToDo.json asks for: "we set some repetition penalty so that we Idle normally after
+    playing a bored-game sequence". A graph is read at its last node rather than extrapolated past it, since the
+    lockout MeetCozmo_InteractWithFaces uses ends on two nodes sharing an x, which makes the extended line flat at
+    nought rather than at one.
+- Fixed BehaviorChooser.get_sorted_choices() on a "StrictPriority" chooser reading self.iteration, which nothing ever
+    assigned outside reset(), and handing back the raw entries rather than behavior identifiers. Both branches return
+    identifiers now, which is what it takes to look a behavior up.
+- Fixed every score reaching nought being divided by a total of nought. The chooser reports having nothing to offer.
+- Fixed Feeding's behaviors being read into a list nothing consulted. They sit under "universalChooser", the
+    activity having no sub-activities to share them with, and are its chooser.
+
+Other changes:
+- Activity.strategy is an ActivityStrategy rather than the strategy type string, which is now strategy.type. The
+    choosers and the sub-activities moved to the base class, each subclass having read its own; PyramidActivity keeps
+    its setup and build choosers. BehaviorChooser.apply_repetition_penalty() is behavior_ran(), the scores are
+    computed by get_scores() rather than held, and repetition_penaltys is spelled repetition_penalties.
+- Brain.activity is the activity that holds the others, and Brain.sub_activity the one that has the robot. Three
+    threads can activate a behavior now - the heartbeat looking for something to do, the reaction thread answering a
+    trigger, and the client's dispatcher reporting a behavior done - so the brain guards the transitions with a lock.
+    Stopping the brain gives the activity up as well as the behavior.
+
+
 v0.9.12 (Sep 20, 2026)
 ----------------------
 
