@@ -6,6 +6,14 @@ import pycozmo
 from pycozmo.procedural_face import DEFAULT_WIDTH, DEFAULT_HEIGHT, ProceduralFace, interpolate
 
 
+def cozmo_assets_available():
+    try:
+        pycozmo.util.check_assets()
+    except pycozmo.exception.ResourcesNotFound:
+        return False
+    return True
+
+
 class TestProceduralFace(unittest.TestCase):
 
     def test_render_shape(self):
@@ -60,3 +68,41 @@ class TestProceduralFace(unittest.TestCase):
         for frame in frames:
             self.assertIsInstance(frame, ProceduralFace)
             self.assertEqual(frame.render().size, (DEFAULT_WIDTH, DEFAULT_HEIGHT))
+
+    def test_a_negative_lid_bend_does_not_raise(self):
+        # anim_bored_02 carries one. Pillow used to normalise a bounding box passed with its low and
+        # high corners swapped; current Pillow raises ValueError instead, and a negative bend swaps
+        # the chord's box exactly that way. The chord's shape does not depend on which corner was
+        # passed first - only on the box's actual extremes - so the fix changes nothing about what
+        # gets drawn.
+        face = ProceduralFace()
+        face.eyes[0].lids[0].bend = -1.0
+        im = face.render()
+        self.assertEqual(im.size, (DEFAULT_WIDTH, DEFAULT_HEIGHT))
+
+    def test_bend_sign_does_not_change_the_render(self):
+        # The chord's bounding box is the same set of extremes either way, so the two must render
+        # identically - this failing would mean the fix silently changed the face's appearance.
+        positive = ProceduralFace()
+        positive.eyes[0].lids[0].bend = 0.7
+        negative = ProceduralFace()
+        negative.eyes[0].lids[0].bend = -0.7
+        self.assertEqual(positive.render().tobytes(), negative.render().tobytes())
+
+    @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+    def test_every_animation_renders(self):
+        # Sweep every animation clip Anki ships through the same rendering path a behavior playing it
+        # would take. This is what caught anim_bored_02 crashing the heartbeat thread: nothing in the
+        # unit tests below exercises resource data, only hand-built ProceduralFace instances.
+        cli = pycozmo.client.Client(auto_initialize=False)
+        cli.load_anims()
+        failures = []
+        for name in sorted(cli.get_anim_names()):
+            if name not in cli._clips:
+                cli._load_clips(cli._clip_metadata[name].fspec)
+            clip = cli._clips[name]
+            try:
+                pycozmo.anim.PreprocessedClip.from_anim_clip(clip)
+            except Exception as e:
+                failures.append("{}: {}: {}".format(name, type(e).__name__, e))
+        self.assertEqual(failures, [])
