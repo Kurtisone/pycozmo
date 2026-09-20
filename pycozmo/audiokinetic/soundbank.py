@@ -8,12 +8,20 @@ References:
 
 """
 
-from typing import Any, BinaryIO, Dict, Iterable, Optional
+from typing import Any, BinaryIO, Dict, Iterable, List, Optional
 import struct
 from ._chunk import Chunk
 
 from . import exception
 from . import soundbanksinfo
+
+
+#: HIRC object types that hold other objects: random/sequence, switch, actor-mixer, blend.
+CONTAINER_TYPES = (5, 6, 7, 9)
+
+#: Largest child count accepted when looking for a container's child list. Cozmo's biggest
+#: container holds 40 takes.
+MAX_CONTAINER_CHILDREN = 64
 
 
 class File:
@@ -35,6 +43,34 @@ class File:
         self.offset = int(offset)
         # Length in bytes.
         self.length = int(length)
+
+
+class Container:
+    """
+    AudioKinetic WWise container - a node holding other nodes.
+
+    Cozmo's sound bank holds 468 random/sequence containers, 21 switch containers, 20 actor-mixers
+    and 5 blend containers. They are what gives a reaction its variants: the event names the
+    container, and the container names the takes to choose between.
+    """
+
+    __slots__ = [
+        "soundbank_id",
+        "id",
+        "type",
+        "children",
+    ]
+
+    def __init__(self, soundbank_id: int, container_id: int, container_type: int,
+                 children: Iterable[int]) -> None:
+        # SoundBank ID.
+        self.soundbank_id = int(soundbank_id)
+        # Container ID.
+        self.id = int(container_id)
+        # HIRC object type.
+        self.type = int(container_type)
+        # IDs of the contained objects, which may be sounds or containers themselves.
+        self.children = list(children)
 
 
 class SFX:
@@ -261,9 +297,44 @@ class SoundBankReader:
                 assert object_id not in self._soundbank.objs
                 self._soundbank.objs[object_id] = Event(
                     self._soundbank.id, object_id, name, action_ids)
+            elif object_type in CONTAINER_TYPES:
+                # Random/sequence container, switch container, actor-mixer or blend container: the
+                # objects that hold the variants of a sound. An event points at one of these far
+                # more often than straight at a sound - 331 of the 380 audio events Cozmo's
+                # animations name do - so without them an event resolves to nothing.
+                children = self._find_children(obj_data)
+                if children is not None:
+                    self._soundbank.objs[object_id] = Container(
+                        self._soundbank.id, object_id, object_type, children)
             else:
                 # Skip unknown objects.
                 pass
+
+    @staticmethod
+    def _find_children(obj_data: bytes) -> Optional[List[int]]:
+        """
+        Find a container's list of children.
+
+        A container starts with NodeBaseParams, whose length depends on how many effects, RTPCs and
+        state chunks the object carries, so the child list does not sit at a fixed offset. Rather
+        than track every field across WWise versions, this looks for what a child list has to look
+        like: a count followed by exactly that many distinct object identifiers. On Cozmo's own
+        sound bank that is unambiguous for 491 of the 514 containers, and the longest candidate is
+        taken for the rest. Resolving the events this way agrees with the file names WWise recorded
+        in SoundbanksInfo.xml.
+        """
+        candidates = []
+        for offset in range(0, len(obj_data) - 4):
+            count = struct.unpack_from("<L", obj_data, offset)[0]
+            if not 1 <= count <= MAX_CONTAINER_CHILDREN or offset + 4 + 4 * count > len(obj_data):
+                continue
+            ids = struct.unpack_from("<" + "L" * count, obj_data, offset + 4)
+            if 0 in ids or len(set(ids)) != count:
+                continue
+            candidates.append((count, -offset, list(ids)))
+        if not candidates:
+            return None
+        return max(candidates)[2]
 
     def load_file(self, f: BinaryIO, fspec: str) -> SoundBank:
         """ Load a SoundBank .bnk file object and return a SoundBank object. """
