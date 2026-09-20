@@ -12,8 +12,10 @@ them, in cozmo_resources/sound:
   are the sounds the animations reach for most often - the screen, the servos, the blinks.
 - Vorbis, declared with tag 0xFFFF. WWise strips the Vorbis setup header out of the stream and
   keeps the codebooks in its own sound engine, which shipped inside the Cozmo application rather
-  than in these resources - there is not one codebook anywhere under cozmo_resources. Those files
-  cannot be decoded from what the robot's own resources hold, so they are reported as unsupported.
+  than in these resources - there is not one codebook anywhere under cozmo_resources. This module
+  reports them as unsupported for that reason. They can be read with the codebooks in hand, which
+  pycozmo.audiokinetic.vorbis does and tools/pycozmo_convert_audio.py drives, once, into files the
+  library can play.
 
 References:
     - https://en.wikipedia.org/wiki/Interactive_Multimedia_Association
@@ -69,6 +71,7 @@ class Wem:
         "byte_rate",
         "block_align",
         "bits_per_sample",
+        "ext",
         "data",
     ]
 
@@ -79,6 +82,7 @@ class Wem:
                  byte_rate: int,
                  block_align: int,
                  bits_per_sample: int,
+                 ext: bytes,
                  data: bytes) -> None:
         self.format = int(audio_format)
         self.channels = int(channels)
@@ -86,6 +90,9 @@ class Wem:
         self.byte_rate = int(byte_rate)
         self.block_align = int(block_align)
         self.bits_per_sample = int(bits_per_sample)
+        #: Whatever the format chunk holds past its first 18 bytes. WWise keeps the description of
+        #: a Vorbis stream in there; see pycozmo.audiokinetic.vorbis .
+        self.ext = ext
         self.data = data
 
     @classmethod
@@ -103,7 +110,7 @@ class Wem:
             struct.unpack_from("<HHIIHH", buf, off)
         data_off, data_size = chunks.get("data", (0, 0))
         return cls(audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample,
-                   buf[data_off:data_off + data_size])
+                   buf[off + 18:off + size], buf[data_off:data_off + data_size])
 
     @classmethod
     def from_file(cls, fspec: str) -> "Wem":
@@ -145,7 +152,8 @@ class Wem:
         if self.format == VORBIS:
             raise exception.AudioKineticFormatError(
                 "WEM file is WWise Vorbis, whose codebooks ship inside the Cozmo application "
-                "rather than in the robot's resources.")
+                "rather than in the robot's resources. Convert it with "
+                "tools/pycozmo_convert_audio.py .")
         if self.format != ADPCM:
             raise exception.AudioKineticFormatError(
                 "Unsupported WEM format 0x{:04x}.".format(self.format))
