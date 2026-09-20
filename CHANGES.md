@@ -8,6 +8,42 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.20 (Sep 20, 2026)
+----------------------
+
+New features:
+- A robot in real trouble now stays in trouble until it is helped. A critical need took its activity
+    over and announced itself, and then had nothing else to offer, so the robot went back to its
+    ordinary business as though nothing were wrong: the two behaviors the severe needs activities
+    fall back on, DriveInDesperation and Wait, were never implemented and so never wanted to run.
+    Both are now.
+
+    BehaviorDriveInDesperation is one round of wandering and asking for help - a turn, a drive of the
+    length minTimeToIdle and maxTimeToIdle bound, and then the request animation the configuration
+    names - after which the round ends and the engine thinks again. Neither of Anki's two of them
+    names the need it belongs to, so there is no need to watch; ending each round instead keeps the
+    robot asking for as long as the need is critical and hands it back the moment the need is met.
+    Read from the configuration: the two idle times, the motion profile's speed_mmps and
+    pointTurnSpeed_rad_per_sec, and requestAnimTrigger. How far it turns is not in there - a random
+    part of a half turn either way is what keeps the robot milling about rather than setting off in a
+    straight line and driving off the table. useCubes is not read, for want of anything that sees
+    cubes.
+
+    BehaviorWait stands still. Anki's engine could take a behavior off the robot part way through, so
+    a wait there could last until something else wanted the robot; this engine only looks for
+    something to do once nothing is running, so it waits for BehaviorWait.DURATION and reports itself
+    done. Nothing reaches it while DriveInDesperation can run, which is always.
+
+Bug fixes:
+- A behavior taken off the robot can no longer report itself done. One waiting on a timer or an
+    animation - DriveOffCharger, and now DriveInDesperation - can have its callback run just after a
+    reaction has taken its place, and the EvtBehaviorDone it posted then ended the reaction rather
+    than itself. The client marks a behavior as off the robot before deactivating it, and done() and
+    give_up() hold their tongue. DriveOffCharger has been exposed to this since v0.9.11 and runs at
+    most three times a session; DriveInDesperation runs for as long as a need is critical, which is
+    what brought it to light.
+
+
 v0.9.19 (Sep 20, 2026)
 ----------------------
 
