@@ -8,6 +8,19 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.19 (Sep 20, 2026)
+----------------------
+
+Bug fixes:
+- Fixed the needs falling at a stale rate when more than one decay period had gone by at once.
+    How fast a need falls depends on the bracket it is in, and several periods were applied together
+    at the rate that held when the first of them started. The heartbeat asks thirty times a second,
+    so a period is never missed while it is running - but it stopped running once already, in
+    v0.9.13, and a caller stepping the needs itself has no such guarantee. Periods are applied one at
+    a time now, the rate and the cross-need multipliers read afresh for each, which also makes
+    stepping coarsely and finely agree exactly.
+
+
 v0.9.18 (Sep 20, 2026)
 ----------------------
 
