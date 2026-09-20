@@ -8,6 +8,57 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.18 (Sep 20, 2026)
+----------------------
+
+New features:
+- The nurture needs. Cozmo has three - Repair, Energy and Play - which start full, fall for hours,
+    and only something done to the robot puts back. They are not the mood: an emotion is a shove
+    that decays to nothing in a couple of minutes, while a need is what turns a robot left to itself
+    from merely idle into one that starts asking for something. Four of Anki's configuration files
+    describe them and three are now read: the bounds, brackets and fullness wait from
+    needs_config.json, the level dependent decay rates and cross-need multipliers from
+    needs_decay_config.json, and all eighty-odd actions from needs_action_config.json.
+
+    Left alone from a fresh start, Play reaches its warning bracket after 55 minutes and its critical
+    one after 83, Energy after 99 and 204, Repair after ten hours and nineteen. Each need holds at
+    full for twenty minutes first, and one drags on another: Repair between 0.03 and 0.3 makes Play
+    fall twice as fast, which is the only cross-effect in the whole configuration.
+
+    What that shows as: NothingToDo, PlayAlone, Hiking, Socialize, BuildPyramid and PlayWithHumans
+    all list the five needs requests in their interlude chooser, so the robot starts slipping them
+    between whatever else it is doing - the lower the need, the more often, from a graph read at the
+    need's own level. Once a need is critical, two activities of their own take the robot over and
+    announce it, with Repair outranking Energy so that a robot both broken and starving asks to be
+    mended rather than fed.
+
+    Three of the four activity strategies that were stubs are now evaluated. "Needs" and
+    "SevereNeedTransition" read a condition the strategy states - InNeedsBracket or
+    ExpressNeedsTransition - against the needs, with higherPriorityStrategyConfig letting one need
+    stand aside for a more urgent one. "NeedBasedCooldown" reads how long to rest off a graph at a
+    need's level: Singing rests 600 s with Play full and 1455 s with Play as low as it goes, so a
+    bored robot sings less, not more. Only Spark, Pyramid and PlayWithHumans are left unevaluated.
+
+    New: pycozmo.needs, behavior.BehaviorExpressNeeds, behavior.BehaviorPlayAnimOnNeedsChange,
+    activity.NeedsStrategyConfig and Brain.apply_need_action().
+
+    Putting a need back is not done here on its own, because on a real robot it was a thing the
+    player did in the application: Feed is worth a third of Energy, and RepairHead, RepairLift and
+    RepairTreads a third of Repair each. Brain.apply_need_action() is how an application offers them.
+    Three actions are applied from here already - a fall, being laid on its side, and any behavior
+    whose name is also an action, which is FistBump and PopAWheelie.
+
+    Left out on purpose: "Wait", the behavior a severe-needs activity falls back on after asking for
+    help, which holds the robot until the need is met. With DriveInDesperation not implemented there
+    would be nothing between the announcement and sitting still forever, so the activity is left
+    with nothing to offer and the engine moves on. needs_handlers_config.json, which describes the
+    face glitching as Repair falls, is not read either.
+
+Bug fixes:
+- Fixed the off-board function list still saying two thirds of the animation audio plays and the
+    WWise Vorbis files stay silent, which v0.9.17 changed.
+
+
 v0.9.17 (Sep 20, 2026)
 ----------------------
 

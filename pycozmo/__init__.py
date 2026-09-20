@@ -34,6 +34,7 @@ from . import procedural_face
 from . import activity
 from . import behavior
 from . import emotions
+from . import needs
 from . import brain
 from . import audiokinetic
 from . import expressions

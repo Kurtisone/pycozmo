@@ -199,18 +199,74 @@ class MoodScorer:
         return float(self.score_graph.get_increment(mood.get(self.emotion_type, 0.0)))
 
 
+class NeedsStrategyConfig:
+    """
+    A condition on the nurture needs, as an activity's strategy states one.
+
+    Two kinds appear in the resources. "InNeedsBracket" names a need and a bracket and holds while
+    the need is read in it. "ExpressNeedsTransition" names a need alone and holds once, when the
+    need first falls into its critical bracket - it is what plays the get-in that announces the
+    robot is in trouble, after which the activity ends within a hundredth of a second.
+    """
+
+    #: Strategy configuration types this understands.
+    SUPPORTED_TYPES = ("InNeedsBracket", "ExpressNeedsTransition")
+
+    #: The bracket a transition is announced for.
+    TRANSITION_BRACKET = "Critical"
+
+    __slots__ = ["type", "need", "bracket", "expressed_bracket"]
+
+    def __init__(self, config_type: str, need: str, bracket: Optional[str] = None) -> None:
+        self.type = str(config_type)
+        self.need = str(need)
+        self.bracket = str(bracket) if bracket is not None else None
+        # For a transition, the bracket the announcement was last made for.
+        self.expressed_bracket: Optional[str] = None
+
+    @classmethod
+    def from_json(cls, data: Dict) -> "NeedsStrategyConfig":
+        return cls(config_type=data['strategyType'],
+                   need=data.get('need', ''),
+                   bracket=data.get('needBracket'))
+
+    @property
+    def is_supported(self) -> bool:
+        return self.type in self.SUPPORTED_TYPES and bool(self.need)
+
+    def holds(self, robot_needs: Any) -> bool:
+        """ Whether the condition is met. A need nothing tracks never meets one. """
+        if robot_needs is None or not self.is_supported:
+            return False
+        if self.type == "InNeedsBracket":
+            return bool(self.bracket) and robot_needs.in_bracket(self.need, self.bracket)
+        # ExpressNeedsTransition
+        return robot_needs.bracket(self.need) == self.TRANSITION_BRACKET and \
+            self.expressed_bracket != self.TRANSITION_BRACKET
+
+    def expressed(self, robot_needs: Any) -> None:
+        """ Note a transition as announced, so that it is announced once. """
+        if robot_needs is not None:
+            self.expressed_bracket = robot_needs.bracket(self.need)
+
+
 class ActivityStrategy:
     """
     When an activity wants to run, how long it runs, and how long it rests afterwards.
 
-    Only the "Simple" strategy is evaluated. The others gate on what this library does not have: a
-    spark sent from the application, the nurture needs (Energy, Repair and Play), a pyramid of
-    cubes, or a player asking for a game. An activity carrying one of them never wants to run,
-    which is also what the robot does while nothing has sparked it and its needs are full.
+    Four of the seven strategy types are evaluated. "Simple" asks nothing of the world. "Needs" and
+    "SevereNeedTransition" read the nurture needs, through a condition the strategy states, and are
+    what puts a robot in trouble into an activity of its own. "NeedBasedCooldown" runs whenever it
+    likes but rests for a stretch read off a graph at a need's level, so the lower the need the
+    sooner it comes round again.
+
+    The other three gate on what this library does not have: a spark sent from the application, a
+    pyramid of cubes, or a player asking for a game. An activity carrying one of them never wants to
+    run, which is also what the robot does while nothing has sparked it.
     """
 
     #: Strategy types this implementation can evaluate.
-    SUPPORTED_TYPES = ("Simple", )
+    SUPPORTED_TYPES = ("Simple", "Needs", "SevereNeedTransition", "NeedBasedCooldown")
 
     __slots__ = [
         "type",
@@ -224,6 +280,11 @@ class ActivityStrategy:
         "required_recent_on_treads",
         "max_time_without_interaction",
         "feature_gate",
+        "wants_to_run_config",
+        "higher_priority_config",
+        "need_id",
+        "need_cooldown_graph",
+        "need_cooldown_randomness_graph",
     ]
 
     def __init__(self,
@@ -237,7 +298,12 @@ class ActivityStrategy:
                  start_mood_scorers: Optional[List[MoodScorer]] = None,
                  required_recent_on_treads: Optional[float] = None,
                  max_time_without_interaction: Optional[float] = None,
-                 feature_gate: Optional[str] = None) -> None:
+                 feature_gate: Optional[str] = None,
+                 wants_to_run_config: Optional[NeedsStrategyConfig] = None,
+                 higher_priority_config: Optional[NeedsStrategyConfig] = None,
+                 need_id: Optional[str] = None,
+                 need_cooldown_graph: Optional[DecayGraph] = None,
+                 need_cooldown_randomness_graph: Optional[DecayGraph] = None) -> None:
         self.type = str(strategy_type)
         #: How long before the activity may end, and how long before it should. A negative
         #: should-end duration means never, which is how the severe-needs activities hold on until
@@ -256,6 +322,21 @@ class ActivityStrategy:
         self.max_time_without_interaction = \
             float(max_time_without_interaction) if max_time_without_interaction is not None else None
         self.feature_gate = str(feature_gate) if feature_gate is not None else None
+        #: The condition on the needs that has to hold for the activity to want the robot.
+        self.wants_to_run_config = wants_to_run_config
+        #: A condition that, holding, means something more urgent applies: needsSevereLowEnergy
+        #: stands aside while Repair is critical too, so a robot both broken and starving asks to be
+        #: mended rather than fed.
+        self.higher_priority_config = higher_priority_config
+        # The need a NeedBasedCooldown reads its rest off, and the two graphs it reads.
+        self.need_id = str(need_id) if need_id is not None else None
+        self.need_cooldown_graph = need_cooldown_graph
+        self.need_cooldown_randomness_graph = need_cooldown_randomness_graph
+
+    @staticmethod
+    def read_graph(data: Dict, key: str) -> Optional[DecayGraph]:
+        nodes = (data.get(key) or {}).get('nodes')
+        return DecayGraph([Node(x=n['x'], y=n['y']) for n in nodes]) if nodes else None
 
     @classmethod
     def from_json(cls, data: Dict) -> "ActivityStrategy":
@@ -270,16 +351,55 @@ class ActivityStrategy:
             start_mood_scorers=[MoodScorer.from_json(d) for d in data.get('startMoodScorer', [])],
             required_recent_on_treads=data.get('requiredRecentOnTreadsEventSecs'),
             max_time_without_interaction=data.get('maxTimeWithoutInteractionSecs'),
-            feature_gate=data.get('featureGate'))
+            feature_gate=data.get('featureGate'),
+            wants_to_run_config=NeedsStrategyConfig.from_json(data['wantsToRunStrategyConfig'])
+            if 'wantsToRunStrategyConfig' in data else None,
+            higher_priority_config=NeedsStrategyConfig.from_json(data['higherPriorityStrategyConfig'])
+            if 'higherPriorityStrategyConfig' in data else None,
+            need_id=data.get('needId'),
+            need_cooldown_graph=cls.read_graph(data, 'needCooldownGraph'),
+            need_cooldown_randomness_graph=cls.read_graph(data, 'needCooldownRandomnessGraph'))
 
     @property
     def is_supported(self) -> bool:
         """ Whether this implementation can tell when the strategy wants to run. """
         return self.type in self.SUPPORTED_TYPES
 
-    def get_cooldown(self) -> float:
-        """ How long to rest after a run, the randomness drawn afresh each time. """
-        return self.cooldown_base + random.uniform(0.0, self.cooldown_randomness)
+    def get_cooldown(self, robot_needs: Any = None) -> float:
+        """
+        How long to rest after a run, the randomness drawn afresh each time.
+
+        A NeedBasedCooldown reads both figures off a graph at its need's level instead: Singing
+        rests 600 s with Play full and 1500 s with Play empty, so a bored robot sings less, not
+        more. The flat figures stand in while nothing tracks the needs.
+        """
+        base, randomness = self.cooldown_base, self.cooldown_randomness
+        if self.type == "NeedBasedCooldown" and robot_needs is not None and self.need_id:
+            level = robot_needs.level(self.need_id)
+            if self.need_cooldown_graph is not None:
+                base = max(float(self.need_cooldown_graph.get_increment(level)), 0.0)
+            if self.need_cooldown_randomness_graph is not None:
+                randomness = max(float(self.need_cooldown_randomness_graph.get_increment(level)), 0.0)
+        return base + random.uniform(0.0, randomness)
+
+    def needs_allow(self, robot_needs: Any) -> bool:
+        """
+        Whether the nurture needs let the activity start.
+
+        A strategy with no condition on them always does, which is every strategy but the two that
+        put a robot in trouble into an activity of its own.
+        """
+        if self.wants_to_run_config is None:
+            return True
+        if self.higher_priority_config is not None and \
+                self.higher_priority_config.holds(robot_needs):
+            return False
+        return self.wants_to_run_config.holds(robot_needs)
+
+    def started(self, robot_needs: Any) -> None:
+        """ Note the activity starting, so that a transition is announced only once. """
+        if self.wants_to_run_config is not None:
+            self.wants_to_run_config.expressed(robot_needs)
 
     def mood_allows(self, mood: Dict[str, float]) -> bool:
         """
@@ -386,7 +506,8 @@ class Activity:
     def wants_to_run(self,
                      mood: Optional[Dict[str, float]] = None,
                      now: Optional[float] = None,
-                     on_treads_time: Optional[float] = None) -> bool:
+                     on_treads_time: Optional[float] = None,
+                     robot_needs: Any = None) -> bool:
         """ Whether the activity would take the robot now. """
         now = time.perf_counter() if now is None else now
         if not self.strategy.is_supported:
@@ -394,6 +515,8 @@ class Activity:
                 self.id, self.strategy.type))
             return False
         if now < self.cooldown_end_time:
+            return False
+        if not self.strategy.needs_allow(robot_needs):
             return False
         if not self.strategy.mood_allows(mood or {}):
             return False
@@ -411,7 +534,7 @@ class Activity:
             return False
         return now - self.start_time >= duration
 
-    def started(self, now: Optional[float] = None) -> None:
+    def started(self, now: Optional[float] = None, robot_needs: Any = None) -> None:
         """
         Note the activity taking the robot.
 
@@ -420,12 +543,13 @@ class Activity:
         it runs, so wiping them on the way in would be wiping them constantly.
         """
         self.start_time = time.perf_counter() if now is None else now
+        self.strategy.started(robot_needs)
 
-    def ended(self, now: Optional[float] = None) -> None:
+    def ended(self, now: Optional[float] = None, robot_needs: Any = None) -> None:
         """ Note the activity giving the robot up, and put it on cooldown. """
         now = time.perf_counter() if now is None else now
         self.start_time = None
-        self.cooldown_end_time = now + self.strategy.get_cooldown()
+        self.cooldown_end_time = now + self.strategy.get_cooldown(robot_needs)
 
     def choose(self, can_run: Callable[[str], bool], now: Optional[float] = None) -> Optional[str]:
         """

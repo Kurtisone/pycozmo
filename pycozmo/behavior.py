@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Sequence, Any
 
 from . import event
 from . import client
+from . import emotions
+from . import needs
 from . import robot
 from .logger import logger
 from .json_loader import get_json_files, load_json_file
@@ -79,10 +81,14 @@ class ReactionTrigger:
 class Behavior(event.Dispatcher):
     """ Behavior representation class. """
 
-    def __init__(self, cli: client.Client, conf: Any) -> None:
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None) -> None:
         super().__init__()
         self.cli = cli
         self.conf = conf
+        # The robot's nurture needs, for the behaviors that ask about them. The brain owns them and
+        # hands them over when it loads the behaviors; None means nothing tracks them.
+        self.needs = robot_needs
 
     def get_id(self) -> str:
         behavior_id: str = self.conf["behaviorID"]
@@ -131,8 +137,9 @@ class BehaviorPlayAnim(Behavior):
     #: Animation triggers for subclasses whose configuration carries none of its own.
     default_anim_triggers: Sequence[str] = ()
 
-    def __init__(self, cli: client.Client, conf: Any):
-        super().__init__(cli, conf)
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
         self.anim_triggers: List[str] = list(conf.get("animTriggers", []))
         # Triggers left to play during the current activation, and the position in them.
         self.sequence: List[str] = []
@@ -333,8 +340,9 @@ class BehaviorReactToOnCharger(BehaviorPlayAnim):
     #: Animations played when the sleep delay expires.
     sleep_anim_triggers = ("GoToSleepGetIn", "GoToSleepSleeping")
 
-    def __init__(self, cli: client.Client, conf: Any):
-        super().__init__(cli, conf)
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
         self.time_til_sleep_animation = float(conf.get("timeTilSleepAnimation_s", 300.0))
         self.time_til_disconnection = float(conf.get("timeTilDisconnection_s", 330.0))
         self.asleep = False
@@ -391,6 +399,83 @@ class BehaviorReactToOnCharger(BehaviorPlayAnim):
         super().deactivate()
 
 
+class BehaviorExpressNeeds(BehaviorPlayAnim):
+    """
+    Ask for what the robot needs, while a need sits in a bracket.
+
+    Six behaviors in the resources, and the five that any activity names are what makes the needs
+    visible: NothingToDo, PlayAlone, Hiking, Socialize, BuildPyramid and PlayWithHumans all list
+    them in their interlude chooser, so a robot getting bored or hungry says so between whatever
+    else it is doing. Which one comes first is the order that chooser lists them in - the severe
+    play requests before the mild repair, energy and play ones.
+
+    The cooldown is a graph read at the need's own level, so the lower the need falls the more often
+    the robot asks: Needs_MildLowEnergyRequest comes every 60 s while Energy is above 0.5 and every
+    20 s once it is under 0.1.
+    """
+
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
+        self.need: Optional[str] = conf.get("need")
+        self.need_bracket: Optional[str] = conf.get("needBracket")
+        nodes = (conf.get("cooldown") or {}).get("nodes") or []
+        self.cooldown_graph: Optional[emotions.DecayGraph] = \
+            emotions.DecayGraph([emotions.Node(x=n['x'], y=n['y']) for n in nodes]) if nodes else None
+        self.last_run_time: Optional[float] = None
+
+    def get_cooldown(self) -> float:
+        """ How long to hold back before asking again, at the need's current level. """
+        if self.cooldown_graph is None or self.needs is None or self.need is None:
+            return 0.0
+        return max(float(self.cooldown_graph.get_increment(self.needs.level(self.need))), 0.0)
+
+    def wants_to_run(self) -> bool:
+        if self.needs is None or self.need is None:
+            return False
+        if self.need_bracket is not None and not self.needs.in_bracket(self.need, self.need_bracket):
+            return False
+        if self.last_run_time is not None and \
+                time.perf_counter() - self.last_run_time < self.get_cooldown():
+            return False
+        return super().wants_to_run()
+
+    def activate(self) -> None:
+        # Counted from the start rather than the end, which is what the graph's figures suit: a
+        # 20 s cooldown on an animation that itself lasts several seconds.
+        self.last_run_time = time.perf_counter()
+        super().activate()
+
+
+class BehaviorPlayAnimOnNeedsChange(BehaviorPlayAnim):
+    """
+    Announce a need having moved to another bracket.
+
+    The three get-in behaviors of the severe needs activities. The activity's own strategy is what
+    decides the robot is in trouble; this plays the animation that says so, once, and does not play
+    again until the need moves somewhere else.
+    """
+
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
+        self.need: Optional[str] = conf.get("need")
+        # The bracket the announcement was last made for.
+        self.announced_bracket: Optional[str] = None
+
+    def wants_to_run(self) -> bool:
+        if self.needs is None or self.need is None:
+            return False
+        if self.needs.bracket(self.need) == self.announced_bracket:
+            return False
+        return super().wants_to_run()
+
+    def activate(self) -> None:
+        if self.needs is not None and self.need is not None:
+            self.announced_bracket = self.needs.bracket(self.need)
+        super().activate()
+
+
 class BehaviorDriveOffCharger(Behavior):
     """
     DriveOffCharger behavior - get off the charger.
@@ -412,8 +497,9 @@ class BehaviorDriveOffCharger(Behavior):
     #: is here so that a status stuck on the charger cannot drive the robot across the table.
     MAX_ATTEMPTS = 3
 
-    def __init__(self, cli: client.Client, conf: Any):
-        super().__init__(cli, conf)
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
         self.extra_distance = float(conf.get("extraDistanceToDrive_mm", 60.0))
         self.attempts = 0
         self.last_run = 0.0
@@ -479,14 +565,21 @@ def get_behavior_class_from_dict(data):
         "ReactToRobotShaken": BehaviorReactToRobotShaken,
         "ReactToSparked": BehaviorReactToSparked,
         "ReactToUnexpectedMovement": BehaviorReactToUnexpectedMovement,
+        "ExpressNeeds": BehaviorExpressNeeds,
+        "PlayAnimOnNeedsChange": BehaviorPlayAnimOnNeedsChange,
         # Not implemented, for lack of an animation in AnimationTriggerMap.json:
         # ReactToMotorCalibration, ReactToPlacedOnSlope, ReactToReturnedToTreads.
+        # Not implemented on purpose: Wait, which is what the severe needs activities fall back on
+        # once they have asked for help. It holds the robot until the need is met, and with
+        # DriveInDesperation missing there would be nothing between the get-in and sitting still
+        # forever, so the activity is left with nothing to offer and the engine moves on.
     }
     cls = class_map.get(data["behaviorClass"], Behavior)
     return cls
 
 
-def load_behaviors(resource_dir: str, cli: client.Client) -> Dict[str, Behavior]:
+def load_behaviors(resource_dir: str, cli: client.Client,
+                   robot_needs: Optional[needs.Needs] = None) -> Dict[str, Behavior]:
 
     start_time = time.perf_counter()
 
@@ -496,7 +589,7 @@ def load_behaviors(resource_dir: str, cli: client.Client) -> Dict[str, Behavior]
     for filename in behavior_files:
         data = load_json_file(filename)
         cls = get_behavior_class_from_dict(data)
-        behaviors[data['behaviorID']] = cls(cli, data)
+        behaviors[data['behaviorID']] = cls(cli, data, robot_needs)
 
     logger.debug("Loaded {} behaviors in {:.02f} s.".format(len(behaviors), time.perf_counter() - start_time))
 

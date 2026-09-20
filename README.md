@@ -146,6 +146,57 @@ Two details matter for the result to look right rather than merely work:
 The mood engine works: emotion events shift the seven emotions and each decays on its own schedule. It gates the one
 activity whose configuration asks it to - see below - and does not yet weigh anything else.
 
+### What the robot needs
+
+Alongside the mood sit three nurture needs - `Repair`, `Energy` and `Play`. A need is not an emotion: an emotion is a
+shove that decays back to nothing within a couple of minutes, while a need starts full, falls for hours, and only
+something done to the robot puts it back. They are what turns a robot left to itself from merely idle into one that
+starts asking for something.
+
+They fall at the rates Anki set, which depend on how low they already are, and each holds at full for twenty minutes
+first. Left alone from a fresh start, a robot reaches each bracket at:
+
+| Need | Normal | Warning | Critical |
+|---|---|---|---|
+| `Play` | 20 min | 55 min | 1 h 23 |
+| `Energy` | 22 min | 1 h 39 | 3 h 24 |
+| `Repair` | 34 min | 9 h 51 | 19 h 11 |
+
+One need also drags on another: `Repair` between 0.03 and 0.3 makes `Play` fall twice as fast, so a broken robot gets
+bored quicker. It is the only cross-effect in the whole configuration - every other multiplier in the file is one.
+
+**What you see.** `NothingToDo`, `PlayAlone`, `Hiking`, `Socialize`, `BuildPyramid` and `PlayWithHumans` all list the
+five needs requests as interludes, so from about 55 minutes in the robot starts slipping them between whatever else it
+is doing, the more often the lower the need:
+
+```
+pycozmo.behavior     INFO     Activating Needs_MildLowPlayRequest
+pycozmo.animation    INFO     Playing animation group NeedsMildLowPlayRequest
+```
+
+Once a need is critical, two activities of their own take the robot over and announce it. `Repair` outranks `Energy`,
+so a robot both broken and starving asks to be mended rather than fed - that is `needsSevereLowEnergy` standing aside
+through its `higherPriorityStrategyConfig`.
+
+**Putting a need back** is something no part of this library does on its own, because on a real robot it was a thing
+the player did in the app: `Feed` is worth a third of `Energy`, and `RepairHead`, `RepairLift` and `RepairTreads` a
+third of `Repair` each. An application built on PyCozmo offers them the same way:
+
+```python
+brain.apply_need_action("Feed")
+```
+
+The other eighty-odd actions are what the robot and the player do together, most of them worth `Play` alone. Three are
+applied from here already: a fall costs 0.15 of `Repair`, being laid on its side 0.03 of `Play`, and a behavior whose
+name is also an action - `FistBump`, `PopAWheelie` - is worth that action when it finishes. The rest wait on the games
+and the cube work they belong to.
+
+Two pieces of the needs are deliberately left out. `Wait`, which is what a severe-needs activity falls back on after
+it has asked for help, holds the robot until the need is met; with `DriveInDesperation` not implemented there would be
+nothing between the announcement and sitting still forever, so the activity is left with nothing to offer and the
+engine moves on to the next one. And `needs_handlers_config.json` describes the face glitching as `Repair` falls,
+which is not read yet.
+
 ### Sound
 
 An animation does not carry its sound. It names a WWise event by the 32 bit identifier WWise hashed its name into, and
@@ -257,7 +308,9 @@ On-board functions (see [docs/functions.md](docs/functions.md) for details:
 Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md) for details:
 - [x] Procedural face generation
 - [x] Cozmo animations from FlatBuffers .bin files
-- [ ] Personality engine - the mood engine works and gates the one activity whose configuration asks it to
+- [ ] Personality engine - the mood engine works and gates the one activity whose configuration asks it to, and the
+    three nurture needs fall and drive the requests and activities that read them, see
+    [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
     them, see [Cozmo's Own Behavior](#cozmos-own-behavior)
 - [ ] Motion detection

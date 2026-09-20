@@ -234,12 +234,12 @@ class TestAgainstCozmoAssets(unittest.TestCase):
         cls.activities = pycozmo.activity.load_activities(str(pycozmo.util.get_cozmo_asset_dir()))
 
     def test_the_strategies_that_are_not_evaluated(self):
-        # Every one of them gates on what this library does not have: a spark from the application,
-        # the nurture needs, a pyramid of cubes or a player asking for a game.
+        # The three left gate on what this library does not have: a spark from the application, a
+        # pyramid of cubes, or a player asking for a game. The needs strategies used to be here too;
+        # see test_needs.py .
         unsupported = {activity.strategy.type
                        for activity in self.activities.values() if not activity.strategy.is_supported}
-        self.assertEqual(unsupported, {"Spark", "Needs", "SevereNeedTransition",
-                                       "NeedBasedCooldown", "PlayWithHumans", "Pyramid"})
+        self.assertEqual(unsupported, {"Spark", "PlayWithHumans", "Pyramid"})
 
     def test_every_sub_activity_is_known(self):
         for activity in self.activities.values():

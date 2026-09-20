@@ -16,6 +16,7 @@ from .logger import logger, logger_reaction, logger_behavior, logger_emotion
 from . import client
 from . import event
 from . import emotions
+from . import needs
 from . import behavior
 from . import activity
 from . import util
@@ -44,6 +45,13 @@ class Brain:
     #: nothing. Every activity is consulted each time, so this is not free.
     IDLE_RETRY_TIME = 1.0
 
+    #: Need action applied for each orientation the robot can end up in. Only being laid on its
+    #: side is worth anything in Anki's table; landing on its back or face is not.
+    ORIENTATION_NEED_ACTIONS = {
+        robot.RobotOrientation.ON_LEFT_SIDE: "PlacedOnSide",
+        robot.RobotOrientation.ON_RIGHT_SIDE: "PlacedOnSide",
+    }
+
     #: Reaction posted for each orientation the robot can end up in.
     ORIENTATION_REACTIONS = {
         robot.RobotOrientation.ON_THREADS: "ReturnedToTreads",
@@ -65,7 +73,10 @@ class Brain:
         start_time = time.perf_counter()
         resource_dir = str(util.get_cozmo_asset_dir())
         self.activities = activity.load_activities(resource_dir)
-        self.behaviors = behavior.load_behaviors(resource_dir, self.cli)
+        # The needs are loaded before the behaviors, which are handed them: six of them ask about
+        # them, and they are what makes a robot left alone start asking to be played with.
+        self.needs = needs.load_needs(resource_dir)
+        self.behaviors = behavior.load_behaviors(resource_dir, self.cli, self.needs)
         self.reaction_trigger_behavior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
         self.emotion_types = emotions.load_emotion_types(resource_dir)
         self.emotion_events = emotions.load_emotion_events(resource_dir)
@@ -154,6 +165,9 @@ class Brain:
             if not self.behavior:
                 return
             logger_reaction.info("Done.")
+            # A behavior whose name is also a need action is worth what that action is worth. Two
+            # behaviors in the resources are: FistBump, worth 0.25 of Play, and PopAWheelie, 0.2.
+            self.apply_need_action_if_known(self.behavior.get_id())
             if isinstance(self.behavior, behavior.BehaviorDriveOffCharger):
                 self.drive_off_charger_time = time.perf_counter()
             self.deactivate_behavior()
@@ -169,6 +183,9 @@ class Brain:
     def on_robot_orientation_change(self, cli: client.Client, orientation: robot.RobotOrientation) -> None:
         if orientation == robot.RobotOrientation.ON_THREADS:
             self.on_treads_time = time.perf_counter()
+        action = self.ORIENTATION_NEED_ACTIONS.get(orientation)
+        if action:
+            self.apply_need_action(action)
         reaction = self.ORIENTATION_REACTIONS.get(orientation)
         if reaction:
             self.post_reaction(reaction)
@@ -179,6 +196,8 @@ class Brain:
 
     def on_robot_falling_change(self, cli: client.Client, state: bool) -> None:
         if state:
+            # A fall costs the most of any accident in Anki's table: 0.15 of Repair and 0.1 of Play.
+            self.apply_need_action("Fall")
             self.post_reaction("RobotFalling")
 
     def on_robot_on_charger_change(self, cli: client.Client, state: bool) -> None:
@@ -385,7 +404,8 @@ class Brain:
         now = time.perf_counter() if now is None else now
         mood = self.get_mood()
         for candidate in self.get_candidate_activities():
-            if not candidate.wants_to_run(mood, now=now, on_treads_time=self.on_treads_time):
+            if not candidate.wants_to_run(mood, now=now, on_treads_time=self.on_treads_time,
+                                          robot_needs=self.needs):
                 continue
             # A behavior that asks to run just after the switch to its activity gets its chance:
             # the activity is about to start unless it is the one already running.
@@ -431,14 +451,14 @@ class Brain:
         now = time.perf_counter() if now is None else now
         logger_behavior.info("Starting activity {}".format(new_activity.id))
         self.sub_activity = new_activity
-        new_activity.started(now)
+        new_activity.started(now, self.needs)
 
     def end_sub_activity(self, now: Optional[float] = None) -> None:
         """ Take the robot back from the activity that has it, and put that one on cooldown. """
         if self.sub_activity is None:
             return
         logger_behavior.info("Ending activity {}".format(self.sub_activity.id))
-        self.sub_activity.ended(now)
+        self.sub_activity.ended(now, self.needs)
         self.sub_activity = None
 
     def heartbeat_thread_run(self) -> None:
@@ -452,6 +472,7 @@ class Brain:
         while not self.stop_flag:
 
             self.update_emotion_types()
+            self.update_needs()
             self.update_hiccups()
             self.update_activity()
             # TODO: Timers
@@ -462,6 +483,34 @@ class Brain:
         """ Update emotion types from their decay functions. """
         for emotion_type in self.emotion_types.values():
             emotion_type.update()
+
+    def update_needs(self, now: Optional[float] = None) -> None:
+        """
+        Let the nurture needs fall.
+
+        They move once a minute, not once a frame: the rates are quoted per minute against a decay
+        period of one, and the needs themselves take hours to go anywhere. Play reaches its warning
+        bracket after about 55 minutes of a robot left to itself, and its critical one after 83;
+        Energy after 99 and 204; Repair after ten hours and nineteen.
+        """
+        self.needs.update(now)
+
+    def apply_need_action(self, action_id: str, now: Optional[float] = None) -> bool:
+        """
+        Apply what one action is worth to the needs, and say whether it counted.
+
+        This is how a need goes back up. Nothing in this library does it on its own for the actions
+        that matter most - "Feed" is worth a third of Energy, "RepairHead", "RepairLift" and
+        "RepairTreads" a third of Repair each - because on a real robot they were a thing the player
+        did in the application. An application built on PyCozmo has to offer them the same way.
+        """
+        return self.needs.apply_action(action_id, now)
+
+    def apply_need_action_if_known(self, action_id: str, now: Optional[float] = None) -> bool:
+        """ Apply an action if the configuration names one, quietly doing nothing if it does not. """
+        if action_id not in self.needs.actions:
+            return False
+        return self.needs.apply_action(action_id, now)
 
     def get_hiccup_params(self) -> Dict[str, float]:
         """ Hiccup parameters, from the reaction trigger map, over the defaults kept here. """
