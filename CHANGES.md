@@ -8,6 +8,39 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.16 (Sep 20, 2026)
+----------------------
+
+Bug fixes:
+- Fixed every animation frame being sent twice, which ran the animations at about half speed and
+    chopped their sound into a stutter. play_anim_ppclip() turned keyframe times into frames by
+    adding each gap to a running total that already counted the frame it had just sent, so a gap of
+    one frame cost two: the keyframe's own, and an empty one after it. Measured over the 9100 clips
+    in Anki's resources, an animation took 1.721 times as long as its own keyframes say it lasts;
+    it now takes 1.0000 times, and no clip is off by more than a frame.
+
+    The sound was the audible half. A keyframe lays one frame of audio every 33 ms, which are
+    exactly the gaps that doubled, so an empty frame landed between every two frames of sound -
+    verified on anim_bored_02, whose 40 frames of sound all came out alone between two silences. On
+    a robot that is 15 Hz of chop; through the emulator the browser is handed half the sound it
+    needs per unit of time and its buffer starves instead. None of the 17740 runs of sound in the
+    resources is a single frame now, and the longest is 319 frames unbroken, 10.5 s. The bug arrived
+    with the animation controller in 2019 and went unheard because nothing played audio until
+    v0.9.15.
+
+    A keyframe now belongs to the frame its time falls on. The 3 % of keyframes in the resources
+    that do not sit on the 33 ms grid are rounded to their nearest frame rather than having their
+    gaps rounded and added up, which is what keeps a long animation on time. Keyframes that then
+    land on the same frame share it, as the robot's one slot per frame does, rather than being
+    spread over consecutive frames, which would stretch the clip again: that costs a sound on 197
+    of 325678 audio frames, across 48 of the 9100 clips, against the 35853 sounds already masked by
+    a keyframe naming several events at once, which PyCozmo does not mix.
+
+Other changes:
+- Added robot.FRAME_MS, the 33 ms grid the animation resources are authored on, which anim.py and
+    client.py both used as a literal.
+
+
 v0.9.15 (Sep 20, 2026)
 ----------------------
 
