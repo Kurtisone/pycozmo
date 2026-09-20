@@ -10,30 +10,36 @@ the samples to the robot's speaker. Going from the identifier to samples takes t
   container of takes, and each take to a media file. Cozmo's own bank, holding all 380 events its
   animations name, is the one bank that is not unpacked on disk: it sits inside AudioAssets.zip.
 - The media file is a WEM, read by pycozmo.audiokinetic.wem . Two thirds of the events Cozmo's
-  animations trigger resolve to IMA ADPCM, which decodes; the rest are WWise Vorbis, whose
-  codebooks never shipped with the robot's resources, and stay silent.
+  animations trigger resolve to IMA ADPCM, which decodes. The rest are WWise Vorbis, whose
+  codebooks never shipped with the robot's resources; those play only once they have been converted
+  by tools/pycozmo_convert_audio.py, which leaves a WAV file per media identifier under
+  util.get_converted_sound_dir() and is what this looks for first.
 - The samples are resampled to the rate the robot's speaker runs at and U-law encoded into the
   744 sample frames OutputAudio carries, one per animation frame.
 
 """
 
 import os
+import pathlib
 import random
 import time
+import wave
 import zipfile
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
 from .logger import logger
 from . import audio
 from . import protocol_encoder
+from . import util
 from .audiokinetic import soundbank, soundbanksinfo, wem
 
 
 __all__ = [
     "AudioLibrary",
 
+    "add_converted_sound",
     "load_audio_library",
 ]
 
@@ -47,6 +53,10 @@ FRAME_SAMPLES = 744
 #: Bank that is only present inside AudioAssets.zip, and the archive member holding it.
 PACKED_BANK = "Cozmo.bnk"
 
+#: How many encoded frames to keep. Cozmo's sounds run to 97 minutes once the converted Vorbis is
+#: counted, which is too much to hold all of; the oldest go when the count is reached.
+FRAME_CACHE_SIZE = 40000
+
 
 class AudioLibrary:
     """ The sounds the animations can play, by WWise event identifier. """
@@ -57,7 +67,8 @@ class AudioLibrary:
         "containers",
         "sounds",
         "files",
-        "_pcm",
+        "converted",
+        "_playable",
         "_frames",
     ]
 
@@ -68,9 +79,12 @@ class AudioLibrary:
         self.sounds: Dict[int, soundbank.SFX] = {}
         # Media file identifier -> path on disk.
         self.files: Dict[int, str] = {}
-        # Decoded samples by media file identifier, and encoded frames by file and volume.
-        # Decoding and U-law encoding are both slow enough to be worth keeping.
-        self._pcm: Dict[int, Tuple[List[int], int, int]] = {}
+        # Media file identifier -> converted WAV, for the files PyCozmo cannot decode itself.
+        self.converted: Dict[int, str] = {}
+        # Whether a media file can be played at all, which costs a header read to answer.
+        self._playable: Dict[int, bool] = {}
+        # Encoded frames by media file and volume. Decoding and U-law encoding are both slow enough
+        # to be worth keeping, and this is what playback actually asks for.
         self._frames: Dict[Tuple[int, int], List[protocol_encoder.OutputAudio]] = {}
 
     def add_bank(self, bank: soundbank.SoundBank) -> None:
@@ -125,7 +139,7 @@ class AudioLibrary:
         A take is drawn at random, the way a WWise random container behaves. The takes of one event
         are variants of the same sound, so which one plays is not meant to be predictable.
         """
-        playable = [f for f in self.get_takes(event_id) if self._get_pcm(f)[0]]
+        playable = [f for f in self.get_takes(event_id) if self.is_playable(f)]
         if not playable:
             return []
         file_id = random.choice(playable)
@@ -136,31 +150,80 @@ class AudioLibrary:
         if cached is None:
             samples, channels, sample_rate = self._get_pcm(file_id)
             cached = self.encode(samples, channels, sample_rate, key[1] / 100.0)
-            self._frames[key] = cached
+            self._remember(key, cached)
         return cached
 
-    def _get_pcm(self, file_id: int) -> Tuple[List[int], int, int]:
-        """ Decode a media file to samples, keeping the result. Empty if it cannot be decoded. """
-        cached = self._pcm.get(file_id)
-        if cached is not None:
-            return cached
-        result: Tuple[List[int], int, int] = ([], 1, SAMPLE_RATE)
-        path = self.files.get(file_id)
+    def is_playable(self, file_id: int) -> bool:
+        """
+        Whether a media file can be turned into sound.
+
+        Answered from the file's header rather than by decoding it, so that choosing between an
+        event's takes costs nothing. The answer is kept, since an event is asked for over and over.
+        """
+        known = self._playable.get(file_id)
+        if known is not None:
+            return known
+        answer = False
+        if file_id in self.converted:
+            answer = True
+        else:
+            path = self.files.get(file_id)
+            if path is not None:
+                media = wem.load_wem(path)
+                answer = media is not None and media.is_supported
+        self._playable[file_id] = answer
+        return answer
+
+    def _remember(self, key: Tuple[int, int], frames: List[protocol_encoder.OutputAudio]) -> None:
+        """ Keep an encoding, dropping the oldest once there are too many frames. """
+        self._frames[key] = frames
+        held = sum(len(value) for value in self._frames.values())
+        while held > FRAME_CACHE_SIZE and len(self._frames) > 1:
+            oldest = next(iter(self._frames))
+            held -= len(self._frames.pop(oldest))
+
+    def _get_pcm(self, file_id: int) -> Tuple[np.ndarray, int, int]:
+        """
+        Decode a media file to samples. Empty if it cannot be decoded.
+
+        The result is not kept: a converted Vorbis file can run to minutes, and it is the encoded
+        frames that playback asks for again, not these.
+        """
+        empty = np.zeros(0, dtype=np.int16)
+        path = self.converted.get(file_id)
         if path is not None:
-            media = wem.load_wem(path)
-            if media is not None and media.is_supported:
-                try:
-                    result = (media.decode(), media.channels, media.sample_rate)
-                except Exception as e:
-                    logger.warning("Failed to decode audio file %s. %s", file_id, e)
-        self._pcm[file_id] = result
-        return result
+            try:
+                return self._read_wav(path)
+            except (OSError, wave.Error, ValueError) as e:
+                logger.warning("Failed to read converted audio file %s. %s", file_id, e)
+                return empty, 1, SAMPLE_RATE
+        path = self.files.get(file_id)
+        if path is None:
+            return empty, 1, SAMPLE_RATE
+        media = wem.load_wem(path)
+        if media is None or not media.is_supported:
+            return empty, 1, SAMPLE_RATE
+        try:
+            return np.array(media.decode(), dtype=np.int16), media.channels, media.sample_rate
+        except Exception as e:
+            logger.warning("Failed to decode audio file %s. %s", file_id, e)
+            return empty, 1, SAMPLE_RATE
 
     @staticmethod
-    def encode(samples: Sequence[int], channels: int, sample_rate: int,
+    def _read_wav(fspec: str) -> Tuple[np.ndarray, int, int]:
+        """ Read a converted sound. tools/pycozmo_convert_audio.py writes 16 bit PCM. """
+        with wave.open(fspec, "rb") as f:
+            if f.getsampwidth() != 2:
+                raise ValueError("{} is {} bit, not 16.".format(fspec, f.getsampwidth() * 8))
+            channels, rate = f.getnchannels(), f.getframerate()
+            raw = f.readframes(f.getnframes())
+        return np.frombuffer(raw, dtype="<i2"), channels, rate
+
+    @staticmethod
+    def encode(samples: Union[Sequence[int], np.ndarray], channels: int, sample_rate: int,
                volume: float = 1.0) -> List[protocol_encoder.OutputAudio]:
         """ Mix down, resample to the robot's rate, and U-law encode into OutputAudio frames. """
-        if not samples:
+        if len(samples) == 0:
             return []
         data = np.array(samples, dtype=np.float64)
         if channels > 1:
@@ -213,9 +276,29 @@ def load_audio_library(resource_dir: str) -> AudioLibrary:
             if ext == ".wem" and stem.isdigit():
                 library.files.setdefault(int(stem), os.path.join(root, name))
 
-    logger.debug("Loaded %s audio events and %s media files in %.02f s.",
-                 len(library.events), len(library.files), time.perf_counter() - start_time)
+    add_converted_sound(library)
+
+    logger.debug("Loaded %s audio events, %s media files and %s converted ones in %.02f s.",
+                 len(library.events), len(library.files), len(library.converted),
+                 time.perf_counter() - start_time)
     return library
+
+
+def add_converted_sound(library: AudioLibrary, converted_dir: Optional[str] = None) -> None:
+    """
+    Index the sounds converted out of a format PyCozmo cannot decode.
+
+    One WAV per media file identifier, as tools/pycozmo_convert_audio.py leaves them. They take
+    precedence over the WEM of the same identifier, which is the point: the WEM is the one PyCozmo
+    could not read.
+    """
+    directory = util.get_converted_sound_dir() if converted_dir is None else pathlib.Path(converted_dir)
+    if not directory.is_dir():
+        return
+    for entry in sorted(os.listdir(directory)):
+        stem, ext = os.path.splitext(entry)
+        if ext == ".wav" and stem.isdigit():
+            library.converted[int(stem)] = str(directory / entry)
 
 
 def _load_bank(library: AudioLibrary, reader: soundbank.SoundBankReader, fspec: str) -> None:

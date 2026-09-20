@@ -29,6 +29,7 @@ __all__ = [
     'frange',
     'get_pycozmo_dir',
     'get_cozmo_asset_dir',
+    'get_converted_sound_dir',
     'check_assets',
     'get_cozmo_anim_dir',
 ]
@@ -801,6 +802,17 @@ def get_pycozmo_dir() -> pathlib.Path:
 def get_cozmo_asset_dir() -> pathlib.Path:
     """ Get Cozmo asset directory. """
     path = get_pycozmo_dir() / "assets"
+    return path
+
+
+def get_converted_sound_dir() -> pathlib.Path:
+    """
+    Get the directory holding sounds converted from a format PyCozmo cannot decode.
+
+    It sits beside the assets rather than inside them, so that downloading the resources again does
+    not take it with them, and so that it is plainly not Anki's. See tools/pycozmo_convert_audio.py .
+    """
+    path = get_pycozmo_dir() / "converted_sound"
     return path
 
 

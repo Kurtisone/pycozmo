@@ -153,15 +153,33 @@ the application has to work out what that event plays and stream the samples to 
 893 of the 993 animations come with sound, and the speaker is given a volume on connection, which nothing did before -
 the robot came up silent and stayed that way.
 
-Two thirds of it plays. Weighted by how often the animations actually trigger them, 64% of the audio events resolve to
-IMA ADPCM, which `pycozmo.audiokinetic.wem` decodes; the other 34% are WWise Vorbis, and **those stay silent**. WWise
-strips the Vorbis setup header out of its files and keeps the codebooks in its own sound engine, which shipped inside
-the Cozmo application rather than in the robot's resources - there is not one codebook anywhere under
-`cozmo_resources`, so they cannot be decoded from what the robot itself came with. The ADPCM side is the screen, the
-servos, the blinks, the bored noises; the Vorbis side is most of Cozmo's voice.
+Getting from an identifier to samples needs Cozmo's own sound bank, which holds all 380 events its animations name and
+is the one bank the resources do not unpack - it is read straight out of `AudioAssets.zip`.
 
-Getting from an identifier to samples also needs Cozmo's own sound bank, which holds all 380 events its animations
-name and is the one bank the resources do not unpack - it is read straight out of `AudioAssets.zip`.
+**Two thirds plays out of the box.** Weighted by how often the animations actually trigger them, 66% of the audio
+events resolve to IMA ADPCM, which `pycozmo.audiokinetic.wem` decodes: the screen, the servos, the blinks, the bored
+noises. Another 32% are WWise Vorbis, which take one conversion first, and the last 2% are events the sound banks do
+not resolve to a file at all.
+
+#### Converting the Vorbis sounds
+
+WWise does not store playable Vorbis. It strips the setup header's codebooks out and leaves 10 bit indices into a
+library of 598 that lives in its sound engine - and that engine shipped inside the Cozmo application, not with the
+robot's resources. There is not one codebook anywhere under `cozmo_resources`, so those sounds cannot be decoded from
+what the robot itself came with, which is most of Cozmo's voice.
+
+With a copy of the application, they can. `tools/pycozmo_convert_audio.py` reads the codebooks out of it, rebuilds each
+file into a real Ogg Vorbis stream, and leaves a WAV per sound under `~/.pycozmo/converted_sound/`, which PyCozmo then
+plays in place of the files it cannot read:
+
+```
+pycozmo_convert_audio.py com.anki.cozmo.apk
+```
+
+All 1987 of them convert, in under three minutes, for 255 MB - and animation sound goes from 66% to **98%**. Nothing
+from the application is copied: the codebooks are read while converting and never stored. The Vorbis decoding itself is
+done by `ffmpeg`, which is why this happens once, in a tool, rather than in the library - PyCozmo gains no dependency
+from it.
 
 ### What the robot does when nothing has happened
 

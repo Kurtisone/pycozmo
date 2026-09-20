@@ -66,5 +66,6 @@ setuptools.setup(
         "tools/pycozmo_update.py",
         "tools/pycozmo_resources.py",
         "tools/pycozmo_app.py",
+        "tools/pycozmo_convert_audio.py",
     ],
 )
