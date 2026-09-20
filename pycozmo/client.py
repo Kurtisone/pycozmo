@@ -605,10 +605,14 @@ class Client(event.Dispatcher):
 
     def activate_behavior(self, behavior):
         self.add_child_dispatcher(behavior)
+        behavior.deactivated = False
         behavior.activate()
 
     def deactivate_behavior(self, behavior):
         self.del_child_dispatcher(behavior)
+        # Set before deactivating, so that anything the behavior is still waiting on cannot report
+        # it done and end whatever takes its place.
+        behavior.deactivated = True
         behavior.deactivate()
 
     def enable_animations(self, enabled: bool = True) -> None:

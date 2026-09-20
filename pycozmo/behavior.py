@@ -86,6 +86,11 @@ class Behavior(event.Dispatcher):
         super().__init__()
         self.cli = cli
         self.conf = conf
+        # Whether the behavior has been taken off the robot. A behavior that waits on a timer can
+        # have its callback run just after that, and one that then reported itself done would end
+        # whatever had taken its place - a reaction, usually. It starts False so that a behavior
+        # driven straight rather than through the client works as it always did.
+        self.deactivated = False
         # The robot's nurture needs, for the behaviors that ask about them. The brain owns them and
         # hands them over when it loads the behaviors; None means nothing tracks them.
         self.needs = robot_needs
@@ -97,10 +102,13 @@ class Behavior(event.Dispatcher):
     def give_up(self, reason: str) -> None:
         """ Report the behavior as done without doing anything, and say why. """
         logger.warning("Behavior '{}' {}.".format(self.get_id(), reason))
-        self.cli.conn.post_event(event.EvtBehaviorDone, self.cli)
+        self.done()
 
     def done(self) -> None:
-        """ Report the behavior as done. """
+        """ Report the behavior as done, unless it has already been taken off the robot. """
+        if self.deactivated:
+            logger.debug("Behavior '{}' finished after being deactivated.".format(self.get_id()))
+            return
         self.cli.conn.post_event(event.EvtBehaviorDone, self.cli)
 
     def post_emotion_event(self, name: str) -> None:

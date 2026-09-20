@@ -109,6 +109,31 @@ class TestBehavior(BehaviorTestCase):
         self.assertEqual(self.cli.played, [])
         self.assertDone()
 
+    def test_a_behavior_taken_off_the_robot_cannot_report_itself_done(self):
+        # A behavior waiting on a timer or an animation can finish just after something else has
+        # taken the robot - a reaction, usually. Reporting itself done then would end the reaction
+        # instead of itself.
+        behavior = self.make(pycozmo.behavior.BehaviorPlayAnim, {"animTriggers": ["ReactToCliff"]})
+        behavior.activate()
+        behavior.deactivated = True
+        self.complete_animation()
+        self.assertNotDone()
+
+    def test_giving_up_is_silenced_the_same_way(self):
+        behavior = self.make(pycozmo.behavior.Behavior)
+        behavior.deactivated = True
+        behavior.activate()
+        self.assertNotDone()
+
+    def test_the_client_is_what_marks_a_behavior_off_the_robot(self):
+        behavior = self.make(pycozmo.behavior.BehaviorPlayAnim, {"animTriggers": ["ReactToCliff"]})
+        cli = cast(pycozmo.client.Client, self.cli)
+        self.assertFalse(behavior.deactivated)
+        pycozmo.client.Client.deactivate_behavior(cli, behavior)
+        self.assertTrue(behavior.deactivated)
+        pycozmo.client.Client.activate_behavior(cli, behavior)
+        self.assertFalse(behavior.deactivated, "activating it again puts it back on the robot")
+
 
 class TestBehaviorPlayAnim(BehaviorTestCase):
 
