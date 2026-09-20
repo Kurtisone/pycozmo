@@ -129,6 +129,19 @@ class TestNeeds(unittest.TestCase):
         # 300 s is five periods.
         self.assertAlmostEqual(0.95, held.level("Play"), places=6)
 
+    def test_stepping_coarsely_and_finely_agree(self):
+        # The rate a need falls at depends on the bracket it is in, so several periods at once have
+        # to be applied one at a time. They are not, and a caller as slow as a stalled heartbeat
+        # thread would see a need fall at a rate it left behind long ago.
+        rates = ((0.5, 0.01), (0.2, 0.05), (0.03, 0.2))
+        fine = needs.Needs(needs={"Play": make_need(rates=rates, now=0.0)}, decay_period=60.0)
+        coarse = needs.Needs(needs={"Play": make_need(rates=rates, now=0.0)}, decay_period=60.0)
+        for minute in range(1, 61):
+            fine.update(now=minute * 60.0)
+        coarse.update(now=3600.0)
+        self.assertAlmostEqual(fine.level("Play"), coarse.level("Play"), places=9)
+        self.assertLess(fine.level("Play"), 1.0, "the need did fall")
+
     def test_a_need_that_is_not_held_reads_as_full(self):
         held = needs.Needs(needs={})
         self.assertEqual(1.0, held.level("Play"))

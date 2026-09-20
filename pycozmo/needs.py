@@ -305,14 +305,22 @@ class Needs:
         if periods < 1:
             return
         self._decay_debt = (elapsed + self._decay_debt) - periods * self.decay_period
-        # Every need falls against the same picture of the others, so the multipliers are read
-        # before any level moves. Otherwise the order the needs happen to be held in would matter.
-        multipliers = {name: self.multiplier_for(name) for name in self.needs}
-        for name, need in self.needs.items():
+        # One period at a time, however many have gone by. The rate a need falls at depends on the
+        # bracket it is in, so applying ten periods at the rate that held ten periods ago is not the
+        # same thing - and more than one period goes by whenever the caller is slow, which is what
+        # happens when the heartbeat thread stalls.
+        for period in range(periods):
+            period_time = now - (periods - 1 - period) * self.decay_period
+            # Every need falls against the same picture of the others, so the multipliers are read
+            # before any level moves. Otherwise the order the needs happen to be held in would
+            # matter.
+            multipliers = {name: self.multiplier_for(name) for name in self.needs}
+            for name, need in self.needs.items():
+                if need.holds_at_full(period_time):
+                    continue
+                need.decay(1, multipliers[name])
+        for need in self.needs.values():
             need.last_decay_time = now
-            if need.holds_at_full(now):
-                continue
-            need.decay(periods, multipliers[name])
 
     def multiplier_for(self, name: str) -> float:
         """
