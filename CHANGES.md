@@ -8,6 +8,22 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.14 (Sep 20, 2026)
+----------------------
+
+Bug fixes:
+- Fixed the procedural face crashing on a negative lid bend. The lid's crease is a chord whose
+    bounding box is built from the signed `bend` clip parameter, and current Pillow rejects a box
+    whose corners come out of order, where older Pillow silently normalised it. Eleven call sites in
+    procedural_face.py build a box the same way, from bend, an eye corner radius, or a lid raised
+    past fully open - all signed parameters read straight from Anki's clip data - and every one of
+    them is fixed the same way, by sorting the corners before drawing. A rectangle, pieslice or chord
+    is the same shape either way, so this changes nothing about what gets drawn. It surfaced on an
+    actual robot: the heartbeat thread died mid-session playing anim_bored_02, silently, since Thread
+    only puts an uncaught exception on stderr - and a dead heartbeat stops emotion decay, hiccups,
+    and the activity engine along with it.
+
+
 v0.9.13 (Sep 20, 2026)
 ----------------------
 
