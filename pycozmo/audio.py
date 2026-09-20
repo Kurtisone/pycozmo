@@ -18,12 +18,17 @@ from . import protocol_encoder
 
 
 __all__ = [
+    "SILENCE",
+
     "load_wav",
 ]
 
 
 MULAW_MAX = 0x7FFF
 MULAW_BIAS = 132
+
+#: U-law byte for a sample of nought. Frames are padded with it.
+SILENCE = 0xFF
 
 
 def load_wav(filename: str) -> List[protocol_encoder.OutputAudio]:
@@ -57,7 +62,9 @@ def load_wav(filename: str) -> List[protocol_encoder.OutputAudio]:
 
 def bytes_to_cozmo(byte_string: bytes, rate_correction: int, channels: int) -> bytearray:
     """ Convert a 744 sample, 16-bit audio frame into a U-law encoded frame. """
-    out = bytearray(744)
+    # A short final frame is padded with silence, which in U-law is 0xFF and not nought - a nought
+    # byte is very nearly full scale negative, so padding with it clicks.
+    out = bytearray([SILENCE]) * 744
     n = channels * rate_correction
     bs = struct.unpack('{}h'.format(int(len(byte_string) / 2)), byte_string)[0::n]
     for i, s in enumerate(bs):
@@ -82,4 +89,8 @@ def u_law_encoding(sample: int) -> int:
         position -= 1
 
     lsb = (sample >> (position - 4)) & 0x0f
-    return -(~(sign | ((position - 7) << 4) | lsb))
+    # U-law transmits the one's complement of the sign, exponent and mantissa. This used to negate
+    # the complement instead of masking it, which is the same as adding one to the uncomplemented
+    # byte: the samples came out uncorrelated with the input - noise - and a byte of 0xFF overflowed
+    # the bytearray it was being stored into.
+    return ~(sign | ((position - 7) << 4) | lsb) & 0xFF
