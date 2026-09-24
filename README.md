@@ -132,8 +132,9 @@ any name close to either, so they log a warning and end.
 
 Of those 21 triggers, eight are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
 `Hiccup`, and the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
-`ReturnedToTreads`. The rest wait on parts that are not implemented: the vision triggers need face, object, pet and
-motion detection, and the others come from game and engine states the activity engine does not reach yet.
+`ReturnedToTreads`. The rest wait on parts that are not implemented: the vision triggers need face, object and pet
+detection, and the others come from game and engine states the activity engine does not reach yet. None of them needs
+motion detection - `UnexpectedMovement`, despite its name, is not something the camera sees.
 
 Two details matter for the result to look right rather than merely work:
 
@@ -246,6 +247,29 @@ from the application is copied: the codebooks are read while converting and neve
 done by `ffmpeg`, which is why this happens once, in a tool, rather than in the library - PyCozmo gains no dependency
 from it.
 
+### What the robot sees
+
+The brain turns the camera on, in grayscale, and compares each image with the one before it. What moved is announced
+as `EvtMotionObserved`, with the fraction of the image that moved and where:
+
+```python
+def on_motion(cli, motion):
+    print(motion.area, motion.centroid, motion.regions)
+
+cli.add_handler(pycozmo.event.EvtMotionObserved, on_motion)
+```
+
+`centroid` is the middle of the motion in image pixels, once at least 0.5% of the image moved. `regions` holds the
+three peripheral regions Anki's `vision_config.json` describes - left, right and top - each reporting only once motion
+in it has added up, which with Anki's values takes 4% of the region in one image or less of it over several.
+
+Nothing is compared while the robot moves its camera, since the whole scene would move with it: not while it reports
+a motor moving, not for 0.3 s after, and not across two images between which its pose or head angle changed. A change
+of exposure or of the room's lighting is not motion either.
+
+What moved on the ground, which is what `PounceOnMotion` needs to pounce, takes the camera's calibration and is not
+computed yet; so that behavior does not run.
+
 ### What the robot does when nothing has happened
 
 Reactions answer events. Between them, the activity engine decides what the robot does of its own accord. `Freeplay`
@@ -327,7 +351,8 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
     them, see [Cozmo's Own Behavior](#cozmos-own-behavior)
-- [ ] Motion detection
+- [ ] Motion detection - in the image, with Anki's peripheral regions; not yet on the ground, see
+    [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection
 - [ ] Cube marker recognition
 - [ ] Face detection

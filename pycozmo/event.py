@@ -43,6 +43,7 @@ __all__ = [
     "EvtReactionTrigger",
     "EvtBehaviorDone",
     "EvtEmotionEvent",
+    "EvtMotionObserved",
 
     "STATUS_EVENTS",
 
@@ -193,6 +194,10 @@ class EvtBehaviorDone(Event):
 
 class EvtEmotionEvent(Event):
     """ Triggered with the name of an emotion event, to be applied to the mood. """
+
+
+class EvtMotionObserved(Event):
+    """ Triggered with a motion_detection.ObservedMotion when the camera images show something moving. """
 
 
 class Dispatcher(object):

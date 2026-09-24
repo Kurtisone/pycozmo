@@ -19,6 +19,7 @@ from . import emotions
 from . import needs
 from . import behavior
 from . import activity
+from . import motion_detection
 from . import util
 from . import robot
 
@@ -80,6 +81,8 @@ class Brain:
         self.reaction_trigger_behavior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
         self.emotion_types = emotions.load_emotion_types(resource_dir)
         self.emotion_events = emotions.load_emotion_events(resource_dir)
+        self.motion_detector = motion_detection.MotionDetector(
+            motion_detection.load_motion_detector_config(resource_dir))
         self.cli.load_anims()
         logger.info("Loaded resources in {:.02f} s.".format(time.perf_counter() - start_time))
 
@@ -92,6 +95,7 @@ class Brain:
         self.listen(event.EvtRobotPickedUpChange, self.on_robot_picked_up_change)
         self.listen(event.EvtRobotFallingChange, self.on_robot_falling_change)
         self.listen(event.EvtRobotOnChargerChange, self.on_robot_on_charger_change)
+        self.listen(event.EvtNewRawCameraImage, self.on_camera_image)
         # TODO: ...
 
         # Reaction trigger queue
@@ -132,8 +136,10 @@ class Brain:
         self.reaction_thread.start()
         self.heartbeat_thread.start()
 
+        # Grayscale is all motion detection needs.
+        self.cli.enable_camera(True, color=False)
+
         # TODO: Enable stop on cliff.
-        # TODO: Enable camera.
         # TODO: Drive off if on charger.
 
     def listen(self, evt: type, f: Callable) -> None:
@@ -206,9 +212,15 @@ class Brain:
 
     def on_camera_image(self, cli: client.Client, new_im: Image.Image) -> None:
         """ Process images, coming from the robot camera. """
+        pose = cli.pose
+        motion = self.motion_detector.process(
+            new_im, time.perf_counter(),
+            pose=(pose.position.x, pose.position.y, pose.rotation.angle_z.radians, cli.head_angle.radians),
+            moving=bool(cli.robot_status & robot.RobotStatusFlag.IS_MOVING) or cli.robot_picked_up,
+            timestamp=cli.last_image_timestamp)
+        if motion is not None and motion.any:
+            cli.dispatch(event.EvtMotionObserved, cli, motion)
         # TODO: See cozmo_resources/config/engine/vision_config.json
-        # TODO: motion detection
-        # self.process_reaction_trigger("UnexpectedMovement")
         # TODO: face detection
         # self.process_reaction_trigger("FacePositionUpdate")?
         # TODO: pet detection
