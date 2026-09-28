@@ -1,4 +1,6 @@
 import unittest
+from typing import List
+from unittest import mock
 
 import pycozmo
 from pycozmo.anim_controller import AnimationQueue
@@ -83,3 +85,70 @@ class TestFPSTimer(unittest.TestCase):
         timer._start -= 10.0
         timer.sleep()
         self.assertEqual(timer._frames, 1)
+
+
+class TestFrames(unittest.TestCase):
+    """
+    The robot reads its animation buffer a frame at a time, and every frame starts with its audio or
+    silence. Any animation message where a frame should start is an error on the robot - "Expecting
+    either audio sample or silence next in animation buffer" - and the frame is lost.
+    """
+
+    def setUp(self):
+        # A client that is never started, with its connection stubbed out.
+        self.cli = pycozmo.client.Client()
+        self.sent: List[pycozmo.protocol_base.Packet] = []
+        for name, side_effect in (("send", self.sent.append), ("post_event", None)):
+            patcher = mock.patch.object(self.cli.conn, name, side_effect=side_effect)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.controller = self.cli.anim_controller
+        self.controller.enable_animations(True)
+        # As if started: the frame loop is running.
+        self.controller.thread = mock.Mock()
+        self.audio = pycozmo.protocol_encoder.OutputAudio(samples=bytes(744))
+        self.image = pycozmo.protocol_encoder.DisplayImage(image=b"\x3f\x3f")
+
+    def kinds(self):
+        return [type(pkt).__name__ for pkt in self.sent]
+
+    def frame(self):
+        """ Send one frame and return what went out. """
+        del self.sent[:]
+        self.controller._send_frame()
+        return self.kinds()
+
+    def test_a_frame_starts_with_its_audio(self):
+        head = pycozmo.protocol_encoder.AnimHead(duration_ms=33, angle_deg=10)
+        self.controller.play_anim_frame(self.audio, self.image, [head])
+        self.assertEqual(self.frame(), ["OutputAudio", "DisplayImage", "AnimHead"])
+
+    def test_a_frame_without_audio_starts_with_silence(self):
+        self.controller.play_anim_frame(None, self.image, None)
+        self.assertEqual(self.frame()[0], "OutputSilence")
+
+    def test_cancelling_sends_nothing_by_itself(self):
+        # It used to send EndAnimation there and then, between two of the frame loop's packets.
+        self.controller.cancel_anim()
+        self.assertEqual(self.sent, [])
+
+    def test_end_animation_follows_the_next_frames_audio(self):
+        self.controller.cancel_anim()
+        kinds = self.frame()
+        self.assertEqual(kinds[:2], ["OutputSilence", "EndAnimation"])
+        self.assertEqual(kinds.count("EndAnimation"), 1)
+        self.assertNotIn("EndAnimation", self.frame(), "it goes out once")
+
+    def test_a_new_animation_ends_the_last_one_inside_a_frame(self):
+        # What play_anim_ppclip() does: cancel, then queue the StartAnimation frame.
+        self.controller.cancel_anim()
+        start = pycozmo.protocol_encoder.StartAnimation(anim_id=3)
+        self.controller.play_anim_frame(None, None, (start,))
+        kinds = self.frame()
+        self.assertEqual(kinds[0], "OutputSilence")
+        self.assertLess(kinds.index("EndAnimation"), kinds.index("StartAnimation"))
+
+    def test_without_a_frame_loop_it_is_sent_at_once(self):
+        self.controller.thread = None
+        self.controller.cancel_anim()
+        self.assertEqual(self.kinds(), ["EndAnimation"])
