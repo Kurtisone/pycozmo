@@ -25,6 +25,13 @@ Nothing is detected while the camera itself moves: every pixel would. Images are
 robot reports any of its motors moving and for a short while after, and whenever its pose or head
 angle changed between two images.
 
+Nor is anything detected for the first seconds of a stream. When the camera starts streaming, the
+robot's image is often not yet locked to the sensor's frames: the picture scrolls vertically, a
+little further with each image, with the left third of it garbled, until it locks. Measured on a
+robot, that lasted 1.8 s and 28 images, and every one of them looked like motion across the whole
+image. The robot flags nothing about those images, so a stream is taken to start with the first
+image and with any image that follows a gap, and its images are ignored for stream_warmup.
+
 The peripheral regions are sized and paced by the MotionDetector section of Anki's
 cozmo_resources/config/engine/vision_config.json. Its comments describe what each value does but
 not the algorithm, so the one here is PyCozmo's own. One comment is contradicted on purpose: it says
@@ -93,6 +100,10 @@ class MotionDetectorConfig:
     #: How long images are ignored after the robot last reported a motor moving, in seconds. What
     #: the robot reports lags the images a little, and a head coming to rest wobbles.
     settle_time: float = 0.3
+    #: How long images are ignored once a stream starts, in seconds, and how long a gap between two
+    #: images has to be for the next one to start a stream. See the module's description.
+    stream_warmup: float = 2.5
+    stream_gap: float = 0.5
     #: Largest change between two images of the robot's position in mm, and of its heading and head
     #: angle in radians, that still counts as a camera at rest.
     max_translation: float = 1.0
@@ -132,6 +143,7 @@ class MotionDetector:
         self.config = config or MotionDetectorConfig()
         self._previous: Optional[np.ndarray] = None
         self._previous_pose: Optional[Tuple[float, float, float, float]] = None
+        self._previous_time: Optional[float] = None
         self._settle_until = 0.0
         self._accumulators = {region: 0.0 for region in REGIONS}
         self._centroids: Dict[str, Optional[Tuple[float, float]]] = {region: None for region in REGIONS}
@@ -140,6 +152,7 @@ class MotionDetector:
         """ Forget the previous image and any motion accumulated. """
         self._previous = None
         self._previous_pose = None
+        self._previous_time = None
         self._settle_until = 0.0
         for region in REGIONS:
             self._accumulators[region] = 0.0
@@ -154,8 +167,8 @@ class MotionDetector:
 
         pose is the robot's (x, y, heading, head angle) when the image was taken, in mm and radians,
         and moving whether it reports any motor moving. Returns None when the image could not be
-        compared - the first one, or one taken while the camera moved - and what was seen otherwise,
-        which may be nothing.
+        compared - one taken while the camera moved, or in the first seconds of a stream - and what
+        was seen otherwise, which may be nothing.
         """
         config = self.config
         current = self._shrink(image)
@@ -163,7 +176,10 @@ class MotionDetector:
         camera_moved = moving or self._pose_changed(pose)
         self._previous_pose = pose
         if camera_moved:
-            self._settle_until = now + config.settle_time
+            self._settle_until = max(self._settle_until, now + config.settle_time)
+        if self._previous_time is None or now - self._previous_time > config.stream_gap:
+            self._settle_until = max(self._settle_until, now + config.stream_warmup)
+        self._previous_time = now
         if camera_moved or now < self._settle_until or self._previous is None \
                 or self._previous.shape != current.shape:
             # Whatever accumulated at the edges was seen from somewhere else.

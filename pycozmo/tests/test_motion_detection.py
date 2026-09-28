@@ -53,12 +53,26 @@ class Scene:
         return Image.open(buffer)
 
 
+def warm(**kwargs: Any) -> MotionDetector:
+    """ A detector that compares from the second image of a stream on, rather than after its warm-up. """
+    return MotionDetector(MotionDetectorConfig(stream_warmup=0.0, **kwargs))
+
+
 class Film:
-    """ Feeds frames to a detector at the camera's pace. """
+    """
+    Feeds frames to a detector at the camera's pace.
+
+    The detector skips its warm-up unless one is given, so that each test is not two seconds of frames
+    ignored first. TestStreamStart is about the warm-up.
+    """
 
     def __init__(self, detector: Optional[MotionDetector] = None) -> None:
-        self.detector = detector or MotionDetector()
+        self.detector = detector or warm()
         self.now = 0.0
+
+    def wait(self, seconds: float) -> None:
+        """ Let time go by without a frame, as when the camera is off. """
+        self.now += seconds
 
     def show(self, image: Image.Image, **kwargs: Any) -> Optional[motion_detection.ObservedMotion]:
         motion = self.detector.process(image, self.now, **kwargs)
@@ -218,8 +232,7 @@ class TestPeripheralRegions(unittest.TestCase):
 
     def test_motion_adds_up_before_it_is_reported(self):
         # The accumulator has to fill up before a region reports anything.
-        config = MotionDetectorConfig(increase_factor=10.0)
-        scene, film = Scene(), Film(MotionDetector(config))
+        scene, film = Scene(), Film(warm(increase_factor=10.0))
         film.show(scene.shoot())
         motion = film.show(scene.shoot(square=(20, 170)))
         assert motion is not None
@@ -248,6 +261,61 @@ class TestPeripheralRegions(unittest.TestCase):
         self.assertEqual(film.detector._accumulators, dict.fromkeys(motion_detection.REGIONS, 0.0))
 
 
+def scrolled(scene: Scene, offset: int) -> Image.Image:
+    """
+    A frame from a stream that is not locked yet: the picture scrolled down, and its left third garbled.
+
+    What a robot sends for the first second or two of a stream, and a close enough copy of it.
+    """
+    pixels = np.asarray(scene.shoot(), dtype=np.float64)
+    pixels = np.roll(pixels, offset, axis=0)
+    pixels[:, :110] = np.where(np.arange(HEIGHT)[:, None] % 4 < 2, 40.0, 140.0) + \
+        scene.random.normal(0.0, 20.0, (HEIGHT, 110))
+    return Image.fromarray(np.clip(pixels, 0, 255).astype(np.uint8), "L")
+
+
+class TestStreamStart(unittest.TestCase):
+    """ The first seconds of a stream are not compared, however much they change. """
+
+    def test_a_stream_that_has_not_locked_yet_looks_like_motion(self):
+        # Why the warm-up is there at all.
+        scene, film = Scene(), Film()
+        film.show(scrolled(scene, 0))
+        motion = film.show(scrolled(scene, 7))
+        assert motion is not None
+        self.assertGreater(motion.area, 0.05)
+
+    def test_nothing_is_reported_while_a_stream_locks(self):
+        # 28 images, 1.8 s, scrolling a little further each time: what was measured on a robot.
+        scene, film = Scene(), Film(MotionDetector())
+        reported = [film.show(scrolled(scene, 7 * i)) for i in range(28)]
+        reported += [film.show(scene.shoot()) for _ in range(30)]
+        self.assertFalse(any(motion is not None and motion.any for motion in reported))
+
+    def test_comparing_starts_once_the_warm_up_is_over(self):
+        scene, film = Scene(), Film(MotionDetector())
+        warmup = film.detector.config.stream_warmup
+        compared = [film.show(scene.shoot(square=(140 + 5 * (i % 2), 100))) is not None for i in range(60)]
+        first = compared.index(True)
+        self.assertAlmostEqual(first * PERIOD, warmup, delta=2 * PERIOD)
+        self.assertTrue(all(compared[first:]), "a steady stream is warmed up only once")
+
+    def test_a_gap_starts_a_new_stream(self):
+        scene, film = Scene(), Film(MotionDetector())
+        for _ in range(60):
+            film.show(scene.shoot())
+        film.wait(1.0)
+        self.assertIsNone(film.show(scene.shoot(square=(140, 100))))
+        self.assertIsNone(film.show(scene.shoot(square=(150, 100))))
+
+    def test_a_late_frame_is_no_gap(self):
+        scene, film = Scene(), Film(MotionDetector())
+        for _ in range(60):
+            film.show(scene.shoot())
+        film.wait(0.2)
+        self.assertIsNotNone(film.show(scene.shoot()))
+
+
 @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
 class TestAnkiConfiguration(unittest.TestCase):
 
@@ -270,6 +338,10 @@ class TestBrain(unittest.TestCase):
 
     def setUp(self):
         self.brain.motion_detector.reset()
+        # The images below are all dispatched within a few milliseconds: one stream, compared at once.
+        config = self.brain.motion_detector.config
+        self.addCleanup(setattr, config, "stream_warmup", config.stream_warmup)
+        config.stream_warmup = 0.0
         self.observed: List[motion_detection.ObservedMotion] = []
         handler = self.brain.cli.add_handler(pycozmo.event.EvtMotionObserved,
                                              lambda cli, motion: self.observed.append(motion))

@@ -267,6 +267,11 @@ Nothing is compared while the robot moves its camera, since the whole scene woul
 a motor moving, not for 0.3 s after, and not across two images between which its pose or head angle changed. A change
 of exposure or of the room's lighting is not motion either.
 
+Nor is anything compared for the first 2.5 s of a stream. A robot's camera often starts out of step with its sensor:
+for a second or two the picture scrolls vertically, a little further each image, with its left third garbled, and
+every image of it looks like motion across the whole frame. Measured on a robot, it lasted 1.8 s. Nothing in what the
+robot sends marks those images, so a stream is taken to start with its first image and after any gap of over 0.5 s.
+
 What moved on the ground, which is what `PounceOnMotion` needs to pounce, takes the camera's calibration and is not
 computed yet; so that behavior does not run.
 
