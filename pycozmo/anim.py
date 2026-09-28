@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
 
 from PIL import Image
 import numpy as np
@@ -26,6 +26,12 @@ from .json_loader import find_file, load_json_file
 
 
 __all__ = [
+    "MAX_MOVE_MS",
+    "STRAIGHT",
+    "TURN_IN_PLACE",
+
+    "Move",
+    "split_moves",
     "PreprocessedClip",
     "AnimationGroupMember",
     "AnimationGroup",
@@ -36,11 +42,81 @@ __all__ = [
 ]
 
 
+#: Longest head or lift move one AnimHead or AnimLift can carry: its duration is a byte, in ms.
+MAX_MOVE_MS = 255
+
+#: AnimBody's curvature radius for driving straight ahead.
+STRAIGHT = 32767
+#: AnimBody's curvature radius for turning in place. Speed is then in degrees per second.
+TURN_IN_PLACE = 0
+
+
+class Move(NamedTuple):
+    """ A head or lift keyframe: reach target, in degrees or mm, duration_ms after trigger_ms. """
+    trigger_ms: int
+    duration_ms: int
+    target: float
+    variability: int
+
+
+def split_moves(moves: List[Move], start: float) -> Iterator[Tuple[int, int, int, int]]:
+    """
+    Lay head or lift moves out as the robot can take them, as (time, duration, target, variability).
+
+    One AnimHead or AnimLift moves for at most MAX_MOVE_MS, and a longer keyframe was sent as one, so
+    the robot made the whole move in 255 ms: one in eight of Anki's head keyframes, and up to 18 times
+    too fast. A longer move goes out in equal pieces instead, each to where the move should be when
+    it ends. Measured on a robot, four pieces of 250 ms took the head from -20 to +20 degrees at an
+    even pace in 0.93 s.
+
+    Where each piece aims depends on where the move starts: where the last one ended, and for the
+    first, start - where the head or lift is when the animation plays. A keyframe that starts before
+    the last has finished takes over from wherever that one has got to.
+    """
+    position = start
+    for i, move in enumerate(moves):
+        following = moves[i + 1].trigger_ms if i + 1 < len(moves) else None
+        if move.duration_ms <= 0:
+            yield move.trigger_ms, 0, int(round(move.target)), move.variability
+            position = move.target
+            continue
+        pieces = math.ceil(move.duration_ms / MAX_MOVE_MS)
+        bounds = [move.trigger_ms + round(j * move.duration_ms / pieces) for j in range(pieces + 1)]
+        for j in range(pieces):
+            if following is not None and bounds[j] >= following:
+                break
+            fraction = (bounds[j + 1] - move.trigger_ms) / move.duration_ms
+            target = position + (move.target - position) * fraction
+            yield bounds[j], min(bounds[j + 1] - bounds[j], MAX_MOVE_MS), int(round(target)), \
+                move.variability if j == pieces - 1 else 0
+        if following is not None and following < move.trigger_ms + move.duration_ms:
+            position += (move.target - position) * (following - move.trigger_ms) / move.duration_ms
+        else:
+            position = move.target
+
+
 class PreprocessedClip(object):
     """ Preprocessed animation clip that can be played back. """
 
-    def __init__(self, keyframes: Optional[Dict[int, List[protocol_encoder.Packet]]] = None):
+    def __init__(self, keyframes: Optional[Dict[int, List[protocol_encoder.Packet]]] = None,
+                 head_moves: Optional[List[Move]] = None, lift_moves: Optional[List[Move]] = None):
         self.keyframes = keyframes or defaultdict(list)
+        # Head and lift moves are kept as they are and only turned into packets when the clip plays,
+        # since a long first move can only be split knowing where the head or lift starts from.
+        self.head_moves: List[Move] = head_moves or []
+        self.lift_moves: List[Move] = lift_moves or []
+
+    def motion_keyframes(self, head_angle_deg: float,
+                         lift_height_mm: float) -> Dict[int, List[protocol_encoder.Packet]]:
+        """ The head and lift moves as packets, from where the head and lift are now. """
+        keyframes: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
+        for time_ms, duration, angle, variability in split_moves(self.head_moves, head_angle_deg):
+            keyframes[time_ms].append(protocol_encoder.AnimHead(
+                duration_ms=duration, variability_deg=variability, angle_deg=max(-128, min(127, angle))))
+        for time_ms, duration, height, variability in split_moves(self.lift_moves, lift_height_mm):
+            keyframes[time_ms].append(protocol_encoder.AnimLift(
+                duration_ms=duration, variability_mm=variability, height_mm=max(0, min(255, height))))
+        return keyframes
 
     @classmethod
     def keyframe_to_im(cls, keyframe: anim_encoder.AnimProceduralFace) -> Image.Image:
@@ -64,20 +140,17 @@ class PreprocessedClip(object):
         one the animation plays silently, which is what happened before there was a library at all.
         """
         keyframes: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
+        head_moves: List[Move] = []
+        lift_moves: List[Move] = []
+        body_motions: List[anim_encoder.AnimBodyMotion] = []
+        pkt: protocol_base.Packet
         for keyframe in clip.keyframes:
             if isinstance(keyframe, anim_encoder.AnimHeadAngle):
-                # FIXME: Why can duration be larger than 255?
-                pkt: protocol_base.Packet = protocol_encoder.AnimHead(
-                    duration_ms=min(keyframe.duration_ms, 255),
-                    variability_deg=keyframe.variability_deg,
-                    angle_deg=keyframe.angle_deg)
-                keyframes[keyframe.trigger_time_ms].append(pkt)
+                head_moves.append(Move(keyframe.trigger_time_ms, keyframe.duration_ms,
+                                       keyframe.angle_deg, keyframe.variability_deg))
             elif isinstance(keyframe, anim_encoder.AnimLiftHeight):
-                # FIXME: Why can duration be larger than 255?
-                pkt = protocol_encoder.AnimLift(duration_ms=min(keyframe.duration_ms, 255),
-                                                variability_mm=keyframe.variability_mm,
-                                                height_mm=keyframe.height_mm)
-                keyframes[keyframe.trigger_time_ms].append(pkt)
+                lift_moves.append(Move(keyframe.trigger_time_ms, keyframe.duration_ms,
+                                       keyframe.height_mm, keyframe.variability_mm))
             elif isinstance(keyframe, anim_encoder.AnimRecordHeading):
                 pkt = protocol_encoder.RecordHeading()
                 keyframes[keyframe.trigger_time_ms].append(pkt)
@@ -85,19 +158,7 @@ class PreprocessedClip(object):
                 pkt = protocol_encoder.TurnToRecordedHeading()
                 keyframes[keyframe.trigger_time_ms].append(pkt)
             elif isinstance(keyframe, anim_encoder.AnimBodyMotion):
-                if keyframe.radius_mm == "STRAIGHT":
-                    pkt = protocol_encoder.AnimBody(speed=keyframe.speed, unknown=32767)
-                elif keyframe.radius_mm == "TURN_IN_PLACE":
-                    pkt = protocol_encoder.TurnInPlaceAtSpeed(wheel_speed_mmps=keyframe.speed,
-                                                              direction=math.copysign(1.0, keyframe.speed))
-                else:
-                    assert isinstance(keyframe.radius_mm, float)
-                    vl = keyframe.speed * (keyframe.radius_mm - robot.TRACK_WIDTH.mm / 2.0)
-                    vr = keyframe.speed * (keyframe.radius_mm + robot.TRACK_WIDTH.mm / 2.0)
-                    pkt = protocol_encoder.DriveWheels(lwheel_speed_mmps=vl, rwheel_speed_mmps=vr)
-                keyframes[keyframe.trigger_time_ms].append(pkt)
-                pkt = protocol_encoder.DriveWheels()
-                keyframes[keyframe.trigger_time_ms + keyframe.duration_ms].append(pkt)
+                body_motions.append(keyframe)
             elif isinstance(keyframe, anim_encoder.AnimBackpackLights):
                 left = lights.Color(rgb=(keyframe.left.red, keyframe.left.green, keyframe.left.blue))
                 front = lights.Color(rgb=(keyframe.front.red, keyframe.front.green, keyframe.front.blue))
@@ -130,8 +191,41 @@ class PreprocessedClip(object):
                 pass
             else:
                 raise RuntimeError("Unexpected keyframe type '{}'".format(type(keyframe)))
-        ppclip = cls(keyframes=keyframes)
+        cls._add_body_motions(keyframes, body_motions)
+        head_moves.sort(key=lambda move: move.trigger_ms)
+        lift_moves.sort(key=lambda move: move.trigger_ms)
+        ppclip = cls(keyframes=keyframes, head_moves=head_moves, lift_moves=lift_moves)
         return ppclip
+
+    @classmethod
+    def _add_body_motions(cls, keyframes: Dict[int, List[protocol_encoder.Packet]],
+                          motions: List[anim_encoder.AnimBodyMotion]) -> None:
+        """
+        Lay the body motions out as AnimBody, which the robot takes with the keyframe's own speed and
+        radius - see its declaration. Arcs used to go out as DriveWheels with each wheel at the speed
+        times a radius, a hundred to a million mm/s, and turns in place as TurnInPlaceAtSpeed with the
+        keyframe's degrees per second taken for mm/s, which the robot answers with a jolt.
+
+        A motion stops when it ends, unless the next one has taken over by then.
+        """
+        motions = sorted(motions, key=lambda motion: motion.trigger_time_ms)
+        for i, motion in enumerate(motions):
+            if motion.radius_mm == "STRAIGHT":
+                radius = STRAIGHT
+            elif motion.radius_mm == "TURN_IN_PLACE":
+                radius = TURN_IN_PLACE
+            else:
+                assert isinstance(motion.radius_mm, float)
+                # 0 would be read as a turn in place, and 32767 as straight ahead.
+                radius = int(math.copysign(max(1, min(STRAIGHT - 1, round(abs(motion.radius_mm)))),
+                                           motion.radius_mm))
+            speed = max(-32768, min(32767, int(round(motion.speed))))
+            keyframes[motion.trigger_time_ms].append(
+                protocol_encoder.AnimBody(speed=speed, curvature_radius_mm=radius))
+            end = motion.trigger_time_ms + motion.duration_ms
+            if i + 1 < len(motions) and motions[i + 1].trigger_time_ms <= end:
+                continue
+            keyframes[end].append(protocol_encoder.AnimBody(speed=0, curvature_radius_mm=STRAIGHT))
 
     @classmethod
     def _add_audio(cls, keyframes: Dict[int, List[protocol_encoder.Packet]],

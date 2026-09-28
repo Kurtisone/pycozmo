@@ -304,7 +304,7 @@ class Client(event.Dispatcher):
         self.head_angle = util.Angle(radians=pkt.head_angle_rad)
         self.left_wheel_speed = util.Speed(mmps=pkt.lwheel_speed_mmps)
         self.right_wheel_speed = util.Speed(mmps=pkt.rwheel_speed_mmps)
-        self.lift_position = robot.LiftPosition(height=util.Distance(mm=pkt.lift_height_mm))
+        self.lift_position = robot.LiftPosition(angle=util.Angle(radians=pkt.lift_angle_rad))
         self.battery_voltage = pkt.battery_voltage
         self.accel = util.Vector3(pkt.accel_x, pkt.accel_y, pkt.accel_z)
         self.gyro = util.Vector3(pkt.gyro_x, pkt.gyro_y, pkt.gyro_z)
@@ -562,8 +562,10 @@ class Client(event.Dispatcher):
         # same frame share it - the robot has one slot per frame - rather than being spread over
         # consecutive ones, which would stretch the animation.
         frames: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
-        for time_ms in sorted(ppclip.keyframes.keys()):
-            frames[round(time_ms / robot.FRAME_MS)] += ppclip.keyframes[time_ms]
+        for keyframes in (ppclip.keyframes,
+                          ppclip.motion_keyframes(self.head_angle.degrees, self.lift_position.height.mm)):
+            for time_ms in sorted(keyframes.keys()):
+                frames[round(time_ms / robot.FRAME_MS)] += keyframes[time_ms]
         num_frames = max(frames) + 1 if frames else 0
 
         for i in range(num_frames):

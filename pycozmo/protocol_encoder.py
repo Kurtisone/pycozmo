@@ -3744,15 +3744,15 @@ class AnimBody(Packet):
 
     __slots__ = (
         "_speed",  # int16
-        "_unknown",  # int16
+        "_curvature_radius_mm",  # int16
     )
 
     def __init__(self,
                  speed=0,
-                 unknown=0):
+                 curvature_radius_mm=0):
         super().__init__(PacketType.COMMAND, packet_id=0x99)
         self.speed = speed
-        self.unknown = unknown
+        self.curvature_radius_mm = curvature_radius_mm
 
     @property
     def speed(self):
@@ -3763,12 +3763,12 @@ class AnimBody(Packet):
         self._speed = validate_integer("speed", value, -32768, 32767)
 
     @property
-    def unknown(self):
-        return self._unknown
+    def curvature_radius_mm(self):
+        return self._curvature_radius_mm
 
-    @unknown.setter
-    def unknown(self, value):
-        self._unknown = validate_integer("unknown", value, -32768, 32767)
+    @curvature_radius_mm.setter
+    def curvature_radius_mm(self, value):
+        self._curvature_radius_mm = validate_integer("curvature_radius_mm", value, -32768, 32767)
 
     def __len__(self):
         return \
@@ -3778,10 +3778,10 @@ class AnimBody(Packet):
     def __repr__(self):
         return "{type}(" \
                "speed={speed}, " \
-               "unknown={unknown})".format(
+               "curvature_radius_mm={curvature_radius_mm})".format(
                 type=type(self).__name__,
                 speed=self._speed,
-                unknown=self._unknown)
+                curvature_radius_mm=self._curvature_radius_mm)
 
     def to_bytes(self):
         writer = BinaryWriter()
@@ -3790,7 +3790,7 @@ class AnimBody(Packet):
 
     def to_writer(self, writer):
         writer.write(self._speed, "h")
-        writer.write(self._unknown, "h")
+        writer.write(self._curvature_radius_mm, "h")
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -3801,10 +3801,10 @@ class AnimBody(Packet):
     @classmethod
     def from_reader(cls, reader):
         speed = reader.read("h")
-        unknown = reader.read("h")
+        curvature_radius_mm = reader.read("h")
         return cls(
             speed=speed,
-            unknown=unknown)
+            curvature_radius_mm=curvature_radius_mm)
 
 
 class EndAnimation(Packet):
@@ -5934,7 +5934,7 @@ class RobotState(Packet):
         "_lwheel_speed_mmps",  # float
         "_rwheel_speed_mmps",  # float
         "_head_angle_rad",  # float
-        "_lift_height_mm",  # float
+        "_lift_angle_rad",  # float
         "_accel_x",  # float
         "_accel_y",  # float
         "_accel_z",  # float
@@ -5960,7 +5960,7 @@ class RobotState(Packet):
                  lwheel_speed_mmps=0.0,
                  rwheel_speed_mmps=0.0,
                  head_angle_rad=0.0,
-                 lift_height_mm=0.0,
+                 lift_angle_rad=0.0,
                  accel_x=0.0,
                  accel_y=0.0,
                  accel_z=0.0,
@@ -5984,7 +5984,7 @@ class RobotState(Packet):
         self.lwheel_speed_mmps = lwheel_speed_mmps
         self.rwheel_speed_mmps = rwheel_speed_mmps
         self.head_angle_rad = head_angle_rad
-        self.lift_height_mm = lift_height_mm
+        self.lift_angle_rad = lift_angle_rad
         self.accel_x = accel_x
         self.accel_y = accel_y
         self.accel_z = accel_z
@@ -6086,12 +6086,12 @@ class RobotState(Packet):
         self._head_angle_rad = validate_float("head_angle_rad", value)
 
     @property
-    def lift_height_mm(self):
-        return self._lift_height_mm
+    def lift_angle_rad(self):
+        return self._lift_angle_rad
 
-    @lift_height_mm.setter
-    def lift_height_mm(self, value):
-        self._lift_height_mm = validate_float("lift_height_mm", value)
+    @lift_angle_rad.setter
+    def lift_angle_rad(self, value):
+        self._lift_angle_rad = validate_float("lift_angle_rad", value)
 
     @property
     def accel_x(self):
@@ -6221,7 +6221,7 @@ class RobotState(Packet):
                "lwheel_speed_mmps={lwheel_speed_mmps}, " \
                "rwheel_speed_mmps={rwheel_speed_mmps}, " \
                "head_angle_rad={head_angle_rad}, " \
-               "lift_height_mm={lift_height_mm}, " \
+               "lift_angle_rad={lift_angle_rad}, " \
                "accel_x={accel_x}, " \
                "accel_y={accel_y}, " \
                "accel_z={accel_z}, " \
@@ -6245,7 +6245,7 @@ class RobotState(Packet):
                 lwheel_speed_mmps=self._lwheel_speed_mmps,
                 rwheel_speed_mmps=self._rwheel_speed_mmps,
                 head_angle_rad=self._head_angle_rad,
-                lift_height_mm=self._lift_height_mm,
+                lift_angle_rad=self._lift_angle_rad,
                 accel_x=self._accel_x,
                 accel_y=self._accel_y,
                 accel_z=self._accel_z,
@@ -6275,7 +6275,7 @@ class RobotState(Packet):
         writer.write(self._lwheel_speed_mmps, "f")
         writer.write(self._rwheel_speed_mmps, "f")
         writer.write(self._head_angle_rad, "f")
-        writer.write(self._lift_height_mm, "f")
+        writer.write(self._lift_angle_rad, "f")
         writer.write(self._accel_x, "f")
         writer.write(self._accel_y, "f")
         writer.write(self._accel_z, "f")
@@ -6307,7 +6307,7 @@ class RobotState(Packet):
         lwheel_speed_mmps = reader.read("f")
         rwheel_speed_mmps = reader.read("f")
         head_angle_rad = reader.read("f")
-        lift_height_mm = reader.read("f")
+        lift_angle_rad = reader.read("f")
         accel_x = reader.read("f")
         accel_y = reader.read("f")
         accel_z = reader.read("f")
@@ -6331,7 +6331,7 @@ class RobotState(Packet):
             lwheel_speed_mmps=lwheel_speed_mmps,
             rwheel_speed_mmps=rwheel_speed_mmps,
             head_angle_rad=head_angle_rad,
-            lift_height_mm=lift_height_mm,
+            lift_angle_rad=lift_angle_rad,
             accel_x=accel_x,
             accel_y=accel_y,
             accel_z=accel_z,

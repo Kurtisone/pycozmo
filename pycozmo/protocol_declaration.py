@@ -433,8 +433,11 @@ PROTOCOL = Protocol(
                            description="Left, front, middle, back, and right."),
         ]),
         Command(0x99, "AnimBody", group="anim", arguments=[
+            # Measured on a robot: speed is in mm/s along the path, and the robot works out each wheel
+            # from the radius itself. 32767 is straight ahead; 0 is a turn in place, and speed is then
+            # in degrees per second, left positive. Any other radius is an arc, left when positive.
             Int16Argument("speed"),
-            Int16Argument("unknown"),
+            Int16Argument("curvature_radius_mm"),
         ]),
         Command(0x9a, "EndAnimation", group="anim"),
         Command(0x9b, "StartAnimation", group="anim", arguments=[
@@ -569,7 +572,9 @@ PROTOCOL = Protocol(
             FloatArgument("lwheel_speed_mmps"),
             FloatArgument("rwheel_speed_mmps"),
             FloatArgument("head_angle_rad"),
-            FloatArgument("lift_height_mm"),
+            # The lift's angle, not its height: measured on two robots it runs from -0.21 to 0.84 as the
+            # lift goes from bottom to top, and a lift sent to 60 mm reads 0.202 - 58 mm by LiftPosition.
+            FloatArgument("lift_angle_rad"),
             FloatArgument("accel_x"),
             FloatArgument("accel_y"),
             FloatArgument("accel_z"),
