@@ -202,3 +202,17 @@ As long as a connection is established, the engine and the robot can exchange pa
 The engine sends packets in frames of types 0x04 and 0x07.
 
 The robot sends packets in frames of type 0x09.
+
+
+Reliable Delivery
+-----------------
+
+Packets that are not out-of-band carry sequence numbers, and the ack field of a frame acknowledges the peer's: every
+packet up to that number has arrived, in order. Out-of-band packets - RobotState, AnimationState and ImageChunk among
+them, most of what the robot sends - have none, and a frame of nothing else carries 0 for first_seq and seq.
+
+A packet that is not acknowledged goes out again, with every packet after it. PyCozmo waits 100 ms after the last
+acknowledgement that moved its window, and twice as long after each resend that goes unanswered, up to 0.8 s.
+
+The robot sends a frame about 30 times a second, and was never silent for more than 0.35 s on a working link. PyCozmo
+gives it up for lost after 5 s without one, stops sending, and dispatches `EvtConnectionLost`.

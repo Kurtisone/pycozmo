@@ -410,5 +410,14 @@ Animations are controlled with the `StartAnimation`, `EndAnimation`, and `AbortA
 
 Keyframes are transferred with the `AnimHead`, `AnimLift`, `AnimBody`, `AnimBackpackLights`, `RecordHeading`,
 `TurnToRecordedHeading`, and `OutputAudio` messages.
+
+The robot keeps these messages, and `OutputSilence` and `DisplayImage`, in an animation buffer, which it plays a frame
+at a time: 29.9 frames a second, each starting with its `OutputAudio` or `OutputSilence`. The buffer holds 8 KB, each
+message taking its length and 3 bytes, so it fits about ten frames of sound. A message that does not fit gets
+"BufferFull" and "Failed to buffer a keyframe! Clearing Animation buffer!", and the robot drops everything waiting.
+
+`AnimationState` reports how many frames the robot has played, silences included, and how many bytes, each message
+counting its length and 1; what a cleared buffer drops counts as played. PyCozmo sends a frame only while fewer than ten
+are waiting and they take less than 7.5 KB.
    
 See `examples/anim.py` for example usage.
