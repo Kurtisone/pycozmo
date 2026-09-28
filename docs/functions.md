@@ -201,7 +201,9 @@ Speaker
 -------
 
 The `OutputAudio` message can be used to transmit 744 audio samples at a time.
-The samples are 8-bit and [u-law](https://en.wikipedia.org/wiki/%CE%9C-law_algorithm) encoded.
+The samples are 8-bit and [u-law](https://en.wikipedia.org/wiki/%CE%9C-law_algorithm) encoded, but without the
+one's complement G.711 applies: the robot takes the sign, exponent and mantissa bits as they are, so silence is 0x00.
+Standard decoders, ffmpeg's among them, read these bytes as noise.
 
 Speaker volume can be adjusted with the `SetRobotVolume` message.
  

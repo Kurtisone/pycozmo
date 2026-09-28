@@ -238,7 +238,7 @@ class AudioLibrary:
         frames = []
         for start in range(0, len(data), FRAME_SAMPLES):
             chunk = data[start:start + FRAME_SAMPLES]
-            # The tail of a short final frame is silence, which in U-law is 0xFF rather than nought.
+            # The tail of a short final frame is silence.
             frame = bytearray([audio.SILENCE]) * FRAME_SAMPLES
             for i, sample in enumerate(chunk):
                 frame[i] = audio.u_law_encoding(int(sample))

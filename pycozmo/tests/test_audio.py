@@ -22,8 +22,7 @@ def cozmo_assets_available():
 
 
 def u_law_decode(byte: int) -> int:
-    """ Reference U-law decoder, to check the encoder against. """
-    byte = ~byte & 0xFF
+    """ U-law as the robot decodes it: G.711 without the complement. """
     sign = byte & 0x80
     exponent = (byte >> 4) & 0x07
     mantissa = byte & 0x0F
@@ -34,8 +33,9 @@ def u_law_decode(byte: int) -> int:
 
 class TestULaw(unittest.TestCase):
     """
-    The encoder used to negate the complement instead of masking it, which is the same as adding
-    one to the uncomplemented byte. The samples came out as noise and 0xFF overflowed a bytearray.
+    The encoder is held to what the robot decodes, which is not G.711: the robot takes the sign,
+    exponent and mantissa uncomplemented. v0.9.15 to v0.9.20 complemented them, as G.711 and ffmpeg
+    have it, and every sound came out harsh on a real robot.
     """
 
     def test_every_sample_encodes_to_a_byte(self):
@@ -56,12 +56,21 @@ class TestULaw(unittest.TestCase):
                 decoded = u_law_decode(pycozmo.audio.u_law_encoding(sample))
                 self.assertEqual(decoded < 0, sample < 0)
 
-    def test_silence_is_not_a_nought_byte(self):
-        # Once the encoder complements properly, a nought byte is very nearly full scale negative,
-        # so a frame padded with noughts clicks. Silence is 0xFF.
+    def test_silence_is_a_nought_byte(self):
         self.assertEqual(pycozmo.audio.u_law_encoding(0), pycozmo.audio.SILENCE)
-        self.assertEqual(pycozmo.audio.SILENCE, 0xFF)
-        self.assertLess(u_law_decode(0), -30000)
+        self.assertEqual(pycozmo.audio.SILENCE, 0x00)
+        self.assertEqual(u_law_decode(pycozmo.audio.SILENCE), 0)
+
+    def test_the_byte_is_not_complemented(self):
+        # What G.711 would send, 0xFF, 0x80 and 0x00, is exactly what the robot does not decode.
+        self.assertEqual(pycozmo.audio.u_law_encoding(0), 0x00)
+        self.assertEqual(pycozmo.audio.u_law_encoding(32767), 0x7F)
+        self.assertEqual(pycozmo.audio.u_law_encoding(-32768), 0xFF)
+
+    def test_the_loudest_sample_still_fits(self):
+        # The encoder up to v0.9.14 added one, and 0xFF + 1 overflowed the bytearray.
+        frame = pycozmo.audio.bytes_to_cozmo(struct.pack("<2h", -32768, 32767), 1, 1)
+        self.assertEqual((frame[0], frame[1]), (0xFF, 0x7F))
 
     def test_a_short_frame_is_padded_with_silence(self):
         frame = pycozmo.audio.bytes_to_cozmo(struct.pack("<3h", 0, 1000, -1000), 1, 1)

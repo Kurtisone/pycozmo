@@ -2,6 +2,12 @@
 
 Cozmo audio encoding.
 
+The robot takes 8 bit U-law, 744 samples to a frame at 22050 Hz, but not quite as G.711 has it: its
+decoder expects the sign, exponent and mantissa as they are, where G.711 transmits their one's
+complement. Checked by ear on a robot: a 440 Hz tone encoded the G.711 way came out harsh and
+seemingly higher, all odd harmonics, while the same tone left uncomplemented came out clean and at
+the right pitch. ffmpeg and every standard decoder read these bytes as noise; the robot does not.
+
 References:
     - https://en.wikipedia.org/wiki/%CE%9C-law_algorithm
     - http://dystopiancode.blogspot.com/2012/02/pcm-law-and-u-law-companding-algorithms.html
@@ -27,8 +33,8 @@ __all__ = [
 MULAW_MAX = 0x7FFF
 MULAW_BIAS = 132
 
-#: U-law byte for a sample of nought. Frames are padded with it.
-SILENCE = 0xFF
+#: U-law byte for a sample of nought, as the robot decodes it. Frames are padded with it.
+SILENCE = 0x00
 
 
 def load_wav(filename: str) -> List[protocol_encoder.OutputAudio]:
@@ -62,8 +68,7 @@ def load_wav(filename: str) -> List[protocol_encoder.OutputAudio]:
 
 def bytes_to_cozmo(byte_string: bytes, rate_correction: int, channels: int) -> bytearray:
     """ Convert a 744 sample, 16-bit audio frame into a U-law encoded frame. """
-    # A short final frame is padded with silence, which in U-law is 0xFF and not nought - a nought
-    # byte is very nearly full scale negative, so padding with it clicks.
+    # A short final frame is padded with silence.
     out = bytearray([SILENCE]) * 744
     n = channels * rate_correction
     bs = struct.unpack('{}h'.format(int(len(byte_string) / 2)), byte_string)[0::n]
@@ -73,7 +78,7 @@ def bytes_to_cozmo(byte_string: bytes, rate_correction: int, channels: int) -> b
 
 
 def u_law_encoding(sample: int) -> int:
-    """ U-law encode a 16-bit PCM sample. """
+    """ U-law encode a 16-bit PCM sample, as the robot decodes it - see the module's description. """
     mask = 0x4000
     position = 14
     sign = 0
@@ -89,8 +94,7 @@ def u_law_encoding(sample: int) -> int:
         position -= 1
 
     lsb = (sample >> (position - 4)) & 0x0f
-    # U-law transmits the one's complement of the sign, exponent and mantissa. This used to negate
-    # the complement instead of masking it, which is the same as adding one to the uncomplemented
-    # byte: the samples came out uncorrelated with the input - noise - and a byte of 0xFF overflowed
-    # the bytearray it was being stored into.
-    return ~(sign | ((position - 7) << 4) | lsb) & 0xFF
+    # Not complemented, unlike G.711. Up to v0.9.14 this returned -(~byte), which is byte + 1: one
+    # step off, inaudible, but 0xFF + 1 overflowed the bytearray it was stored into. v0.9.15 to
+    # v0.9.20 complemented it, which standard decoders agree with and the robot does not.
+    return sign | ((position - 7) << 4) | lsb
