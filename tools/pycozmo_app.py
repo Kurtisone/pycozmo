@@ -6,7 +6,7 @@ PyCozmo application.
 """
 
 import sys
-import time
+import threading
 import argparse
 
 import pycozmo
@@ -45,6 +45,8 @@ def main():
     if args.robot_addr:
         pycozmo.conn.ROBOT_ADDR = args.robot_addr
 
+    # Once the robot stops answering nothing reaches it any more: stop rather than run on without it.
+    lost = threading.Event()
     try:
         with pycozmo.connect(
                 log_level="DEBUG" if args.verbose else "INFO",
@@ -52,15 +54,18 @@ def main():
                 robot_log_level="INFO",
                 enable_procedural_face=not args.no_face) as cli:
             brain = pycozmo.brain.Brain(cli)
+            cli.add_handler(pycozmo.event.EvtConnectionLost, lambda *args: lost.set())
             brain.start()
-            while True:
+            while not lost.is_set():
                 try:
-                    time.sleep(1.0)
+                    lost.wait(1.0)
                 except KeyboardInterrupt:
                     break
             brain.stop()
     except Exception as e:
         print("ERROR: {}".format(e))
+        sys.exit(1)
+    if lost.is_set():
         sys.exit(1)
 
 

@@ -234,6 +234,46 @@ class TestResend(LossyTestCase):
         self.assertNotEqual(acknowledged, OOB_SEQ)
 
 
+class TestLostRobot(LossyTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.c.LINK_TIMEOUT = 0.5
+        self.lost = Event()
+        self.c.add_handler(pycozmo.event.EvtConnectionLost, lambda cli: self.lost.set())
+
+    def silence(self):
+        """ The robot goes away: nothing more comes from it, and nothing reaches it. """
+        patcher = mock.patch.object(self.s.recv_thread, "handle_frame", lambda frame: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.s.send_thread.receiver_address = None
+
+    def test_a_robot_that_stays_silent_is_lost(self):
+        self.start_talking()
+        time.sleep(0.8)
+        self.assertFalse(self.lost.is_set(), "a robot that talks is not lost")
+        self.silence()
+        self.assertTrue(self.lost.wait(2.0))
+        self.assertTrue(self.c.lost)
+        self.assertEqual(self.c.state, pycozmo.conn.Connection.IDLE)
+
+    def test_nothing_is_sent_to_a_lost_robot(self):
+        # One run resent 29 777 packets into a link that was gone, and queued 1 700 more behind them.
+        self.silence()
+        for i in range(10):
+            self.c.send(pycozmo.protocol_encoder.SetRobotVolume(i))
+        self.assertTrue(self.lost.wait(2.0))
+        time.sleep(0.1)
+        sent = self.c.send_thread.sent_packets
+        for i in range(10):
+            self.c.send(pycozmo.protocol_encoder.SetRobotVolume(i))
+        time.sleep(1.0)
+        self.assertEqual(self.c.send_thread.sent_packets, sent)
+        self.assertTrue(self.c.send_thread.window.is_empty())
+        self.assertEqual(self.c.send_thread.queue.qsize(), 0)
+
+
 class TestResendTimer(unittest.TestCase):
 
     def setUp(self):

@@ -17,6 +17,7 @@ __all__ = [
 
     "EvtRobotFound",
     "EvtRobotReady",
+    "EvtConnectionLost",
     "EvtPacketReceived",
     "EvtNewRawCameraImage",
     "EvtRobotMovingChange",
@@ -69,6 +70,13 @@ class EvtRobotFound(Event):
 
 class EvtRobotReady(Event):
     """ Triggered when the robot has been initialized and is ready for commands. """
+
+
+class EvtConnectionLost(Event):
+    """
+    Triggered with the connection when the robot stops answering: nothing has come from it for
+    Connection.LINK_TIMEOUT seconds. Nothing is sent to it any more.
+    """
 
 
 class EvtPacketReceived(Event):
