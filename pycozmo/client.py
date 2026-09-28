@@ -8,6 +8,7 @@ from collections import defaultdict
 from threading import Event
 from typing import Any, Dict, List, Optional, Tuple
 import json
+import os
 import time
 import io
 
@@ -111,6 +112,8 @@ class Client(event.Dispatcher):
         self._next_anim_id = 1
         self.animation_groups: Dict[str, anim.AnimationGroup] = {}
         self.audio_library = audiolib.AudioLibrary()
+        # Where the image sequences some animations show are. Set by load_anims().
+        self.face_animation_dir: Optional[str] = None
 
     def start(self) -> None:
         logger.debug("Starting client...")
@@ -597,7 +600,8 @@ class Client(event.Dispatcher):
             if name not in self._clips:
                 self._load_clips(self._clip_metadata[name].fspec)
             clip = self._clips[name]
-            self._ppclips[name] = anim.PreprocessedClip.from_anim_clip(clip, self.audio_library)
+            self._ppclips[name] = anim.PreprocessedClip.from_anim_clip(clip, self.audio_library,
+                                                                       self.face_animation_dir)
 
         ppclip = self._ppclips[name]
         self.play_anim_ppclip(ppclip)
@@ -623,6 +627,7 @@ class Client(event.Dispatcher):
         resource_dir = str(util.get_cozmo_asset_dir())
         self.animation_groups = anim.load_animation_groups(resource_dir)
         self.audio_library = audiolib.load_audio_library(resource_dir)
+        self.face_animation_dir = os.path.join(resource_dir, 'cozmo_resources', 'assets', 'faceAnimations')
 
     def get_anim_names(self) -> set:
         return set(self._clip_metadata.keys())

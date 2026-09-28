@@ -4,6 +4,7 @@ Animation clip representation, reading, and preprocessing.
 
 """
 
+import glob
 import math
 import os
 import time
@@ -33,6 +34,7 @@ __all__ = [
     "Move",
     "split_moves",
     "PreprocessedClip",
+    "load_face_animation",
     "AnimationGroupMember",
     "AnimationGroup",
 
@@ -132,17 +134,21 @@ class PreprocessedClip(object):
 
     @classmethod
     def from_anim_clip(cls, clip: anim_encoder.AnimClip,
-                       audio_library: Optional[Any] = None) -> "PreprocessedClip":
+                       audio_library: Optional[Any] = None,
+                       face_animation_dir: Optional[str] = None) -> "PreprocessedClip":
         """
         Preprocess an animation clip into the packets that play it.
 
         The audio library, when given, resolves the WWise events the clip names into sound. Without
         one the animation plays silently, which is what happened before there was a library at all.
+        face_animation_dir, when given, is where the image sequences the clip names are found - see
+        load_face_animation(). Without it those keyframes show nothing.
         """
         keyframes: Dict[int, List[protocol_encoder.Packet]] = defaultdict(list)
         head_moves: List[Move] = []
         lift_moves: List[Move] = []
         body_motions: List[anim_encoder.AnimBodyMotion] = []
+        face_animations: List[anim_encoder.AnimFaceAnimation] = []
         pkt: protocol_base.Packet
         for keyframe in clip.keyframes:
             if isinstance(keyframe, anim_encoder.AnimHeadAngle):
@@ -175,8 +181,7 @@ class PreprocessedClip(object):
                                                                   off_light))
                 keyframes[keyframe.trigger_time_ms + keyframe.duration_ms].append(pkt)
             elif isinstance(keyframe, anim_encoder.AnimFaceAnimation):
-                # TODO
-                pass
+                face_animations.append(keyframe)
             elif isinstance(keyframe, anim_encoder.AnimProceduralFace):
                 im = cls.keyframe_to_im(keyframe)
                 encoder = image_encoder.ImageEncoder(im)
@@ -192,6 +197,16 @@ class PreprocessedClip(object):
             else:
                 raise RuntimeError("Unexpected keyframe type '{}'".format(type(keyframe)))
         cls._add_body_motions(keyframes, body_motions)
+        # Last, so that on a frame with a procedural face too, the image sequence is what shows: the
+        # robot has one screen, and play_anim_ppclip() keeps the last image laid on a frame.
+        for face_animation in face_animations:
+            if face_animation_dir is None:
+                continue
+            images = load_face_animation(os.path.join(face_animation_dir, face_animation.anim_name))
+            if not images:
+                logger.warning("Face animation '{}' not found.".format(face_animation.anim_name))
+            for i, image in enumerate(images):
+                keyframes[face_animation.trigger_time_ms + i * robot.FRAME_MS].append(image)
         head_moves.sort(key=lambda move: move.trigger_ms)
         lift_moves.sort(key=lambda move: move.trigger_ms)
         ppclip = cls(keyframes=keyframes, head_moves=head_moves, lift_moves=lift_moves)
@@ -245,6 +260,25 @@ class PreprocessedClip(object):
                 continue
             for i, pkt in enumerate(frames):
                 keyframes[keyframe.trigger_time_ms + i * robot.FRAME_MS].append(pkt)
+
+
+def load_face_animation(directory: str) -> List[protocol_encoder.DisplayImage]:
+    """
+    Read a face animation: a directory of PNG images, one per animation frame, in name order.
+
+    Anki drew them at 128 x 64 in greyscale, each line doubled; the screen is 128 x 32 and one bit
+    deep, so every other line is kept, and a pixel is lit from half grey up.
+
+    Two of the robot's animations show one, anim_bored_event_02 and anim_bored_event_04, and until
+    these were read their faces stayed still - or black - while their sound played.
+    """
+    images = []
+    for fspec in sorted(glob.glob(os.path.join(directory, "*.png"))):
+        with Image.open(fspec) as im:
+            pixels = np.asarray(im.convert("L"))[::2] >= 128
+        encoder = image_encoder.ImageEncoder(Image.fromarray(pixels).convert("1"))
+        images.append(protocol_encoder.DisplayImage(image=bytes(encoder.encode())))
+    return images
 
 
 class LightAnimation:
