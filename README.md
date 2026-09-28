@@ -280,8 +280,15 @@ the camera's place in the head by Anki's engine values. Checked on a robot, a cu
 out at the same place, within a millimetre, from seven head angles between -24 and -1.5 degrees.
 
 With the head down, the bottom of the image is the lift seen from above, which would pass for ground 60 mm ahead; so
-ground closer than 65 mm is left out, as is ground beyond 400 mm. `PounceOnMotion`, which pounces on motion on the
-ground, is not implemented yet.
+ground closer than 65 mm is left out, as is ground beyond 400 mm.
+
+That is what `PounceOnMotion` plays with. Once motion has been seen on the ground, Socialize and Hiking give it the
+robot: it puts its head down to watch, turns towards what moves, creeps up on it, and pounces with the lift. A lift
+that stays up after a pounce has come down on something - a finger, say - and gets `PounceSuccess`; one that reached
+the bottom missed, and gets `PounceFail`. It looks elsewhere after a few seconds without motion and gets bored after
+more, both as each of Anki's four configurations says. How it goes about it is PyCozmo's own, built on Anki's pounce
+animations, since the configurations only tune it: in particular, motion is pounced on within 120 mm, which the pounce
+animations' 45 mm lunge suggests but no file states.
 
 ### What the robot does when nothing has happened
 

@@ -89,6 +89,10 @@ class Client(event.Dispatcher):
         self._candidate_orientation_time = 0.0
         self.robot_picked_up = False
         self.robot_moving = False
+        # When motion was last seen on the ground, and where, in mm ahead of and to the left of the
+        # robot. The brain reports motion as EvtMotionObserved; behaviors that are not running do not
+        # hear events, so the ones that wait for motion ask here.
+        self.last_ground_motion: Optional[Tuple[float, Tuple[float, float]]] = None
         # Animation state
         self.num_anim_bytes_played = 0
         self.num_audio_frames_played = 0
@@ -127,6 +131,7 @@ class Client(event.Dispatcher):
         self.add_handler(protocol_encoder.ObjectConnectionState, self._on_object_connection_state)
         self.add_handler(protocol_encoder.DebugData, self._on_debug_data)
         self.add_handler(event.EvtRobotPickedUpChange, self._on_robot_picked_up)
+        self.add_handler(event.EvtMotionObserved, self._on_motion_observed)
         self.add_handler(event.EvtRobotWheelsMovingChange, self._on_robot_moving)
         self.conn.start()
 
@@ -335,6 +340,11 @@ class Client(event.Dispatcher):
                 now - self._candidate_orientation_time >= robot.ORIENTATION_HOLD_TIME:
             self.robot_orientation = orientation
             self.dispatch(event.EvtRobotOrientationChange, self, orientation)
+
+    def _on_motion_observed(self, cli: Any, motion: Any) -> None:
+        del cli
+        if motion.ground_centroid is not None:
+            self.last_ground_motion = (time.perf_counter(), motion.ground_centroid)
 
     def _on_robot_picked_up(self, cli, state):
         del cli

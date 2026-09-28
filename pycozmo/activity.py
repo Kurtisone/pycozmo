@@ -749,6 +749,20 @@ class SocializeActivity(Activity):
             required_objectives=[Objective.from_json(d) for d in data['requiredObjectives']],
             **cls.base_kwargs(data))
 
+    def choose(self, can_run: Callable[[str], bool], now: Optional[float] = None) -> Optional[str]:
+        """
+        The behaviors behind the activity's objectives first, when they can run.
+
+        They score nothing in its chooser - "selected directly by activity", its configuration says -
+        so the chooser would never offer them: Socialize picks them itself. Which of them, and how often,
+        its objectives decide in Anki's engine; here the first that wants to run is taken, which for
+        PounceOnMotion_Socialize means as soon as motion has been seen on the ground.
+        """
+        for objective in self.required_objectives:
+            if can_run(objective.behavior_id):
+                return objective.behavior_id
+        return super().choose(can_run, now)
+
 
 class NeedsActivity(Activity):
 

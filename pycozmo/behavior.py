@@ -16,7 +16,7 @@ from . import client
 from . import emotions
 from . import needs
 from . import robot
-from .logger import logger
+from .logger import logger, logger_behavior
 from .json_loader import get_json_files, load_json_file
 
 
@@ -667,6 +667,233 @@ class BehaviorDriveOffCharger(Behavior):
         self.cli.stop_all_motors()
 
 
+class BehaviorPounceOnMotion(Behavior):
+    """
+    Watch the ground for something moving, creep up on it, and pounce with the lift.
+
+    Four behaviors in the resources are this class: PounceOnMotion_Socialize, Hiking_PounceOnMotion,
+    SparksPounceOnMotion and VC_PounceOnMotion. Their configurations name what they tune, not how
+    the behavior goes about it, so the sequence here is PyCozmo's own, built on Anki's animation
+    triggers:
+
+    - PounceInitial to get in, then the head all the way down, where the camera sees the ground from
+      65 to 400 mm ahead - PounceDrive holds the head there too;
+    - motion off to one side turns the robot towards it, motion too far away has it creep closer,
+      and motion within reach gets PouncePounce;
+    - a pounce is judged by the lift: the animations bring it all the way down, so a lift that stays
+      up has come down on something - PounceSuccess - and one that reached the bottom missed -
+      PounceFail. Then the robot backs off by backUpDistance and watches again;
+    - after timeBeforeRotate_Sec without motion it turns to look elsewhere, by up to
+      searchAmplitudeDeg either way, and after a turn pounces anyway with oddsOfPouncingOnTurn -
+      which is what makes it look like it is playing rather than scanning;
+    - after maxNoGroundMotionBeforeBored_running_Sec without motion it gets bored, plays PounceGetOut
+      unless skipGetOutAnim, and is done. maxTimeBehaviorTimeout_Sec, where given, ends it anyway.
+
+    It only wants to run when motion has been seen on the ground within
+    maxNoGroundMotionBeforeBored_notRunning_Sec: Hiking's configuration says it should never run
+    unless the robot sees motion.
+
+    How far a pounce reaches is not in the resources either. The pounce animations lunge about 45 mm
+    once the robot has capped their speeds, and the lift, lowered, hides the ground up to about 58 mm
+    ahead, so motion within POUNCE_DISTANCE is pounced on.
+    """
+
+    #: Head angle to watch the ground from. The camera then sees from 65 to 400 mm ahead.
+    WATCH_HEAD_ANGLE = robot.MIN_HEAD_ANGLE
+    #: Motion closer than this, in mm ahead of the robot's origin, is within reach of a pounce.
+    POUNCE_DISTANCE = 120.0
+    #: Where creeping up on motion stops, in mm ahead of the origin, and the most it goes at once.
+    APPROACH_DISTANCE = 100.0
+    MAX_APPROACH = 150.0
+    #: Motion further off to one side than this is turned towards first, in radians.
+    TURN_THRESHOLD = math.radians(15.0)
+    #: How far above its lowest the lift has to have stopped for a pounce to have caught something.
+    CATCH_MARGIN_MM = 5.0
+    #: Speeds for creeping and turning. Slow on purpose: the camera sees nothing while they last.
+    DRIVE_SPEED = 40.0
+    TURN_SPEED = 1.5
+
+    def __init__(self, cli: client.Client, conf: Any,
+                 robot_needs: Optional[needs.Needs] = None):
+        super().__init__(cli, conf, robot_needs)
+        self.bored_running = float(conf.get("maxNoGroundMotionBeforeBored_running_Sec", 20.0))
+        self.bored_not_running = float(conf.get("maxNoGroundMotionBeforeBored_notRunning_Sec", 3.0))
+        self.back_up_distance = float(conf.get("backUpDistance", -50.0))
+        # Hiking_PounceOnMotion spells it TimeBeforeRotate_Sec.
+        self.time_before_rotate = float(conf.get("timeBeforeRotate_Sec", conf.get("TimeBeforeRotate_Sec", 6.0)))
+        self.odds_of_pouncing_on_turn = float(conf.get("oddsOfPouncingOnTurn", 0.0))
+        self.search_amplitude = math.radians(float(conf.get("searchAmplitudeDeg", 90.0)))
+        self.max_time: Optional[float] = conf.get("maxTimeBehaviorTimeout_Sec")
+        self.skip_get_out = bool(conf.get("skipGetOutAnim", False))
+        self.needs_action: Optional[str] = conf.get("needsActionID")
+        self.lock = threading.RLock()
+        self.state = "idle"
+        self.timers: Dict[str, threading.Timer] = {}
+        self.last_motion_time = 0.0
+        #: Pounces made and caught during the current activation.
+        self.pounces = 0
+        self.catches = 0
+        self.add_handler(event.EvtMotionObserved, self._on_motion)
+        self.add_handler(event.EvtAnimationCompleted, self._on_animation_completed)
+
+    def wants_to_run(self) -> bool:
+        groups = self.cli.animation_groups or {}
+        if "PouncePounce" not in groups:
+            return False
+        last = self.cli.last_ground_motion
+        return last is not None and time.perf_counter() - last[0] <= self.bored_not_running
+
+    def activate(self) -> None:
+        with self.lock:
+            self.pounces = 0
+            self.catches = 0
+            self.last_motion_time = time.perf_counter()
+            if self.max_time is not None:
+                self._after("max_time", float(self.max_time), self._get_out)
+            if self._play("getting_in", "PounceInitial"):
+                return
+            self._watch()
+
+    # ------------------------------------------------------------------ states
+
+    def _watch(self) -> None:
+        """ Look at the ground and wait for something to move. """
+        self.state = "watching"
+        self.cli.set_head_angle(self.WATCH_HEAD_ANGLE.radians)
+        idle = time.perf_counter() - self.last_motion_time
+        self._after("bored", max(self.bored_running - idle, 0.0), self._get_out)
+        self._after("rotate", self.time_before_rotate, self._look_elsewhere)
+
+    def _on_motion(self, cli: client.Client, motion: Any) -> None:
+        with self.lock:
+            if self.state != "watching" or motion.ground_centroid is None or self.deactivated:
+                return
+            self.last_motion_time = time.perf_counter()
+            self._cancel("bored", "rotate")
+            x, y = motion.ground_centroid
+            bearing = math.atan2(y, x)
+            self.post_emotion_event("MotionReact")
+            if abs(bearing) > self.TURN_THRESHOLD:
+                logger_behavior.info("Motion at {:.0f}, {:.0f} mm: turning {:.0f} degrees.".format(
+                    x, y, math.degrees(bearing)))
+                self._turn(bearing, self._watch)
+            elif x <= self.POUNCE_DISTANCE:
+                logger_behavior.info("Motion at {:.0f}, {:.0f} mm: pouncing.".format(x, y))
+                self._pounce()
+            else:
+                distance = min(x - self.APPROACH_DISTANCE, self.MAX_APPROACH)
+                logger_behavior.info("Motion at {:.0f}, {:.0f} mm: creeping {:.0f} mm closer.".format(
+                    x, y, distance))
+                self._drive(distance, "approaching", self._watch)
+
+    def _look_elsewhere(self) -> None:
+        with self.lock:
+            if self.state != "watching" or self.deactivated:
+                return
+            angle = random.uniform(-self.search_amplitude, self.search_amplitude)
+            pounce = random.random() < self.odds_of_pouncing_on_turn
+            logger_behavior.info("Nothing moving: looking {:.0f} degrees away{}.".format(
+                math.degrees(angle), ", then pouncing" if pounce else ""))
+            self._turn(angle, self._pounce if pounce else self._watch)
+
+    def _pounce(self) -> None:
+        self.pounces += 1
+        if self.needs is not None and self.needs_action:
+            self.needs.apply_action(self.needs_action)
+        if not self._play("pouncing", "PouncePounce"):
+            self._watch()
+
+    def _judge_pounce(self) -> None:
+        """ Did the lift come down on something? """
+        lift = self.cli.lift_position.height.mm
+        caught = lift > robot.MIN_LIFT_HEIGHT.mm + self.CATCH_MARGIN_MM
+        if caught:
+            self.catches += 1
+        logger_behavior.info("Pounced, lift at {:.1f} mm: {}.".format(lift, "caught" if caught else "missed"))
+        if not self._play("reacting", "PounceSuccess" if caught else "PounceFail"):
+            self._back_up()
+
+    def _back_up(self) -> None:
+        self._drive(self.back_up_distance, "backing_up", self._watch)
+
+    def _get_out(self) -> None:
+        with self.lock:
+            if self.deactivated or self.state in ("idle", "getting_out"):
+                return
+            self._cancel(*list(self.timers))
+            self.cli.stop_all_motors()
+            if self.skip_get_out or not self._play("getting_out", "PounceGetOut"):
+                self.state = "idle"
+                self.done()
+
+    def _on_animation_completed(self, cli: client.Client) -> None:
+        with self.lock:
+            if self.deactivated:
+                return
+            if self.state == "getting_in":
+                self._watch()
+            elif self.state == "pouncing":
+                self._judge_pounce()
+            elif self.state == "reacting":
+                self._back_up()
+            elif self.state == "getting_out":
+                self.state = "idle"
+                self.done()
+
+    # ------------------------------------------------------------------ motion
+
+    def _turn(self, angle: float, then: Any) -> None:
+        """ Turn on the spot by angle, radians, left positive, then call then. """
+        self.state = "turning"
+        wheel_speed = math.copysign(self.TURN_SPEED * robot.TRACK_WIDTH.mm / 2.0, angle)
+        self.cli.drive_wheels(-wheel_speed, wheel_speed)
+        self._after("move", abs(angle) / self.TURN_SPEED, lambda: self._stop_then("turning", then))
+
+    def _drive(self, distance: float, state: str, then: Any) -> None:
+        """ Drive straight by distance, mm, forwards if positive, then call then. """
+        self.state = state
+        speed = math.copysign(self.DRIVE_SPEED, distance)
+        self.cli.drive_wheels(speed, speed)
+        self._after("move", abs(distance) / self.DRIVE_SPEED, lambda: self._stop_then(state, then))
+
+    def _stop_then(self, state: str, then: Any) -> None:
+        with self.lock:
+            if self.deactivated or self.state != state:
+                return
+            self.cli.stop_all_motors()
+            then()
+
+    # ------------------------------------------------------------------ plumbing
+
+    def _play(self, state: str, trigger: str) -> bool:
+        """ Play an animation trigger, if the resources have it, and enter a state until it ends. """
+        if trigger not in (self.cli.animation_groups or {}):
+            return False
+        self.state = state
+        self.cli.play_anim_group(trigger)
+        return True
+
+    def _after(self, name: str, delay: float, f: Any) -> None:
+        self._cancel(name)
+        timer = threading.Timer(delay, f)
+        timer.daemon = True
+        self.timers[name] = timer
+        timer.start()
+
+    def _cancel(self, *names: str) -> None:
+        for name in names:
+            timer = self.timers.pop(name, None)
+            if timer is not None:
+                timer.cancel()
+
+    def deactivate(self) -> None:
+        with self.lock:
+            self._cancel(*list(self.timers))
+            self.state = "idle"
+        self.cli.stop_all_motors()
+        self.cli.cancel_anim()
+
+
 def get_behavior_class_from_dict(data):
     """ Choose a behavior class, based on the behaviorClass JSON attribute. """
     # TODO: Replace with a behavior package.
@@ -695,6 +922,7 @@ def get_behavior_class_from_dict(data):
         "PlayAnimOnNeedsChange": BehaviorPlayAnimOnNeedsChange,
         "DriveInDesperation": BehaviorDriveInDesperation,
         "Wait": BehaviorWait,
+        "PounceOnMotion": BehaviorPounceOnMotion,
         # Not implemented, for lack of an animation in AnimationTriggerMap.json:
         # ReactToMotorCalibration, ReactToPlacedOnSlope, ReactToReturnedToTreads.
     }
