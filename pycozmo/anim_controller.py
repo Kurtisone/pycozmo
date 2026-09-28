@@ -107,6 +107,8 @@ class AnimationController:
         self.procedural_face_enabled = False
         # Packets to go out with the next frame, right after its audio. See cancel_anim() .
         self._pending: List[protocol_base.Packet] = []
+        # Whether a StartAnimation has gone out that no EndAnimation has closed yet.
+        self._animation_open = False
         self._pending_lock = Lock()
 
     def _clear_last_image_pkt(self):
@@ -246,13 +248,22 @@ class AnimationController:
         """
         with self._pending_lock:
             pending, self._pending = self._pending, []
+            if pending:
+                self._animation_open = False
+            else:
+                # Taken together with noting what the frame opens or closes, so that cancel_anim()
+                # cannot slip in between and miss a StartAnimation on its way out.
+                audio_pkt, image_pkt, pkts = self.queue.get()
+                for pkt in pkts or ():
+                    if isinstance(pkt, protocol_encoder.StartAnimation):
+                        self._animation_open = True
+                    elif isinstance(pkt, protocol_encoder.EndAnimation):
+                        self._animation_open = False
         if pending:
             self.cli.conn.send(protocol_encoder.OutputSilence())
             for pkt in pending:
                 self.cli.conn.send(pkt)
             return
-
-        audio_pkt, image_pkt, pkts = self.queue.get()
 
         # Silence stands in for a missing audio frame, so the outgoing packet is not the queued one.
         audio_out: protocol_base.Packet
@@ -292,21 +303,27 @@ class AnimationController:
         self.queue.put_anim_frame(audio_pkt, image_pkt, pkts)
 
     def cancel_anim(self):
-        self.queue.clear()
         # Nothing is to be reported for an animation that is being abandoned.
         self.expected_anim_id = None
-        pkt = protocol_encoder.EndAnimation()
-        if self.animations_enabled and self.thread is not None:
+        if not (self.animations_enabled and self.thread is not None):
+            # No frames are going out, so there is nothing to land in the middle of.
+            self.queue.clear()
+            self.cli.conn.send(protocol_encoder.EndAnimation())
+            return
+        with self._pending_lock:
+            self.queue.clear()
             # EndAnimation belongs in a frame, after its audio, like any animation message, and ends
             # it. Sent from here, it went out between two of the frame loop's packets - and every
-            # animation starts by cancelling the last one - so the robot found it where a frame
-            # should start: "Got 0x9a instead", and the frame's image after it gave the same with 0x97.
-            # See _send_frame() .
-            with self._pending_lock:
-                self._pending.append(pkt)
-        else:
-            # No frames are going out, so there is nothing to land in the middle of.
-            self.cli.conn.send(pkt)
+            # animation starts by cancelling the last one - so the robot found it where a frame should
+            # start: "Got 0x9a instead", and the frame's image after it gave the same with 0x97. See
+            # _send_frame() .
+            #
+            # And only an animation the robot has started needs ending. One that finished on its own
+            # has sent its EndAnimation already, and a second one, for an animation no longer open,
+            # is what the robot reported as "Got 0x9a instead" right after a clip ended and the next
+            # began. One whose StartAnimation had not gone out yet was never started at all.
+            if self._animation_open and not self._pending:
+                self._pending.append(protocol_encoder.EndAnimation())
 
     def enable_animations(self, enabled: bool = True) -> None:
         self.animations_enabled = bool(enabled)
