@@ -272,8 +272,16 @@ for a second or two the picture scrolls vertically, a little further each image,
 every image of it looks like motion across the whole frame. Measured on a robot, it lasted 1.8 s. Nothing in what the
 robot sends marks those images, so a stream is taken to start with its first image and after any gap of over 0.5 s.
 
-What moved on the ground, which is what `PounceOnMotion` needs to pounce, takes the camera's calibration and is not
-computed yet; so that behavior does not run.
+Motion is also placed on the ground: `ground_centroid` is where it is in mm, ahead of the robot and to its left, and
+`ground_area` how much of the visible ground moved. Each pixel is traced back through the lens and out to the table,
+from the head's angle and the robot's own tilt. The lens is described by the calibration every robot got in the
+factory, which the brain reads from the robot's NV storage when it starts - `Client.read_camera_calibration()` - and
+the camera's place in the head by Anki's engine values. Checked on a robot, a cube 100 mm ahead of the treads comes
+out at the same place, within a millimetre, from seven head angles between -24 and -1.5 degrees.
+
+With the head down, the bottom of the image is the lift seen from above, which would pass for ground 60 mm ahead; so
+ground closer than 65 mm is left out, as is ground beyond 400 mm. `PounceOnMotion`, which pounces on motion on the
+ground, is not implemented yet.
 
 ### What the robot does when nothing has happened
 
@@ -356,7 +364,7 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
     them, see [Cozmo's Own Behavior](#cozmos-own-behavior)
-- [ ] Motion detection - in the image, with Anki's peripheral regions; not yet on the ground, see
+- [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection
 - [ ] Cube marker recognition
@@ -364,7 +372,7 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
 - [ ] Face recognition
 - [ ] Facial expression estimation
 - [ ] Pet detection
-- [ ] Camera calibration
+- [ ] Camera calibration - the robot's factory calibration is read and used; calibrating anew is not done
 - [ ] Navigation map building
 - [ ] Text-to-speech
 - [ ] Songs

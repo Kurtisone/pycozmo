@@ -38,8 +38,13 @@ not the algorithm, so the one here is PyCozmo's own. One comment is contradicted
 a higher MaxValue triggers peripheral motion sooner, which no accumulator that fills up to it and
 drains can do. Here it is the level a region has to reach, so a higher one triggers later.
 
-Where the motion is on the ground, which PounceOnMotion needs, takes the camera's calibration and
-the head's pose, and is not computed yet.
+Motion on the ground is what PounceOnMotion pounces on, and is reported in mm in the robot's frame.
+Each pixel is traced back through the lens, from the camera's calibration, and out to the table from
+where the head's angle and the robot's tilt put the camera. Pixels above the horizon are not ground,
+and neither are those that would land closer than ground_min_distance: with the head down, the
+bottom of the image is the lift, seen from above, which looks like ground about 60 mm ahead and is
+not. Beyond ground_max_distance a pixel covers too much ground to say much. A tall object moving is
+placed a little too far, since only where it meets the table is on the ground.
 
 """
 
@@ -50,6 +55,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 from PIL import Image
 
+from . import camera
 from .json_loader import load_json_file
 
 
@@ -108,6 +114,11 @@ class MotionDetectorConfig:
     #: angle in radians, that still counts as a camera at rest.
     max_translation: float = 1.0
     max_rotation: float = 0.01
+    #: The nearest and farthest ground that motion is looked for on, in mm from the robot's origin. The
+    #: nearest is set by the lift: with the head all the way down, the lift hides the ground up to the
+    #: equivalent of 58 mm ahead, measured on a robot.
+    ground_min_distance: float = 65.0
+    ground_max_distance: float = 400.0
 
 
 @dataclass
@@ -129,18 +140,29 @@ class ObservedMotion:
     centroid: Optional[Tuple[float, float]]
     #: Smoothed centroid of the motion in each peripheral region that reports motion.
     regions: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    #: Fraction of the image's ground that moved, and where that motion is on the ground, in mm in the
+    #: robot's frame - x ahead, y to its left. The position is None when too little of the ground
+    #: moved, or when there is no telling where the ground is.
+    ground_area: float = 0.0
+    ground_centroid: Optional[Tuple[float, float]] = None
 
     @property
     def any(self) -> bool:
         """ Whether anything was reported at all. """
-        return self.centroid is not None or bool(self.regions)
+        return self.centroid is not None or bool(self.regions) or self.ground_centroid is not None
 
 
 class MotionDetector:
     """ Compares consecutive camera images and reports what moved. """
 
-    def __init__(self, config: Optional[MotionDetectorConfig] = None) -> None:
+    def __init__(self, config: Optional[MotionDetectorConfig] = None,
+                 calibration: Optional[camera.CameraCalibration] = None) -> None:
         self.config = config or MotionDetectorConfig()
+        #: The camera's calibration. Without one, motion is not placed on the ground.
+        self.calibration = calibration
+        # Lines of sight of the shrunk image's pixels, which only change with the calibration.
+        self._sight_key: Optional[tuple] = None
+        self._sight: Tuple[np.ndarray, np.ndarray] = (np.empty(0), np.empty(0))
         self._previous: Optional[np.ndarray] = None
         self._previous_pose: Optional[Tuple[float, float, float, float]] = None
         self._previous_time: Optional[float] = None
@@ -161,12 +183,14 @@ class MotionDetector:
     def process(self, image: Image.Image, now: float,
                 pose: Optional[Tuple[float, float, float, float]] = None,
                 moving: bool = False,
-                timestamp: Optional[int] = None) -> Optional[ObservedMotion]:
+                timestamp: Optional[int] = None,
+                pitch: float = 0.0) -> Optional[ObservedMotion]:
         """
         Compare an image with the previous one.
 
         pose is the robot's (x, y, heading, head angle) when the image was taken, in mm and radians,
-        and moving whether it reports any motor moving. Returns None when the image could not be
+        pitch its tilt in radians, and moving whether it reports any motor moving. Motion is placed on
+        the ground only with a pose and a calibration. Returns None when the image could not be
         compared - one taken while the camera moved, or in the first seconds of a stream - and what
         was seen otherwise, which may be nothing.
         """
@@ -193,12 +217,13 @@ class MotionDetector:
         self._previous = current
 
         width, height = image.size
-        # Scale from the shrunk image back to the one received, to the centre of each block.
+        # Scale from the shrunk image back to the one received, to the centre of each block. Pixels are
+        # centred on whole coordinates, as the calibration has them.
         scale_x = width / mask.shape[1]
         scale_y = height / mask.shape[0]
         rows, cols = np.nonzero(mask)
-        xs = (cols + 0.5) * scale_x
-        ys = (rows + 0.5) * scale_y
+        xs = cols * scale_x + (scale_x - 1.0) / 2.0
+        ys = rows * scale_y + (scale_y - 1.0) / 2.0
 
         area = len(rows) / mask.size
         centroid: Optional[Tuple[float, float]] = None
@@ -221,8 +246,41 @@ class MotionDetector:
             if point is not None:
                 regions[region] = point
 
+        ground_area = 0.0
+        ground_centroid: Optional[Tuple[float, float]] = None
+        if self.calibration is not None and pose is not None:
+            ground_x, ground_y, ground = self._ground(mask.shape, width, height, pose[3], pitch)
+            visible = int(ground.sum())
+            if visible:
+                moved = mask & ground
+                ground_area = int(moved.sum()) / visible
+                if ground_area and ground_area >= config.min_area:
+                    ground_centroid = (float(ground_x[moved].mean()), float(ground_y[moved].mean()))
+
         return ObservedMotion(timestamp=timestamp, width=width, height=height,
-                              area=area, centroid=centroid, regions=regions)
+                              area=area, centroid=centroid, regions=regions,
+                              ground_area=ground_area, ground_centroid=ground_centroid)
+
+    def _ground(self, shape: Tuple[int, ...], width: int, height: int, head_angle: float,
+                pitch: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """ Where each pixel of the shrunk image is on the ground, and which of them count as ground. """
+        assert self.calibration is not None
+        key = (shape, width, height, self.calibration)
+        if key != self._sight_key:
+            calibration = self.calibration
+            if (calibration.width, calibration.height) != (width, height):
+                calibration = calibration.scaled(width, height)
+            rows, cols = shape
+            scale_x, scale_y = width / cols, height / rows
+            u, v = np.meshgrid(np.arange(cols) * scale_x + (scale_x - 1.0) / 2.0,
+                               np.arange(rows) * scale_y + (scale_y - 1.0) / 2.0)
+            self._sight = calibration.undistort(u, v)
+            self._sight_key = key
+        ground_x, ground_y, reaches = camera.ground_points(*self._sight, head_angle, pitch)
+        config = self.config
+        ground = reaches & (ground_x >= config.ground_min_distance) \
+            & (np.hypot(ground_x, ground_y) <= config.ground_max_distance)
+        return ground_x, ground_y, ground
 
     def _shrink(self, image: Image.Image) -> np.ndarray:
         """ Greyscale image as floats, averaged over blocks of downscale x downscale pixels. """

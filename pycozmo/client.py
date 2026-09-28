@@ -479,6 +479,41 @@ class Client(event.Dispatcher):
         pkt = protocol_encoder.EnableColorImages(enable=color)
         self.conn.send(pkt)
 
+    def read_camera_calibration(self, timeout: float = 5.0) -> Optional[camera.CameraCalibration]:
+        """
+        Read the camera's factory calibration from the robot's NV storage.
+
+        Returns None if the robot has none or does not answer in time. Blocks until then, so it must not
+        be called from an event handler: the answer arrives through the same dispatching.
+        """
+        tag = protocol_encoder.NvEntryTag.NVEntry_CameraCalib
+        chunks: List[bytes] = []
+        results: List[protocol_encoder.NvResult] = []
+        done = Event()
+
+        def on_result(cli: conn.Connection, pkt: protocol_encoder.NvStorageOpResult) -> None:
+            del cli
+            if pkt.tag != tag:
+                return
+            chunks.append(bytes(pkt.data))
+            if pkt.result != protocol_encoder.NvResult.NV_MORE:
+                results.append(protocol_encoder.NvResult(pkt.result))
+                done.set()
+
+        handler = self.add_handler(protocol_encoder.NvStorageOpResult, on_result)
+        try:
+            self.conn.send(protocol_encoder.NvStorageOp(tag=tag, length=1, op=protocol_encoder.NvOperation.NVOP_READ))
+            done.wait(timeout)
+        finally:
+            self.del_handler(protocol_encoder.NvStorageOpResult, handler)
+        if not results or results[0] != protocol_encoder.NvResult.NV_OKAY:
+            return None
+        try:
+            return camera.CameraCalibration.from_nv(b"".join(chunks))
+        except ValueError as e:
+            logger.warning("Unreadable camera calibration: %s", e)
+            return None
+
     def clear_screen(self) -> None:
         pkt = protocol_encoder.DisplayImage(image=b"\x3f\x3f")
         self.anim_controller.display_image(pkt)

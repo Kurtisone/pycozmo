@@ -1,19 +1,29 @@
 """
 
-Camera image decoding.
+Camera image decoding, and the camera's geometry.
 
 """
+
+import math
+import struct
+from dataclasses import dataclass
+from typing import Tuple
 
 import numpy as np
 
 from . import protocol_encoder
+from . import robot
 
 
 __all__ = [
     "RESOLUTIONS",
 
+    "CameraCalibration",
+    "DEFAULT_CALIBRATION",
+
     "minigray_to_jpeg",
     "minicolor_to_jpeg",
+    "ground_points",
 ]
 
 
@@ -33,6 +43,101 @@ RESOLUTIONS = {
     protocol_encoder.ImageResolution.QXGA: (2048, 1536),
     protocol_encoder.ImageResolution.QUXGA: (3200, 2400)
 }
+
+
+@dataclass(frozen=True)
+class CameraCalibration:
+    """
+    A camera's intrinsic calibration: focal lengths and optical centre in pixels, and lens distortion.
+
+    Every robot was calibrated in the factory and keeps the result in its NV storage, under
+    NVEntry_CameraCalib. The distortion coefficients follow OpenCV's model - k1, k2, p1, p2, k3 - of
+    which the robot stores eight, the last three zero.
+    """
+
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    width: int
+    height: int
+    distortion: Tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0)
+    skew: float = 0.0
+
+    #: Layout of NVEntry_CameraCalib: fx, fy, cx, cy, skew, then the number of rows and columns, then eight
+    #: distortion coefficients.
+    NV_FORMAT = "<5f2H8f"
+
+    @classmethod
+    def from_nv(cls, data: bytes) -> "CameraCalibration":
+        """ Read a calibration as the robot stores it. """
+        if len(data) != struct.calcsize(cls.NV_FORMAT):
+            raise ValueError("A camera calibration is {} bytes, not {}.".format(
+                struct.calcsize(cls.NV_FORMAT), len(data)))
+        fx, fy, cx, cy, skew, rows, cols, *distortion = struct.unpack(cls.NV_FORMAT, data)
+        return cls(fx=fx, fy=fy, cx=cx, cy=cy, width=cols, height=rows, distortion=tuple(distortion), skew=skew)
+
+    def scaled(self, width: int, height: int) -> "CameraCalibration":
+        """ The same calibration for images of another resolution. Distortion does not depend on it. """
+        sx, sy = width / self.width, height / self.height
+        return CameraCalibration(fx=self.fx * sx, fy=self.fy * sy, cx=self.cx * sx, cy=self.cy * sy,
+                                 width=width, height=height, distortion=self.distortion, skew=self.skew * sx)
+
+    def undistort(self, u: np.ndarray, v: np.ndarray, iterations: int = 20) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Where pixels would be without the lens' distortion, in normalized coordinates - the tangents of
+        the angles to the optical axis, x to the right and y down.
+
+        OpenCV's distortion model has no closed form inverse; it is inverted by fixed point iteration,
+        which converges within a few steps for a lens as mild as the robot's.
+        """
+        k1, k2, p1, p2, k3 = (tuple(self.distortion) + (0.0,) * 5)[:5]
+        yd = (np.asarray(v, dtype=np.float64) - self.cy) / self.fy
+        xd = (np.asarray(u, dtype=np.float64) - self.cx - self.skew * yd) / self.fx
+        x, y = xd, yd
+        for _ in range(iterations):
+            r2 = x * x + y * y
+            radial = 1.0 + r2 * (k1 + r2 * (k2 + r2 * k3))
+            dx = 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
+            dy = p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
+            x = (xd - dx) / radial
+            y = (yd - dy) / radial
+        return x, y
+
+
+#: The factory calibration of one robot, for when a robot's own cannot be read. Others differ by a few
+#: pixels, which moves a point on the ground by a few millimetres at the distances that matter.
+DEFAULT_CALIBRATION = CameraCalibration(
+    fx=296.7423, fy=293.6618, cx=167.5319, cy=111.4804, width=320, height=240,
+    distortion=(-0.068499, 0.886507, -0.001815, -0.002262, -2.047920, 0.0, 0.0, 0.0))
+
+
+def ground_points(x: np.ndarray, y: np.ndarray, head_angle: float,
+                  pitch: float = 0.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Where on the ground the camera sees, for points in normalized coordinates - see
+    CameraCalibration.undistort() .
+
+    head_angle and pitch are in radians, up positive: the head's angle and the robot's own tilt, which
+    the robot reports as pose_pitch_rad. Returns the points' positions in mm in the robot's frame - x
+    ahead of the origin, y to its left - and a mask of the points whose line of sight reaches the
+    ground at all. Whatever stands between the camera and the ground, the lift included, is not
+    accounted for.
+    """
+    angle = head_angle + pitch
+    c, s = math.cos(angle), math.sin(angle)
+    neck_x, neck_z = robot.NECK_JOINT_POSITION
+    cam_x, cam_z = robot.HEAD_CAMERA_POSITION
+    origin_x = neck_x + cam_x * c - cam_z * s
+    origin_z = neck_z + cam_x * s + cam_z * c
+    # Line of sight in the head's frame is (1, -x, -y): ahead, to the left, up.
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    ahead = c + y * s
+    up = s - y * c
+    reaches = up < 0.0
+    distance = np.where(reaches, -origin_z / np.where(reaches, up, -1.0), 0.0)
+    return origin_x + distance * ahead, distance * -x, reaches
 
 
 def minigray_to_jpeg(minigray: np.ndarray, width: int, height: int) -> np.ndarray:

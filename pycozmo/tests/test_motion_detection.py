@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 import pycozmo
-from pycozmo import motion_detection
+from pycozmo import camera, motion_detection
 from pycozmo.motion_detection import MotionDetector, MotionDetectorConfig
 
 from .test_brain import cozmo_assets_available
@@ -53,9 +53,9 @@ class Scene:
         return Image.open(buffer)
 
 
-def warm(**kwargs: Any) -> MotionDetector:
+def warm(calibration: Optional[camera.CameraCalibration] = None, **kwargs: Any) -> MotionDetector:
     """ A detector that compares from the second image of a stream on, rather than after its warm-up. """
-    return MotionDetector(MotionDetectorConfig(stream_warmup=0.0, **kwargs))
+    return MotionDetector(MotionDetectorConfig(stream_warmup=0.0, **kwargs), calibration)
 
 
 class Film:
@@ -261,6 +261,75 @@ class TestPeripheralRegions(unittest.TestCase):
         self.assertEqual(film.detector._accumulators, dict.fromkeys(motion_detection.REGIONS, 0.0))
 
 
+def head_at(degrees: float) -> Tuple[float, float, float, float]:
+    """ A robot at the origin with its head at this angle. """
+    return (0.0, 0.0, 0.0, math.radians(degrees))
+
+
+def where(u: float, v: float, head: float) -> Tuple[float, float]:
+    """ Where a pixel is on the ground, straight from the camera's geometry. """
+    x, y = camera.DEFAULT_CALIBRATION.undistort(np.array([u]), np.array([v]))
+    ground_x, ground_y, _ = camera.ground_points(x, y, math.radians(head))
+    return float(ground_x[0]), float(ground_y[0])
+
+
+class TestGroundMotion(unittest.TestCase):
+    """ Motion is placed on the ground, in mm ahead of and to the left of the robot. """
+
+    def film(self, head: float, x: int, y: int, calibration: Optional[camera.CameraCalibration]
+             = camera.DEFAULT_CALIBRATION, pose: bool = True) -> motion_detection.ObservedMotion:
+        """ A 30 pixel square moving 10 pixels across at (x, y), seen with the head at this angle. """
+        scene, film = Scene(), Film(warm(calibration))
+        kwargs: dict = {"pose": head_at(head)} if pose else {}
+        film.show(scene.shoot(square=(x, y)), **kwargs)
+        motion = film.show(scene.shoot(square=(x + 10, y)), **kwargs)
+        assert motion is not None and motion.centroid is not None
+        return motion
+
+    def test_motion_on_the_ground_is_placed_where_it_is(self):
+        motion = self.film(-10.0, 145, 175)
+        assert motion.ground_centroid is not None
+        expected = where(169.5, 189.5, -10.0)
+        self.assertAlmostEqual(motion.ground_centroid[0], expected[0], delta=10.0)
+        self.assertAlmostEqual(motion.ground_centroid[1], expected[1], delta=10.0)
+        self.assertGreater(motion.ground_area, 0.0)
+
+    def test_motion_to_the_left_is_on_the_left(self):
+        left = self.film(-10.0, 30, 175).ground_centroid
+        right = self.film(-10.0, 260, 175).ground_centroid
+        assert left is not None and right is not None
+        self.assertGreater(left[1], 0.0)
+        self.assertLess(right[1], 0.0)
+
+    def test_the_lift_is_not_ground(self):
+        # With the head all the way down, the bottom of the image is the lift.
+        self.assertIsNone(self.film(-24.0, 145, 205).ground_centroid)
+
+    def test_higher_up_with_the_head_down_is_ground(self):
+        self.assertIsNotNone(self.film(-24.0, 145, 90).ground_centroid)
+
+    def test_above_the_horizon_is_not_ground(self):
+        self.assertIsNone(self.film(20.0, 145, 20).ground_centroid)
+
+    def test_without_a_calibration_nothing_is_placed(self):
+        self.assertIsNone(self.film(-10.0, 145, 175, calibration=None).ground_centroid)
+
+    def test_without_a_pose_nothing_is_placed(self):
+        self.assertIsNone(self.film(-10.0, 145, 175, pose=False).ground_centroid)
+
+    def test_the_robots_tilt_counts(self):
+        scene = Scene()
+        placed = []
+        for pitch in (0.0, math.radians(5.0)):
+            film = Film(warm(camera.DEFAULT_CALIBRATION))
+            film.show(scene.shoot(square=(145, 175)), pose=head_at(-10.0), pitch=pitch)
+            motion = film.show(scene.shoot(square=(155, 175)), pose=head_at(-10.0), pitch=pitch)
+            assert motion is not None and motion.ground_centroid is not None
+            placed.append(motion.ground_centroid[0])
+        # Tilted up, the camera sees the same pixels farther away.
+        self.assertGreater(placed[1], placed[0])
+
+
 def scrolled(scene: Scene, offset: int) -> Image.Image:
     """
     A frame from a stream that is not locked yet: the picture scrolled down, and its left third garbled.
@@ -362,6 +431,14 @@ class TestBrain(unittest.TestCase):
         for _ in range(5):
             self.receive(scene.shoot())
         self.assertEqual(self.observed, [])
+
+    def test_motion_on_the_ground_is_placed(self):
+        # An unstarted client reports the head all the way down.
+        scene = Scene()
+        self.receive(scene.shoot(square=(140, 90)))
+        self.receive(scene.shoot(square=(150, 90)))
+        self.assertEqual(len(self.observed), 1)
+        self.assertIsNotNone(self.observed[0].ground_centroid)
 
     def test_nothing_is_announced_while_the_robot_moves(self):
         scene = Scene()

@@ -20,6 +20,7 @@ from . import needs
 from . import behavior
 from . import activity
 from . import motion_detection
+from . import camera
 from . import util
 from . import robot
 
@@ -81,8 +82,9 @@ class Brain:
         self.reaction_trigger_behavior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
         self.emotion_types = emotions.load_emotion_types(resource_dir)
         self.emotion_events = emotions.load_emotion_events(resource_dir)
+        # Until the robot's own calibration is read, in start(), a typical one places motion on the ground.
         self.motion_detector = motion_detection.MotionDetector(
-            motion_detection.load_motion_detector_config(resource_dir))
+            motion_detection.load_motion_detector_config(resource_dir), camera.DEFAULT_CALIBRATION)
         self.cli.load_anims()
         logger.info("Loaded resources in {:.02f} s.".format(time.perf_counter() - start_time))
 
@@ -136,6 +138,11 @@ class Brain:
         self.reaction_thread.start()
         self.heartbeat_thread.start()
 
+        calibration = self.cli.read_camera_calibration()
+        if calibration is not None:
+            self.motion_detector.calibration = calibration
+        else:
+            logger.warning("Could not read the camera calibration. Using a typical one.")
         # Grayscale is all motion detection needs.
         self.cli.enable_camera(True, color=False)
 
@@ -217,7 +224,8 @@ class Brain:
             new_im, time.perf_counter(),
             pose=(pose.position.x, pose.position.y, pose.rotation.angle_z.radians, cli.head_angle.radians),
             moving=bool(cli.robot_status & robot.RobotStatusFlag.IS_MOVING) or cli.robot_picked_up,
-            timestamp=cli.last_image_timestamp)
+            timestamp=cli.last_image_timestamp,
+            pitch=cli.pose_pitch.radians)
         if motion is not None and motion.any:
             cli.dispatch(event.EvtMotionObserved, cli, motion)
         # TODO: See cozmo_resources/config/engine/vision_config.json

@@ -21,6 +21,8 @@ __all__ = [
     "MAX_LIFT_ANGLE",
     "MAX_WHEEL_SPEED",
     "TRACK_WIDTH",
+    "NECK_JOINT_POSITION",
+    "HEAD_CAMERA_POSITION",
     "FRAME_RATE",
     "FRAME_MS",
     "DISPLAY_BLANKING_TIME",
@@ -66,6 +68,17 @@ MAX_WHEEL_SPEED = util.Speed(mmps=200.0)
 
 #: Track width.
 TRACK_WIDTH = util.Distance(mm=45.0)
+
+#: Position of the head's pivot in the robot's frame, in mm: forward and up from the origin, which is on
+#: the ground between the front wheels.
+NECK_JOINT_POSITION = (-13.0, 47.7)
+#: Position of the camera in the head's frame, in mm: forward and up from the neck joint, with the
+#: head level. It turns with the head.
+#:
+#: These are the values of Anki's engine. They were checked on a robot: a cube standing 100 mm ahead of
+#: its treads, filmed at seven head angles from -24 to -1.5 degrees, projects to 118 to 120 mm ahead of
+#: the origin at every one of them - which also puts the front of the treads 19 mm ahead of it.
+HEAD_CAMERA_POSITION = (17.52, -8.0)
 
 #: Number of frames per second for animations.
 FRAME_RATE = 30
