@@ -8,6 +8,98 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+v0.9.21 (Sep 28, 2026)
+----------------------
+
+The first release checked against real robots, two of them. Most of what they showed was wrong on the way to the
+robot: the sound, the speed of every animation, the animation stream, the transport.
+
+New features:
+- Motion detection. The brain turns the camera on and compares each image with the one before it, and what moved is
+    announced as EvtMotionObserved: the fraction of the image, its centroid, Anki's three peripheral regions, and
+    where it is on the ground, in mm ahead of and to the left of the robot. Pixels are compared by the ratio of
+    their brightness, so that the exposure following the light is not motion; nothing is compared while the camera
+    moves, nor for the first 2.5 s of a stream, which on a real robot often scrolls and comes out garbled while the
+    sensor locks.
+
+    The ground position comes from the lens calibration every robot got in the factory, kept in NV storage.
+    Client.read_camera_calibration() reads it and pycozmo.camera decodes it. A Light Cube 100 mm ahead of the
+    treads, filmed at seven head angles, was placed between 117.7 and 120.5 mm ahead of the robot's origin.
+- PounceOnMotion. Cozmo watches the ground, turns towards what moves, creeps up on it and pounces with the lift, then
+    plays PounceSuccess or PounceFail and backs off. Four behaviors in the resources are this class, and Socialize now
+    offers the ones behind its objectives, which its chooser never did. Turns and creeps go by the pose the robot
+    reports, since a turning robot's treads slip: its heading changed about half as much as its wheel speeds said.
+    Telling a catch from a miss by the lift does not work yet: on a robot, the lift came down all the way either way.
+- The robot wakes up when the brain starts, with the ConnectWakeUp animations, as the Cozmo application did.
+- Face animations. anim_bored_event_02 and anim_bored_event_04, a swinging clock and a slot machine, show the image
+    sequences they name rather than a still face, or a black one.
+- EvtConnectionLost. A robot silent for 5 s is given up for lost: nothing more is sent to it, and pycozmo_app stops
+    with an error status. It used to resend into the void for as long as the program ran - 29 777 packets in one run.
+- Cube markers. pycozmo.marker_detection finds the dark frames around the markers on the Light Cubes' sides, places
+    them - centre, facing and distance, in the robot's frame - and tells which cube's symbol each holds, by comparing
+    it with Anki's drawings of the three, turned four ways. Checked on a robot, over 16 images from four head angles, a
+    cube's marker stayed where it stood with a standard deviation of 0.27 mm, and came out as the Deli Slicer it was
+    in all of them; and checked against Anki's own engine, through its SDK, every frame found of a Paperclip and an
+    Anglepoise Lamp came out as the cube Anki saw there, placed within 2% of where Anki had it. The markers are
+    25 mm wide.
+- The cubes, as the Cozmo application had them. The brain connects one Light Cube of each kind as soon as the robot
+    hears it and lights it with Anki's cube light animations - a dim cyan breath once connected, a steady cyan while
+    the robot sees it. It looks for markers five times a second while the robot keeps still, and places each cube it
+    sees in the robot's world frame, in Client.cubes. A cube seen for the first time, or where it was moved to, is
+    acknowledged, and one moved in the robot's sight is reacted to: Anki's ObjectPositionUpdated and CubeMoved.
+- Moving along paths: Client.turn_in_place() and drive_straight(), and execute_path() for any path, say whether the
+    robot got there. The brain has the robot stop at cliffs by itself, as the Cozmo application did, and a cliff
+    interrupts a path. The camera's exposure can be set.
+
+Bug fixes:
+- Sound came out harsh on a real robot since v0.9.15, which complemented the u-law bytes the way G.711 does. The
+    robot takes them uncomplemented: a 440 Hz tone played both ways settled it by ear. Silence is 0x00 again.
+- Animations moved far too fast. AnimHead and AnimLift carry their duration in a byte, and one head keyframe in
+    eight lasted longer than 255 ms and was cut short, up to 18 times; long moves now go out in pieces. AnimBody's
+    unknown field is a curvature radius, now curvature_radius_mm: arcs used to go out as DriveWheels at up to 1.47
+    million mm/s, and turns in place as TurnInPlaceAtSpeed with degrees taken for mm/s.
+- RobotState's lift_height_mm is the lift's angle in radians, now lift_angle_rad, and lift_position reads it as one.
+    It used to be about nought whatever the lift did.
+- Animations now go out as the robot plays them. Frames went out 30 times a second, and the robot plays 29.9: the
+    frames waiting on it piled up, delaying every animation more, and when a sound followed a silence its buffer of
+    8 KB overflowed and was cleared - "BufferFull", then corrupt frames. A frame now goes out only while fewer than ten
+    wait on the robot, by the frames it reports played in AnimationState, in less than 7.5 KB, by the bytes. The robot
+    never counts the samples of the last frame of a sound, and they appear to keep their room until its buffer is
+    cleared: judged by the frames alone, the animations that followed a sound overflowed the buffer. And a robot that
+    stops playing is sent no more than its buffer holds; frames went out a tick at a time a second after it stopped.
+- "Expecting either audio sample or silence next in animation buffer" when one animation gave way to another:
+    EndAnimation went out between frames, or ended one it shared, or ended an animation already over. It now goes out
+    in a frame of its own, and only for an animation the robot has started.
+- The transport resent a lost packet only once the robot fell silent for 100 ms, and it sends RobotState 30 times a
+    second. It now resends after 100 ms without an acknowledgement, and waits twice as long each time, up to 0.8 s.
+- The acknowledgement sent to the robot was the sequence number of the last frame received, which most of its frames
+    do not have, and which acknowledged packets lost before it. It is now the last packet delivered in order.
+- The robot's log printed float and negative arguments as their raw bits: "Speed of 1138982912.000000 deg/s".
+- CameraCalibration.undistort() diverged in the corners of the image, where the robot's lens model folds back: pixel
+    (0, 239) came out at the optical centre. It now finds the radius by bisection and polishes it by Newton's method,
+    and the pixels beyond the model's reach come out at its edge, in their own direction.
+- go_to_pose() waited for good on a robot that did not answer, and left a handler behind each time. It turned at the
+    robot's top speed, too: the speed of a turn in place is in rad/s, and it sent 40. It now times out, says whether
+    the robot got there, and goes at the speeds of Anki's engine's path motion profile.
+- The brain and its behaviors handled the client's events on the thread that handles everything the robot sends, and
+    a behavior starting an animation for the first time, which prepares it, held up the robot's state and the reports
+    the animation stream waits on for as much as 1.2 s. They have a thread of their own now, and sound decodes twice
+    as fast and encodes six times as fast: 0.64 s at most.
+
+API changes:
+- RobotState.lift_height_mm is now lift_angle_rad, and AnimBody.unknown is now curvature_radius_mm.
+- New: EvtMotionObserved, EvtConnectionLost, Client.read_camera_calibration(), camera.CameraCalibration,
+    camera.DEFAULT_CALIBRATION, camera.ground_points(), camera.camera_to_robot(), pycozmo.motion_detection,
+    pycozmo.marker_detection, event.Dispatcher.listens_to(), Client.cubes, pycozmo.cubes, pycozmo.cube_lights,
+    EvtCubeConnectionChange, EvtCubeMovingChange, EvtCubeTapped, EvtCubeObserved, Client.turn_in_place(),
+    drive_straight(), execute_path(), enable_stop_on_cliff(), set_camera_exposure(), enable_auto_exposure(), and
+    robot.PATH_SPEED, PATH_ACCEL, PATH_DECEL, POINT_TURN_SPEED, POINT_TURN_ACCEL and POINT_TURN_TOLERANCE.
+- Client.go_to_pose() says whether the robot got there, and takes wait and timeout.
+- Client.activate_behavior() and deactivate_behavior() take the dispatcher the behavior gets its events from, the
+    client by default. The brain's behaviors get theirs from Brain.dispatcher, on the brain's own thread, and its
+    handlers are there too: Brain.handlers is gone.
+
+
 v0.9.20 (Sep 20, 2026)
 ----------------------
 
