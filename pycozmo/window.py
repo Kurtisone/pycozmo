@@ -128,6 +128,10 @@ class SendWindow(BaseWindow):
             res = seq < self.expected_seq or seq >= self.next_seq
         return res
 
+    def is_empty(self) -> bool:
+        """ Check whether every packet in the window has been acknowledged. """
+        return self.expected_seq == self.next_seq
+
     def is_full(self) -> bool:
         """ Check whether the window is full. """
         if self.expected_seq > self.next_seq:

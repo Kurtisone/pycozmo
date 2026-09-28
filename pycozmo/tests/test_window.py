@@ -217,6 +217,16 @@ class TestSendWindow(unittest.TestCase):
         self.assertFalse(self.w.is_out_of_order(0))
         self.assertTrue(self.w.is_out_of_order(1))
 
+    def test_is_empty(self):
+        self.assertTrue(self.w.is_empty())
+        self.w.put("x")
+        self.w.put("y")
+        self.assertFalse(self.w.is_empty())
+        self.w.acknowledge(0)
+        self.assertFalse(self.w.is_empty())
+        self.w.acknowledge(1)
+        self.assertTrue(self.w.is_empty())
+
     def test_is_full(self):
         self.assertFalse(self.w.is_full())
         self.w.put("w")

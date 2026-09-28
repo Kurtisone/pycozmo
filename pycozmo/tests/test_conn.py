@@ -1,9 +1,14 @@
 
 import unittest
 import socket
-from threading import Event
+import time
+from threading import Event, Thread
+from typing import List
+from unittest import mock
 
 import pycozmo
+from pycozmo.frame import Frame
+from pycozmo.protocol_declaration import OOB_SEQ
 
 
 class TestConnection(unittest.TestCase):
@@ -113,3 +118,136 @@ class TestSendThread(unittest.TestCase):
         thread._send_raw_frame(b"\x00" * 8)
         self.assertEqual(thread.discarded_frames, discarded + 1)
         self.assertEqual(thread.sent_frames, 0)
+
+
+class LossyTestCase(unittest.TestCase):
+    """ A client and a server that talks like a robot, over a link that can lose frames. """
+
+    def setUp(self):
+        self.s = pycozmo.conn.Connection(server=True)
+        self.c = pycozmo.conn.Connection(("127.0.0.1", 5551))
+        connected = Event()
+        self.c.add_handler(pycozmo.protocol_encoder.Connect, lambda cli, pkt: connected.set())
+        self.s.start()
+        self.c.start()
+        self.addCleanup(self.stop)
+        self.c.connect()
+        self.assertTrue(connected.wait(2.0))
+        self.talking = Event()
+        self.talker = Thread()
+
+    def stop(self):
+        self.talking.clear()
+        if self.talker.is_alive():
+            self.talker.join()
+        self.c.stop()
+        self.s.stop()
+
+    def talk(self, client):
+        # The robot sends RobotState about 30 times a second: out-of-band packets, in frames that carry an
+        # acknowledgement each. A client playing an animation sends a frame of its own as often.
+        while self.talking.is_set():
+            self.s.send(pycozmo.protocol_encoder.RobotState(cliff_data_raw=(0, 0, 0, 0)))
+            if client:
+                self.c.send(pycozmo.protocol_encoder.OutputSilence())
+            time.sleep(1/30)
+
+    def start_talking(self, client=False):
+        self.talking.set()
+        self.talker = Thread(target=self.talk, args=(client, ), daemon=True)
+        self.talker.start()
+
+    @staticmethod
+    def lose_first(recv_thread, level):
+        """ Make a receive thread lose the first frame carrying SetRobotVolume at that level. """
+        handle_frame = recv_thread.handle_frame
+        lost: List[Frame] = []
+
+        def lossy(frame):
+            if not lost and any(isinstance(pkt, pycozmo.protocol_encoder.SetRobotVolume) and pkt.level == level
+                                for pkt in frame.pkts):
+                lost.append(frame)
+                return
+            handle_frame(frame)
+
+        recv_thread.handle_frame = lossy
+        return lost
+
+
+class TestResend(LossyTestCase):
+
+    def test_a_packet_the_peer_missed_goes_out_again_while_it_keeps_talking(self):
+        # The wait for a resend ran from the last frame heard, which a robot that keeps talking resets
+        # every 33 ms: what it missed never went out again, and everything after piled up behind it.
+        levels = []
+        both = Event()
+
+        def on_volume(cli, pkt):
+            levels.append(pkt.level)
+            if len(levels) == 2:
+                both.set()
+
+        self.s.add_handler(pycozmo.protocol_encoder.SetRobotVolume, on_volume)
+        lost = self.lose_first(self.s.recv_thread, 2)
+        self.start_talking()
+        self.c.send(pycozmo.protocol_encoder.SetRobotVolume(1))
+        time.sleep(0.2)
+        self.c.send(pycozmo.protocol_encoder.SetRobotVolume(2))
+        self.assertTrue(both.wait(2.0))
+        self.assertEqual(levels, [1, 2])
+        self.assertEqual(len(lost), 1)
+
+
+class TestResendTimer(unittest.TestCase):
+
+    def setUp(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.addCleanup(sock.close)
+        self.thread = pycozmo.conn.SendThread(sock, ("127.0.0.1", 9))
+        self.now = 10.0
+        patcher = mock.patch("pycozmo.conn.time.perf_counter", lambda: self.now)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def put(self):
+        with self.thread.lock:
+            if self.thread.window.is_empty():
+                self.thread.resend_time = self.now
+            return self.thread.window.put(pycozmo.protocol_encoder.SetRobotVolume(1))
+
+    def waits(self, until, hear=False):
+        """ The time between one resend and the next, from now until then, a step of 10 ms at a time. """
+        waits = []
+        last = self.now
+        while self.now < until:
+            self.now += 0.01
+            if hear:
+                # A frame from the peer every 10 ms, acknowledging nothing new.
+                self.thread.ack(OOB_SEQ, OOB_SEQ)
+            if self.thread._resend_messages():
+                # One step late at most.
+                waits.append(round(self.now - last - 0.005, 1))
+                last = self.now
+        return waits
+
+    def test_nothing_goes_out_again_before_the_peer_is_heard(self):
+        self.put()
+        self.assertEqual(self.waits(11.0), [])
+
+    def test_each_resend_waits_twice_as_long_as_the_last(self):
+        self.thread.ack(OOB_SEQ, OOB_SEQ)
+        self.put()
+        self.assertEqual(self.waits(14.0), [0.1, 0.2, 0.4, 0.8, 0.8, 0.8, 0.8])
+
+    def test_an_acknowledgement_starts_the_wait_again(self):
+        self.thread.ack(OOB_SEQ, OOB_SEQ)
+        first = self.put()
+        self.put()
+        self.assertEqual(self.waits(10.5), [0.1, 0.2])
+        self.thread.ack(first, OOB_SEQ)
+        self.assertEqual(self.waits(11.0), [0.1, 0.2])
+
+    def test_hearing_the_peer_without_an_acknowledgement_does_not_hold_resends_back(self):
+        self.thread.ack(OOB_SEQ, OOB_SEQ)
+        self.put()
+        self.assertEqual(self.waits(10.5, hear=True), [0.1, 0.2])

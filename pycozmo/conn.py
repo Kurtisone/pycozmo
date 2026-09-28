@@ -43,7 +43,11 @@ class SendThread(Thread):
     """ Cozmo protocol connection send thread. """
 
     COLLECT_INTERVAL = 1/30 / 3
+    #: How long the oldest unacknowledged packet waits before the window goes out again.
     ACK_TIMEOUT = 3 * 1/30
+    #: The longest wait between two resends. Each resend the peer does not acknowledge doubles the wait up to this:
+    #: a fixed wait sent a dead link the whole window, up to 62 packets, ten times a second.
+    MAX_ACK_TIMEOUT = 0.8
 
     def __init__(self,
                  sock: socket.socket,
@@ -58,7 +62,12 @@ class SendThread(Thread):
         self.stop_flag = False
         self.queue: Queue = Queue()
         self.last_ack = 0
+        # When the peer was last heard from. Nothing is resent before it has been heard at all.
         self.last_ack_time = 0.0
+        # When the oldest unacknowledged packet was last sent, or the peer last acknowledged something new.
+        self.resend_time = 0.0
+        # Resends in a row that the peer has not acknowledged.
+        self.resends = 0
         self.disconnected = False
         # Number of packets received from the application layer.
         self.outgoing_packets = 0
@@ -108,6 +117,8 @@ class SendThread(Thread):
                 self._send_oob(pkt)
             else:
                 with self.lock:
+                    if self.window.is_empty():
+                        self.resend_time = time.perf_counter()
                     seq = self.window.put(pkt)
                     last_ack = self.last_ack
                     is_full = self.window.is_full()
@@ -115,15 +126,19 @@ class SendThread(Thread):
         return pkts, last_ack
 
     def _resend_messages(self) -> list:
+        # The wait runs from the last acknowledgement that moved the window, not from the last frame heard: the
+        # robot sends RobotState about 30 times a second, each frame acknowledging what it has, so a packet it
+        # never got was never sent again as long as it kept talking.
+        now = time.perf_counter()
         with self.lock:
-            pkts = self.window.get()
-            last_ack_time = self.last_ack_time
-        if pkts and last_ack_time and time.perf_counter() - last_ack_time > self.ACK_TIMEOUT:
-            with self.lock:
-                self.last_ack_time = time.perf_counter()
-        else:
-            pkts = []
-        return pkts
+            if not self.last_ack_time or self.window.is_empty():
+                return []
+            timeout = min(self.ACK_TIMEOUT * 2 ** min(self.resends, 8), self.MAX_ACK_TIMEOUT)
+            if now - self.resend_time <= timeout:
+                return []
+            self.resend_time = now
+            self.resends += 1
+            return self.window.get()
 
     def _send_packets(self, pkts: List[Tuple[int, Packet]], last_ack: int) -> None:
         to_frame: List[Packet] = []
@@ -207,7 +222,11 @@ class SendThread(Thread):
     def ack(self, seq: int, last_ack: int) -> None:
         now = time.perf_counter()
         with self.lock:
+            expected_seq = self.window.expected_seq
             self.window.acknowledge(seq)
+            if self.window.expected_seq != expected_seq:
+                self.resend_time = now
+                self.resends = 0
             self.last_ack = last_ack
             self.last_ack_time = now
 
@@ -216,6 +235,8 @@ class SendThread(Thread):
             self.window.reset()
             self.last_ack = 0
             self.last_ack_time = 0
+            self.resend_time = 0.0
+            self.resends = 0
         if self.server:
             self.receiver_address = None
         self.outgoing_packets = 0
