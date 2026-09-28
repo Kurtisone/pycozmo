@@ -9,7 +9,7 @@ import os
 import random
 import threading
 import time
-from typing import Dict, List, Optional, Sequence, Any
+from typing import Dict, List, Optional, Sequence, Tuple, Any
 
 from . import event
 from . import client
@@ -712,6 +712,13 @@ class BehaviorPounceOnMotion(Behavior):
     #: Speeds for creeping and turning. Slow on purpose: the camera sees nothing while they last.
     DRIVE_SPEED = 40.0
     TURN_SPEED = 1.5
+    #: How close to its target a turn, in radians, or a drive, in mm, has to get to be done.
+    TURN_TOLERANCE = math.radians(2.0)
+    DRIVE_TOLERANCE = 2.0
+    #: How many times its nominal duration a turn or a drive is given, and then some, before it is
+    #: stopped wherever it has got to.
+    MOVE_TIMEOUT_FACTOR = 3.0
+    MOVE_TIMEOUT_MARGIN = 1.0
 
     def __init__(self, cli: client.Client, conf: Any,
                  robot_needs: Optional[needs.Needs] = None):
@@ -730,11 +737,14 @@ class BehaviorPounceOnMotion(Behavior):
         self.state = "idle"
         self.timers: Dict[str, threading.Timer] = {}
         self.last_motion_time = 0.0
+        # Where a turn or a drive started, and what it is after: (heading, x, y, target, then).
+        self.move: Optional[Tuple[float, float, float, float, Any]] = None
         #: Pounces made and caught during the current activation.
         self.pounces = 0
         self.catches = 0
         self.add_handler(event.EvtMotionObserved, self._on_motion)
         self.add_handler(event.EvtAnimationCompleted, self._on_animation_completed)
+        self.add_handler(event.EvtRobotStateUpdated, self._on_robot_state)
 
     def wants_to_run(self) -> bool:
         groups = self.cli.animation_groups or {}
@@ -843,23 +853,55 @@ class BehaviorPounceOnMotion(Behavior):
     # ------------------------------------------------------------------ motion
 
     def _turn(self, angle: float, then: Any) -> None:
-        """ Turn on the spot by angle, radians, left positive, then call then. """
+        """
+        Turn on the spot by angle, radians, left positive, then call then.
+
+        The wheels are only a rough guide to how far the robot has turned: its treads slip in a
+        turn, and on a robot the heading changed about half as much as the wheel speeds said. So
+        the turn goes on until the heading the robot reports has changed by the angle.
+        """
         self.state = "turning"
+        self._start_move(angle, then)
         wheel_speed = math.copysign(self.TURN_SPEED * robot.TRACK_WIDTH.mm / 2.0, angle)
         self.cli.drive_wheels(-wheel_speed, wheel_speed)
-        self._after("move", abs(angle) / self.TURN_SPEED, lambda: self._stop_then("turning", then))
+        self._after("move", abs(angle) / self.TURN_SPEED * self.MOVE_TIMEOUT_FACTOR + self.MOVE_TIMEOUT_MARGIN,
+                    lambda: self._stop_then("turning", then))
 
     def _drive(self, distance: float, state: str, then: Any) -> None:
         """ Drive straight by distance, mm, forwards if positive, then call then. """
         self.state = state
+        self._start_move(distance, then)
         speed = math.copysign(self.DRIVE_SPEED, distance)
         self.cli.drive_wheels(speed, speed)
-        self._after("move", abs(distance) / self.DRIVE_SPEED, lambda: self._stop_then(state, then))
+        self._after("move", abs(distance) / self.DRIVE_SPEED * self.MOVE_TIMEOUT_FACTOR + self.MOVE_TIMEOUT_MARGIN,
+                    lambda: self._stop_then(state, then))
+
+    def _start_move(self, target: float, then: Any) -> None:
+        pose = self.cli.pose
+        self.move = (pose.rotation.angle_z.radians, pose.position.x, pose.position.y, target, then)
+
+    def _on_robot_state(self, cli: client.Client) -> None:
+        """ Stop a turn or a drive once the robot's own pose says it has gone far enough. """
+        with self.lock:
+            if self.move is None or self.deactivated or self.state not in ("turning", "approaching", "backing_up"):
+                return
+            heading, x, y, target, then = self.move
+            pose = self.cli.pose
+            if self.state == "turning":
+                turned = (pose.rotation.angle_z.radians - heading + math.pi) % (2.0 * math.pi) - math.pi
+                arrived = abs(turned) >= abs(target) - self.TURN_TOLERANCE
+            else:
+                travelled = math.hypot(pose.position.x - x, pose.position.y - y)
+                arrived = travelled >= abs(target) - self.DRIVE_TOLERANCE
+            if arrived:
+                self._stop_then(self.state, then)
 
     def _stop_then(self, state: str, then: Any) -> None:
         with self.lock:
             if self.deactivated or self.state != state:
                 return
+            self._cancel("move")
+            self.move = None
             self.cli.stop_all_motors()
             then()
 

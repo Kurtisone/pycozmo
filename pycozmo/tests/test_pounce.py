@@ -31,6 +31,12 @@ class PounceClient(FakeClient):
         self.head_angles: List[float] = []
         self.lift_position = robot.LiftPosition(height=robot.MIN_LIFT_HEIGHT)
         self.last_ground_motion: Optional[Tuple[float, Tuple[float, float]]] = None
+        self.pose = pycozmo.util.Pose(0.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(radians=0.0))
+
+    def report_pose(self, x: float = 0.0, y: float = 0.0, heading: float = 0.0) -> None:
+        """ Have the robot report where it is now, as its RobotState does. """
+        self.pose = pycozmo.util.Pose(x, y, 0.0, angle_z=pycozmo.util.Angle(radians=heading))
+        self.dispatch(event.EvtRobotStateUpdated, self)
 
     def set_head_angle(self, angle: float, *args: Any, **kwargs: Any) -> None:
         self.head_angles.append(angle)
@@ -152,10 +158,29 @@ class TestWatching(PounceTestCase):
         left, right = self.cli.wheel_speeds[-1]
         self.assertLess(left, 0.0)
         self.assertGreater(right, 0.0)
-        self.assertAlmostEqual(self.timers["move"][0], math.atan2(60.0, 100.0) / b.TURN_SPEED)
-        self.fire("move")
+        bearing = math.atan2(60.0, 100.0)
+        # The treads slip: half way by the wheels is not there yet.
+        self.cli.report_pose(heading=bearing / 2.0)
+        self.assertEqual(b.state, "turning")
+        self.cli.report_pose(heading=bearing)
         self.assertEqual(b.state, "watching")
         self.assertGreater(self.cli.stopped, 0)
+        self.assertNotIn("move", self.timers)
+
+    def test_a_turn_that_never_gets_there_is_stopped(self):
+        b = self.watching()
+        self.motion(100.0, 60.0)
+        nominal = math.atan2(60.0, 100.0) / b.TURN_SPEED
+        self.assertGreater(self.timers["move"][0], 2.0 * nominal)
+        self.fire("move")
+        self.assertEqual(b.state, "watching")
+
+    def test_a_turn_across_the_half_turn_mark_is_measured_right(self):
+        b = self.watching()
+        self.cli.pose = pycozmo.util.Pose(0.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(radians=math.pi - 0.1))
+        self.motion(100.0, 60.0)
+        self.cli.report_pose(heading=-math.pi + 0.5)
+        self.assertEqual(b.state, "watching")
 
     def test_motion_to_the_right_turns_right(self):
         self.watching()
@@ -171,14 +196,18 @@ class TestWatching(PounceTestCase):
         left, right = self.cli.wheel_speeds[-1]
         self.assertGreater(left, 0.0)
         self.assertEqual(left, right)
-        self.assertAlmostEqual(self.timers["move"][0], (180.0 - b.APPROACH_DISTANCE) / b.DRIVE_SPEED)
-        self.fire("move")
+        self.cli.report_pose(x=40.0)
+        self.assertEqual(b.state, "approaching")
+        self.cli.report_pose(x=180.0 - b.APPROACH_DISTANCE)
         self.assertEqual(b.state, "watching")
 
     def test_creeping_goes_a_limited_way_at_once(self):
         b = self.watching()
         self.motion(390.0, 0.0)
-        self.assertAlmostEqual(self.timers["move"][0], b.MAX_APPROACH / b.DRIVE_SPEED)
+        self.cli.report_pose(x=b.MAX_APPROACH - 10.0)
+        self.assertEqual(b.state, "approaching")
+        self.cli.report_pose(x=b.MAX_APPROACH)
+        self.assertEqual(b.state, "watching")
 
     def test_motion_while_busy_is_ignored(self):
         b = self.watching()
@@ -214,8 +243,7 @@ class TestPouncing(PounceTestCase):
         self.assertEqual(b.state, "backing_up")
         left, right = self.cli.wheel_speeds[-1]
         self.assertLess(left, 0.0)
-        self.assertAlmostEqual(self.timers["move"][0], 50.0 / b.DRIVE_SPEED)
-        self.fire("move")
+        self.cli.report_pose(x=-50.0)
         self.assertEqual(b.state, "watching")
 
 
@@ -225,9 +253,10 @@ class TestNothingMoving(PounceTestCase):
         b = self.watching()
         self.fire("rotate")
         self.assertEqual(b.state, "turning")
-        angle = self.timers["move"][0] * b.TURN_SPEED
-        self.assertLessEqual(angle, math.radians(90.0) + 1e-9)
-        self.fire("move")
+        assert b.move is not None
+        angle = b.move[3]
+        self.assertLessEqual(abs(angle), math.radians(90.0) + 1e-9)
+        self.cli.report_pose(heading=angle)
         self.assertEqual(b.state, "watching")
 
     def test_it_sometimes_pounces_after_a_turn(self):
