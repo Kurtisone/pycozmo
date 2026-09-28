@@ -61,6 +61,33 @@ STEP_TABLE = (
 INDEX_TABLE = (-1, -1, -1, -1, 2, 4, 6, 8)
 
 
+def _nibble_tables() -> Tuple[List[int], List[int]]:
+    """
+    For every step index and nibble, at index * 16 + nibble: the difference the nibble adds to the
+    predictor, and the step index it leads to.
+
+    Worked out once rather than for every sample: decoding the sound of an animation for the first
+    time held up everything else the client had to do for most of a second.
+    """
+    diffs = []
+    next_indices = []
+    for index, step in enumerate(STEP_TABLE):
+        for nibble in range(16):
+            diff = step >> 3
+            if nibble & 1:
+                diff += step >> 2
+            if nibble & 2:
+                diff += step >> 1
+            if nibble & 4:
+                diff += step
+            diffs.append(-diff if nibble & 8 else diff)
+            next_indices.append(min(max(index + INDEX_TABLE[nibble & 7], 0), len(STEP_TABLE) - 1))
+    return diffs, next_indices
+
+
+_DIFFS, _NEXT_INDICES = _nibble_tables()
+
+
 class Wem:
     """ A WEM audio file. """
 
@@ -174,6 +201,9 @@ class Wem:
             payload = block[ADPCM_HEADER_SIZE * self.channels:]
             decoded = [self._decode_channel(payload, ch, channels[ch])
                        for ch in range(self.channels)]
+            if self.channels == 1:
+                out += decoded[0]
+                continue
             # Interleave the channels back together.
             for i in range(len(decoded[0])):
                 for ch in range(self.channels):
@@ -188,21 +218,19 @@ class Wem:
         interleaves the two channels in four byte groups, which is how WWise writes them.
         """
         predictor, index = state
-        samples = []
+        samples: List[int] = []
+        append = samples.append
+        diffs, next_indices = _DIFFS, _NEXT_INDICES
         for byte in self._channel_bytes(payload, channel):
             for nibble in (byte & 0x0F, byte >> 4):
-                step = STEP_TABLE[index]
-                diff = step >> 3
-                if nibble & 1:
-                    diff += step >> 2
-                if nibble & 2:
-                    diff += step >> 1
-                if nibble & 4:
-                    diff += step
-                predictor += -diff if nibble & 8 else diff
-                predictor = min(max(predictor, -32768), 32767)
-                index = min(max(index + INDEX_TABLE[nibble & 7], 0), len(STEP_TABLE) - 1)
-                samples.append(predictor)
+                key = (index << 4) | nibble
+                predictor += diffs[key]
+                if predictor > 32767:
+                    predictor = 32767
+                elif predictor < -32768:
+                    predictor = -32768
+                index = next_indices[key]
+                append(predictor)
         return samples
 
     def _channel_bytes(self, payload: bytes, channel: int) -> bytes:

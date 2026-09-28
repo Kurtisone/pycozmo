@@ -14,10 +14,11 @@ References:
 
 """
 
-from typing import List
-import struct
+from typing import List, Optional
 import wave
 import time
+
+import numpy as np
 
 from .logger import logger
 from . import protocol_encoder
@@ -71,10 +72,25 @@ def bytes_to_cozmo(byte_string: bytes, rate_correction: int, channels: int) -> b
     # A short final frame is padded with silence.
     out = bytearray([SILENCE]) * 744
     n = channels * rate_correction
-    bs = struct.unpack('{}h'.format(int(len(byte_string) / 2)), byte_string)[0::n]
-    for i, s in enumerate(bs):
-        out[i] = u_law_encoding(s)
+    samples = np.frombuffer(byte_string[:len(byte_string) // 2 * 2], dtype="<i2")[0::n]
+    out[:len(samples)] = u_law_table()[samples.astype(np.int64) + 32768].tobytes()
     return out
+
+
+_u_law_table: Optional[np.ndarray] = None
+
+
+def u_law_table() -> np.ndarray:
+    """
+    u_law_encoding() of every 16-bit sample, indexed by the sample plus 32768.
+
+    Encoding a sample at a time took most of half a second for the sound of one animation, on the
+    thread that handles everything the robot sends.
+    """
+    global _u_law_table
+    if _u_law_table is None:
+        _u_law_table = np.array([u_law_encoding(sample) for sample in range(-32768, 32768)], dtype=np.uint8)
+    return _u_law_table
 
 
 def u_law_encoding(sample: int) -> int:

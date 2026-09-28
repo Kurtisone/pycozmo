@@ -235,15 +235,12 @@ class AudioLibrary:
         if volume != 1.0:
             data = data * volume
         data = np.clip(np.rint(data), -32768, 32767).astype(np.int64)
-        frames = []
-        for start in range(0, len(data), FRAME_SAMPLES):
-            chunk = data[start:start + FRAME_SAMPLES]
-            # The tail of a short final frame is silence.
-            frame = bytearray([audio.SILENCE]) * FRAME_SAMPLES
-            for i, sample in enumerate(chunk):
-                frame[i] = audio.u_law_encoding(int(sample))
-            frames.append(protocol_encoder.OutputAudio(samples=bytes(frame)))
-        return frames
+        encoded = audio.u_law_table()[data + 32768]
+        # The tail of a short final frame is silence.
+        tail = -len(encoded) % FRAME_SAMPLES
+        encoded = np.concatenate((encoded, np.full(tail, audio.SILENCE, dtype=np.uint8)))
+        return [protocol_encoder.OutputAudio(samples=encoded[start:start + FRAME_SAMPLES].tobytes())
+                for start in range(0, len(encoded), FRAME_SAMPLES)]
 
 
 def load_audio_library(resource_dir: str) -> AudioLibrary:
