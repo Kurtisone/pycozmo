@@ -57,3 +57,25 @@ class TestDebugMessage(unittest.TestCase):
     def test_name_format_invalid_args(self):
         with self.assertRaises(AssertionError):
             get_debug_message(409, 624, [])
+
+    def test_a_float_argument_is_read_as_one(self):
+        # Words as a robot sent them: 456 and 300 degrees per second, as IEEE floats.
+        msg = get_debug_message(244, 533, [0x43E40000, 0x43960000])
+        self.assertEqual(msg, "SteeringController.ExecutePointTurn_2.PointTurnTooFast: "
+                              "Speed of 456.000000 deg/s exceeds limit of 300.000000 deg/s. Clamping.")
+
+    def test_a_negative_integer_is_read_as_one(self):
+        msg = get_debug_message(-1, 6, [0xFFFFFFFF, 747])
+        self.assertEqual(msg, "BufferKeyFrame.BufferFull -1 bytes available, 747 needed.")
+
+    def test_a_percent_sign_takes_no_argument(self):
+        from pycozmo.robot_debug import _typed_args
+        self.assertEqual(_typed_args("%d%% of %.2f", [5, 0x3FC00000]), (5, 1.5))
+
+    def test_every_format_takes_the_arguments_it_declares(self):
+        from pycozmo.robot_debug import ROBOT_FORMAT_IDS, _typed_args
+        for format_id, (fmt, count) in ROBOT_FORMAT_IDS.items():
+            with self.subTest(format_id=format_id):
+                typed = _typed_args(fmt, [0] * count)
+                self.assertEqual(len(typed), count)
+                fmt % typed

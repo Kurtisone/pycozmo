@@ -6,8 +6,10 @@ Based on AnkiLogStringTables.json .
 
 """
 
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Tuple
 import logging
+import re
+import struct
 
 
 # Map of robot log levels to Python log levels.
@@ -1654,13 +1656,42 @@ def get_log_level(robot_level: int) -> int:
     return ROBOT_LOG_LEVELS.get(robot_level, logging.DEBUG)
 
 
+#: A printf conversion specification, and its conversion character.
+_CONVERSION = re.compile(r"%[-+ #0]*\d*(?:\.\d+)?([diouxXeEfFgGcs%])")
+
+
+def _typed_args(fmt: str, args: List[Any]) -> Tuple[Any, ...]:
+    """
+    The arguments as the format string means them.
+
+    The robot sends every argument as a 32 bit word. A float is its IEEE bits and a negative number
+    its two's complement, so formatting the words as they come printed a clamped point turn as "Speed
+    of 1138982912.000000 deg/s exceeds limit of 1133903872.000000 deg/s" - 456 and 300 degrees per
+    second.
+    """
+    typed = []
+    words = iter(args)
+    for match in _CONVERSION.finditer(fmt):
+        conversion = match.group(1)
+        if conversion == "%":
+            continue
+        word = struct.pack("<I", int(next(words)) & 0xFFFFFFFF)
+        if conversion in "eEfFgG":
+            typed.append(struct.unpack("<f", word)[0])
+        elif conversion in "di":
+            typed.append(struct.unpack("<i", word)[0])
+        else:
+            typed.append(struct.unpack("<I", word)[0])
+    return tuple(typed)
+
+
 def get_debug_message(name_id: int, format_id: int, args: List[Any]) -> Optional[str]:
     """ Generate a log message from robot debug name and format IDs. """
     fmt = ROBOT_FORMAT_IDS.get(format_id)
     if fmt:
         if fmt[1]:
             assert fmt[1] == len(args)
-            msg = (fmt[0] % tuple(args))    # noqa
+            msg = (fmt[0] % _typed_args(fmt[0], args))    # noqa
         else:
             msg = fmt[0]
     else:
