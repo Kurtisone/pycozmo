@@ -21,3 +21,7 @@ __pycache__/
 /htmlcov/
 
 /examples/*.png
+
+# The Cozmo application, which the Wwise Vorbis codebooks are extracted from. It is Anki's, not ours
+# to publish.
+*.apk
