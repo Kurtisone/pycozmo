@@ -24,6 +24,7 @@ __all__ = [
     "minigray_to_jpeg",
     "minicolor_to_jpeg",
     "ground_points",
+    "camera_to_robot",
 ]
 
 
@@ -83,26 +84,77 @@ class CameraCalibration:
         return CameraCalibration(fx=self.fx * sx, fy=self.fy * sy, cx=self.cx * sx, cy=self.cy * sy,
                                  width=width, height=height, distortion=self.distortion, skew=self.skew * sx)
 
-    def undistort(self, u: np.ndarray, v: np.ndarray, iterations: int = 20) -> Tuple[np.ndarray, np.ndarray]:
+    def undistort(self, u: np.ndarray, v: np.ndarray, iterations: int = 5) -> Tuple[np.ndarray, np.ndarray]:
         """
         Where pixels would be without the lens' distortion, in normalized coordinates - the tangents of
         the angles to the optical axis, x to the right and y down.
 
-        OpenCV's distortion model has no closed form inverse; it is inverted by fixed point iteration,
-        which converges within a few steps for a lens as mild as the robot's.
+        OpenCV's distortion model has no closed form inverse. The model only holds so far out: past a
+        radius, as with the robot's calibration, it folds back, and the corners of the image lie beyond
+        what it reaches at all. The fixed point iteration this used diverged there - pixel (0, 239) came
+        out at the optical centre. Now the radius is found first, by bisection along the pixel's direction
+        up to where the model folds, and Newton's method, in steps held short and within that radius,
+        adds the small tangential part. Pixels beyond the model's reach come out where it folds.
         """
         k1, k2, p1, p2, k3 = (tuple(self.distortion) + (0.0,) * 5)[:5]
         yd = (np.asarray(v, dtype=np.float64) - self.cy) / self.fy
         xd = (np.asarray(u, dtype=np.float64) - self.cx - self.skew * yd) / self.fx
-        x, y = xd, yd
+
+        def radial(r2: np.ndarray) -> np.ndarray:
+            factor: np.ndarray = 1.0 + r2 * (k1 + r2 * (k2 + r2 * k3))
+            return factor
+
+        # Where r (1 + k1 r^2 + k2 r^4 + k3 r^6) stops growing: the smallest positive root of its derivative,
+        # 1 + 3 k1 s + 5 k2 s^2 + 7 k3 s^3 in s = r^2.
+        roots = np.roots([7.0 * k3, 5.0 * k2, 3.0 * k1, 1.0]) if (k1, k2, k3) != (0.0, 0.0, 0.0) \
+            else np.zeros(0, dtype=complex)
+        folds = [float(root.real) for root in np.atleast_1d(roots)
+                 if abs(root.imag) < 1e-12 and root.real > 0.0]
+        max_r = math.sqrt(min(folds)) if folds else np.inf
+
+        rd = np.hypot(xd, yd)
+        low = np.zeros_like(rd)
+        high = np.full_like(rd, max_r) if folds else np.maximum(2.0 * rd, 1.0)
+        for _ in range(32):
+            middle = (low + high) / 2.0
+            below = middle * radial(middle * middle) < rd
+            low = np.where(below, middle, low)
+            high = np.where(below, high, middle)
+        scale = np.where(rd > 0.0, low / np.where(rd > 0.0, rd, 1.0), 1.0)
+        x, y = xd * scale, yd * scale
+
         for _ in range(iterations):
             r2 = x * x + y * y
-            radial = 1.0 + r2 * (k1 + r2 * (k2 + r2 * k3))
-            dx = 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
-            dy = p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
-            x = (xd - dx) / radial
-            y = (yd - dy) / radial
+            factor = radial(r2)
+            slope = k1 + r2 * (2.0 * k2 + 3.0 * k3 * r2)
+            fx = x * factor + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x) - xd
+            fy = y * factor + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y - yd
+            # The Jacobian of the distortion.
+            a = factor + 2.0 * x * x * slope + 2.0 * p1 * y + 6.0 * p2 * x
+            b = 2.0 * x * y * slope + 2.0 * p1 * x + 2.0 * p2 * y
+            d = factor + 2.0 * y * y * slope + 6.0 * p1 * y + 2.0 * p2 * x
+            determinant = a * d - b * b
+            safe = np.abs(determinant) > 1e-9
+            step_x = np.where(safe, (d * fx - b * fy) / np.where(safe, determinant, 1.0), 0.0)
+            step_y = np.where(safe, (a * fy - b * fx) / np.where(safe, determinant, 1.0), 0.0)
+            length = np.hypot(step_x, step_y)
+            shorten = np.minimum(1.0, 0.01 / np.maximum(length, 1e-300))
+            x, y = x - step_x * shorten, y - step_y * shorten
+            r = np.hypot(x, y)
+            inside = np.minimum(1.0, max_r / np.maximum(r, 1e-300))
+            x, y = x * inside, y * inside
         return x, y
+
+    def distort(self, x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """ Where the lens puts points given in normalized coordinates, in pixels. The inverse of undistort(). """
+        k1, k2, p1, p2, k3 = (tuple(self.distortion) + (0.0,) * 5)[:5]
+        x = np.asarray(x, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        r2 = x * x + y * y
+        radial = 1.0 + r2 * (k1 + r2 * (k2 + r2 * k3))
+        xd = x * radial + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
+        yd = y * radial + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
+        return self.cx + self.fx * xd + self.skew * yd, self.cy + self.fy * yd
 
 
 #: The factory calibration of one robot, for when a robot's own cannot be read. Others differ by a few
@@ -126,10 +178,7 @@ def ground_points(x: np.ndarray, y: np.ndarray, head_angle: float,
     """
     angle = head_angle + pitch
     c, s = math.cos(angle), math.sin(angle)
-    neck_x, neck_z = robot.NECK_JOINT_POSITION
-    cam_x, cam_z = robot.HEAD_CAMERA_POSITION
-    origin_x = neck_x + cam_x * c - cam_z * s
-    origin_z = neck_z + cam_x * s + cam_z * c
+    origin_x, origin_z = _camera_position(angle)
     # Line of sight in the head's frame is (1, -x, -y): ahead, to the left, up.
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
@@ -138,6 +187,30 @@ def ground_points(x: np.ndarray, y: np.ndarray, head_angle: float,
     reaches = up < 0.0
     distance = np.where(reaches, -origin_z / np.where(reaches, up, -1.0), 0.0)
     return origin_x + distance * ahead, distance * -x, reaches
+
+
+def camera_to_robot(points: np.ndarray, head_angle: float, pitch: float = 0.0) -> np.ndarray:
+    """
+    Points in the camera's frame - x to the right, y down, z ahead along the optical axis, in mm - in the
+    robot's: x ahead of the origin, y to its left, z up from the ground. head_angle and pitch are as for
+    ground_points().
+
+    With no translation, as for a direction rather than a point, subtract camera_to_robot() of the origin.
+    """
+    angle = head_angle + pitch
+    c, s = math.cos(angle), math.sin(angle)
+    origin_x, origin_z = _camera_position(angle)
+    points = np.asarray(points, dtype=np.float64)
+    ahead, left, up = points[..., 2], -points[..., 0], -points[..., 1]
+    return np.stack([origin_x + c * ahead - s * up, left, origin_z + s * ahead + c * up], axis=-1)
+
+
+def _camera_position(angle: float) -> Tuple[float, float]:
+    """ Where the camera is, ahead of the robot's origin and up from the ground, for the head and tilt angle. """
+    c, s = math.cos(angle), math.sin(angle)
+    neck_x, neck_z = robot.NECK_JOINT_POSITION
+    cam_x, cam_z = robot.HEAD_CAMERA_POSITION
+    return neck_x + cam_x * c - cam_z * s, neck_z + cam_x * s + cam_z * c
 
 
 def minigray_to_jpeg(minigray: np.ndarray, width: int, height: int) -> np.ndarray:

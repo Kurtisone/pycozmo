@@ -91,6 +91,36 @@ class TestCalibration(unittest.TestCase):
                 self.assertAlmostEqual(float(ux[0]), x, places=5)
                 self.assertAlmostEqual(float(uy[0]), y, places=5)
 
+    def test_distorting_is_what_the_model_says(self):
+        calibration = camera.DEFAULT_CALIBRATION
+        for x, y in ((0.3, 0.2), (-0.45, 0.35), (0.1, -0.38), (-0.5, -0.3)):
+            with self.subTest(x=x, y=y):
+                u, v = calibration.distort(np.array([x]), np.array([y]))
+                np.testing.assert_allclose((float(u[0]), float(v[0])), distort(calibration, x, y), atol=1e-9)
+
+    def test_undistorting_reaches_across_the_image(self):
+        calibration = camera.DEFAULT_CALIBRATION
+        u, v = np.meshgrid(np.arange(320.0), np.arange(240.0))
+        x, y = calibration.undistort(u, v)
+        back_u, back_v = calibration.distort(x, y)
+        error = np.hypot(back_u - u, back_v - v)
+        # All but the very corners, which lie beyond where the calibration's model folds back.
+        self.assertGreater((error < 1e-6).mean(), 0.99)
+        self.assertTrue((error[20:220, 20:300] < 1e-6).all())
+
+    def test_the_corners_of_the_image_keep_their_direction(self):
+        # The fixed point iteration this replaced diverged there: pixel (0, 239) came out at the centre,
+        # which put what the bottom left corner of the image saw where the middle of the image looks.
+        calibration = camera.DEFAULT_CALIBRATION
+        for u, v in ((0.0, 0.0), (0.0, 239.0), (319.0, 239.0), (319.0, 0.0)):
+            with self.subTest(pixel=(u, v)):
+                x, y = calibration.undistort(np.array([u]), np.array([v]))
+                direction = math.atan2((v - calibration.cy) / calibration.fy, (u - calibration.cx) / calibration.fx)
+                self.assertAlmostEqual(math.atan2(y[0], x[0]), direction, delta=0.05)
+                self.assertGreater(math.hypot(x[0], y[0]), 0.6)
+                back_u, back_v = calibration.distort(x, y)
+                self.assertLess(math.hypot(back_u[0] - u, back_v[0] - v), 15.0)
+
     def test_it_scales_to_another_resolution(self):
         half = camera.DEFAULT_CALIBRATION.scaled(160, 120)
         self.assertAlmostEqual(half.fx, camera.DEFAULT_CALIBRATION.fx / 2.0)
@@ -136,6 +166,33 @@ class TestGround(unittest.TestCase):
         self.assertFalse(on_ground(self.calibration, 160.0, 200.0, 20.0)[2])
         self.assertTrue(on_ground(self.calibration, 160.0, 239.0, 20.0)[2])
         self.assertGreater(on_ground(self.calibration, 160.0, 239.0, 20.0)[0], 500.0)
+
+
+class TestCameraToRobot(unittest.TestCase):
+
+    def test_the_camera_s_own_position(self):
+        # Head level: the camera 17.52 mm ahead of the neck joint and 8 mm below it.
+        position = camera.camera_to_robot(np.zeros(3), 0.0)
+        np.testing.assert_allclose(position, (-13.0 + 17.52, 0.0, 47.7 - 8.0))
+
+    def test_its_axes(self):
+        # Head level: the optical axis is ahead, the image's x the robot's right, its y down.
+        origin = camera.camera_to_robot(np.zeros(3), 0.0)
+        np.testing.assert_allclose(camera.camera_to_robot(np.array([0.0, 0.0, 1.0]), 0.0) - origin, (1, 0, 0))
+        np.testing.assert_allclose(camera.camera_to_robot(np.array([1.0, 0.0, 0.0]), 0.0) - origin, (0, -1, 0))
+        np.testing.assert_allclose(camera.camera_to_robot(np.array([0.0, 1.0, 0.0]), 0.0) - origin, (0, 0, -1))
+
+    def test_a_point_on_the_ground_is_on_the_ground(self):
+        head, pitch = math.radians(-20.0), math.radians(1.5)
+        x, y = np.array([0.1, -0.2, 0.0]), np.array([0.3, 0.25, 0.4])
+        ground_x, ground_y, reaches = camera.ground_points(x, y, head, pitch)
+        self.assertTrue(reaches.all())
+        # Along each line of sight, at the depth that reaches the ground.
+        origin = camera.camera_to_robot(np.zeros(3), head, pitch)
+        for xi, yi, gx, gy in zip(x, y, ground_x, ground_y):
+            direction = camera.camera_to_robot(np.array([xi, yi, 1.0]), head, pitch) - origin
+            point = origin + direction * (-origin[2] / direction[2])
+            np.testing.assert_allclose(point, (gx, gy, 0.0), atol=1e-9)
 
 
 class TestReadingTheCalibration(unittest.TestCase):
