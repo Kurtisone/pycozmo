@@ -132,21 +132,22 @@ class TestFrames(unittest.TestCase):
         self.controller.cancel_anim()
         self.assertEqual(self.sent, [])
 
-    def test_end_animation_follows_the_next_frames_audio(self):
+    def test_end_animation_goes_out_in_a_frame_of_its_own(self):
+        # It ends the frame it is in: the robot expects audio right after it, and reported the
+        # StartAnimation that followed it in the same frame - "Got 0x9b instead".
         self.controller.cancel_anim()
-        kinds = self.frame()
-        self.assertEqual(kinds[:2], ["OutputSilence", "EndAnimation"])
-        self.assertEqual(kinds.count("EndAnimation"), 1)
+        self.assertEqual(self.frame(), ["OutputSilence", "EndAnimation"])
         self.assertNotIn("EndAnimation", self.frame(), "it goes out once")
 
-    def test_a_new_animation_ends_the_last_one_inside_a_frame(self):
+    def test_a_new_animation_starts_in_the_next_frame(self):
         # What play_anim_ppclip() does: cancel, then queue the StartAnimation frame.
         self.controller.cancel_anim()
         start = pycozmo.protocol_encoder.StartAnimation(anim_id=3)
         self.controller.play_anim_frame(None, None, (start,))
+        self.assertEqual(self.frame(), ["OutputSilence", "EndAnimation"])
         kinds = self.frame()
         self.assertEqual(kinds[0], "OutputSilence")
-        self.assertLess(kinds.index("EndAnimation"), kinds.index("StartAnimation"))
+        self.assertIn("StartAnimation", kinds)
 
     def test_without_a_frame_loop_it_is_sent_at_once(self):
         self.controller.thread = None

@@ -240,7 +240,18 @@ class AnimationController:
         other animation message has to follow an OutputAudio or an OutputSilence. Anything else where a
         frame should start is reported as "Expecting either audio sample or silence next in animation
         buffer" and the frame is lost.
+
+        EndAnimation also ends the frame it is in: the robot expects audio right after it. So it goes
+        out in a frame of its own, silence and EndAnimation, and the queued frames wait a tick.
         """
+        with self._pending_lock:
+            pending, self._pending = self._pending, []
+        if pending:
+            self.cli.conn.send(protocol_encoder.OutputSilence())
+            for pkt in pending:
+                self.cli.conn.send(pkt)
+            return
+
         audio_pkt, image_pkt, pkts = self.queue.get()
 
         # Silence stands in for a missing audio frame, so the outgoing packet is not the queued one.
@@ -255,11 +266,6 @@ class AnimationController:
                 self.playing_audio = False
                 self.cli.conn.post_event(event.EvtAudioCompleted, self.cli)
         self.cli.conn.send(audio_out)
-
-        with self._pending_lock:
-            pending, self._pending = self._pending, []
-        for pkt in pending:
-            self.cli.conn.send(pkt)
 
         if not image_pkt and self.procedural_face_enabled and not self.playing_animation:
             image_pkt = self._get_face_image()
@@ -291,10 +297,11 @@ class AnimationController:
         self.expected_anim_id = None
         pkt = protocol_encoder.EndAnimation()
         if self.animations_enabled and self.thread is not None:
-            # EndAnimation belongs in a frame, after its audio, like any animation message. Sent from
-            # here, it went out between two of the frame loop's packets - and every animation starts
-            # by cancelling the last one - so the robot found it where a frame should start: "Got 0x9a
-            # instead", and the frame's image after it gave the same with 0x97.
+            # EndAnimation belongs in a frame, after its audio, like any animation message, and ends
+            # it. Sent from here, it went out between two of the frame loop's packets - and every
+            # animation starts by cancelling the last one - so the robot found it where a frame
+            # should start: "Got 0x9a instead", and the frame's image after it gave the same with 0x97.
+            # See _send_frame() .
             with self._pending_lock:
                 self._pending.append(pkt)
         else:
