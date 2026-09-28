@@ -197,6 +197,42 @@ class TestResend(LossyTestCase):
         self.assertEqual(levels, [1, 2])
         self.assertEqual(len(lost), 1)
 
+    def test_what_follows_a_lost_frame_does_not_acknowledge_it(self):
+        # The frame after a lost one used to acknowledge its own sequence number, and with it the lost
+        # packet: the peer dropped it from its window and it was never delivered, nor was anything after it.
+        levels = []
+        both = Event()
+
+        def on_volume(cli, pkt):
+            levels.append(pkt.level)
+            if len(levels) == 3:
+                both.set()
+
+        self.c.add_handler(pycozmo.protocol_encoder.SetRobotVolume, on_volume)
+        lost = self.lose_first(self.c.recv_thread, 2)
+        self.start_talking(client=True)
+        self.s.send(pycozmo.protocol_encoder.SetRobotVolume(1))
+        time.sleep(0.2)
+        self.s.send(pycozmo.protocol_encoder.SetRobotVolume(2))
+        time.sleep(0.05)
+        self.s.send(pycozmo.protocol_encoder.SetRobotVolume(3))
+        self.assertTrue(both.wait(2.0))
+        self.assertEqual(levels, [1, 2, 3])
+        self.assertEqual(len(lost), 1)
+
+    def test_out_of_band_frames_keep_the_acknowledgement(self):
+        # Frames of out-of-band packets have no sequence number of their own. Acknowledging theirs
+        # acknowledged nothing, so the robot heard of what had arrived only now and then.
+        received = Event()
+        self.c.add_handler(pycozmo.protocol_encoder.SetRobotVolume, lambda cli, pkt: received.set())
+        self.s.send(pycozmo.protocol_encoder.SetRobotVolume(1))
+        self.assertTrue(received.wait(2.0))
+        acknowledged = self.c.send_thread.last_ack
+        self.start_talking()
+        time.sleep(0.3)
+        self.assertEqual(self.c.send_thread.last_ack, acknowledged)
+        self.assertNotEqual(acknowledged, OOB_SEQ)
+
 
 class TestResendTimer(unittest.TestCase):
 

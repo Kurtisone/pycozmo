@@ -275,6 +275,8 @@ class ReceiveThread(Thread):
         self.received_packets = 0
         # Number of packets, delivered to the application layer.
         self.delivered_packets = 0
+        # Sequence number of the last packet delivered in order, the one the peer is told has arrived.
+        self.last_delivered_seq = OOB_SEQ
 
     def stop(self) -> None:
         self.stop_flag = True
@@ -349,13 +351,16 @@ class ReceiveThread(Thread):
 
     def handle_frame(self, frame: Frame) -> None:
         self.received_frames += 1
-        self.send_thread.ack(frame.ack, frame.seq)
         for pkt in frame.pkts:
             if isinstance(pkt, protocol_encoder.Disconnect):
                 self.disconnect()
                 return
             self.handle_pkt(pkt)
         self.deliver_sequence()
+        # Acknowledge what has arrived in order, not the sequence number of this frame: a frame of out-of-band
+        # packets, most of what the robot sends, has none, and a frame that follows a lost one would have
+        # acknowledged the lost packets, which the peer then never sent again.
+        self.send_thread.ack(frame.ack, self.last_delivered_seq)
 
     def handle_pkt(self, pkt: Packet) -> None:
         self.received_packets += 1
@@ -370,6 +375,7 @@ class ReceiveThread(Thread):
             pkt = self.window.get()
             if pkt is None:
                 break
+            self.last_delivered_seq = pkt.seq
             self.deliver(pkt)
 
     def deliver(self, pkt: Packet) -> None:
@@ -378,6 +384,7 @@ class ReceiveThread(Thread):
 
     def reset(self):
         self.window.reset()
+        self.last_delivered_seq = OOB_SEQ
         self.received_bytes = 0
         self.discarded_frames = 0
         self.received_frames = 0
