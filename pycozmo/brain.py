@@ -6,7 +6,7 @@ Brain class - high level behavior and emotion engine.
 
 from typing import Callable, Dict, List, Optional, Tuple
 from PIL import Image
-from threading import RLock, Thread
+from threading import Event, RLock, Thread
 from typing import Optional as _Optional
 from queue import Queue, Empty
 import random
@@ -42,6 +42,12 @@ class Brain:
         "minHiccupSpacing_ms": 4500.0,
         "maxHiccupSpacing_ms": 8000.0,
     }
+
+    #: Animation trigger the robot wakes up with when the brain starts, as it did when the Cozmo application
+    #: connected to it. Five animations answer it, anim_launch_wakeup_01 to 05.
+    WAKE_UP_TRIGGER = "ConnectWakeUp"
+    #: Longest the brain waits for the wake up to finish before getting on with things regardless.
+    WAKE_UP_TIMEOUT = 15.0
 
     #: How long the brain waits before looking for something to do again, once it has found
     #: nothing. Every activity is consulted each time, so this is not free.
@@ -481,12 +487,32 @@ class Brain:
         self.sub_activity.ended(now, self.needs)
         self.sub_activity = None
 
+    def wake_up(self, timeout: Optional[float] = None) -> None:
+        """
+        Play the wake up animation and wait for it to finish, or for the brain to be stopped.
+
+        A reaction can still interrupt it: it is the robot's first moment, not a blindfold. The wake up
+        ends with the head up, where the heartbeat used to raise it.
+        """
+        if self.WAKE_UP_TRIGGER not in getattr(self.cli, "animation_groups", {}):
+            logger.warning("No {} animation group. Not waking up.".format(self.WAKE_UP_TRIGGER))
+            return
+        done = Event()
+        handler = self.cli.add_handler(event.EvtAnimationCompleted, lambda cli: done.set(), one_shot=True)
+        try:
+            self.cli.play_anim_group(self.WAKE_UP_TRIGGER)
+            deadline = time.perf_counter() + (self.WAKE_UP_TIMEOUT if timeout is None else timeout)
+            while not done.wait(0.05) and not self.stop_flag and time.perf_counter() < deadline:
+                pass
+        finally:
+            if not done.is_set():
+                self.cli.del_handler(event.EvtAnimationCompleted, handler)
+
     def heartbeat_thread_run(self) -> None:
         """ Heartbeat thread loop. """
 
-        # Raise head.
-        angle = (robot.MAX_HEAD_ANGLE.radians - robot.MIN_HEAD_ANGLE.radians) / 2.0
-        self.cli.set_head_angle(angle)
+        # Nothing is chosen for the robot to do until it has woken up.
+        self.wake_up()
 
         timer = util.FPSTimer(robot.FRAME_RATE)
         while not self.stop_flag:

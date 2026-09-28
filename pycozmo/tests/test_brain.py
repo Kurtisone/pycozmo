@@ -1,3 +1,5 @@
+import threading
+import time
 import unittest
 from typing import List
 from unittest import mock
@@ -577,3 +579,71 @@ class TestStopGivesTheActivityUp(unittest.TestCase):
         brain.start_sub_activity(brain.activities["NothingToDo"])
         brain.stop()
         self.assertIsNone(brain.sub_activity)
+
+
+@unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestWakeUp(unittest.TestCase):
+    """ The robot wakes up when the brain starts, as it did when the Cozmo application connected. """
+
+    brain: pycozmo.brain.Brain
+
+    @classmethod
+    def setUpClass(cls):
+        cls.brain = pycozmo.brain.Brain(pycozmo.client.Client())
+
+    def setUp(self):
+        self.played: List[str] = []
+        self.addCleanup(setattr, self.brain, "stop_flag", False)
+
+    def robot_that_finishes_after(self, delay):
+        """ Have the robot report each animation done this long after it is asked for, or never. """
+        cli = self.brain.cli
+
+        def play_anim_group(name):
+            self.played.append(name)
+            if delay is not None:
+                threading.Timer(delay, cli.dispatch, (pycozmo.event.EvtAnimationCompleted, cli)).start()
+
+        patcher = mock.patch.object(cli, "play_anim_group", side_effect=play_anim_group)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def timed_wake_up(self, timeout=2.0):
+        start = time.perf_counter()
+        self.brain.wake_up(timeout=timeout)
+        return time.perf_counter() - start
+
+    def test_it_is_anki_s_wake_up(self):
+        members = {member.name for member in self.brain.cli.animation_groups["ConnectWakeUp"].members}
+        self.assertTrue(members)
+        self.assertTrue(all(name.startswith("anim_launch_wakeup_") for name in members), members)
+
+    def test_the_robot_wakes_up(self):
+        self.robot_that_finishes_after(0.0)
+        self.timed_wake_up()
+        self.assertEqual(self.played, ["ConnectWakeUp"])
+
+    def test_the_wake_up_is_waited_for(self):
+        self.robot_that_finishes_after(0.3)
+        self.assertGreaterEqual(self.timed_wake_up(), 0.25)
+
+    def test_a_wake_up_that_never_ends_is_not_waited_for_forever(self):
+        self.robot_that_finishes_after(None)
+        self.assertLess(self.timed_wake_up(timeout=0.2), 1.0)
+
+    def test_stopping_the_brain_ends_the_wait(self):
+        self.robot_that_finishes_after(None)
+        threading.Timer(0.1, setattr, (self.brain, "stop_flag", True)).start()
+        self.assertLess(self.timed_wake_up(timeout=5.0), 1.0)
+
+    def test_nothing_is_chosen_before_waking_up(self):
+        calls = []
+
+        def update_activity():
+            calls.append("update_activity")
+            self.brain.stop_flag = True
+
+        with mock.patch.object(self.brain, "wake_up", side_effect=lambda: calls.append("wake_up")), \
+                mock.patch.object(self.brain, "update_activity", side_effect=update_activity):
+            self.brain.heartbeat_thread_run()
+        self.assertEqual(calls, ["wake_up", "update_activity"])

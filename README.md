@@ -285,6 +285,10 @@ ground, is not implemented yet.
 
 ### What the robot does when nothing has happened
 
+When the brain starts, the robot first wakes up, with one of the five `anim_launch_wakeup` animations Anki's
+`ConnectWakeUp` trigger names - what the Cozmo application played on connecting - and nothing else is chosen for it
+until it has.
+
 Reactions answer events. Between them, the activity engine decides what the robot does of its own accord. `Freeplay`
 lists 25 sub-activities in priority order, and the first one that wants to run and has a behavior to offer gets the
 robot:
