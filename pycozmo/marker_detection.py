@@ -22,13 +22,13 @@ stood with a standard deviation of 0.27 mm. Which way the frame faces is less su
 those images.
 
 The symbol is told by comparing the straightened square with Anki's drawings of the three, in the
-cube_markers directory, each turned four ways. The stickers are not quite the drawings: the symbol sits
+cube_markers directory, each turned four ways, and mirrored: the sides of a cube carry their symbol either way
+round, which is how Anki's engine told them apart. The stickers are not quite the drawings: the symbol sits
 higher, by 4.5% of the side, over a bar that the drawings do not have, and its strokes are thicker. So the
 drawings are raised as much, both are blurred a little, and only the middle of the square is compared,
-above the bar. Checked against Anki's own engine, through its SDK, which saw a Paperclip and an Anglepoise
-Lamp in each of 165 images: each frame found of them came out as the cube Anki saw there, the right way up,
-at a likeness of 0.87 or more, and nothing else came closer than 0.45; so did a Deli Slicer in 16 other
-images.
+above the bar. Checked against Anki's own engine, through its SDK, over four sessions - on the charger and
+off it, in a lit room and a dim one: of the 656 frames of a Paperclip or an Anglepoise Lamp that Anki named,
+pycozmo named 655 the same and left one unnamed, and it named a Deli Slicer in 16 other images.
 
 """
 
@@ -122,8 +122,9 @@ class ObservedMarker:
     distance: float
     #: The cube whose symbol it holds, one of CUBE_MARKERS; None for a frame that holds none of theirs.
     cube: Optional[protocol_encoder.ObjectType] = None
-    #: How the symbol is turned from the way it is drawn: quarter turns, clockwise on the screen. The
-    #: Paperclip reads almost the same upside down, so its own can be two off.
+    #: How the symbol is turned from the way it is drawn, or from its mirror image, on the sides that carry that:
+    #: quarter turns, clockwise on the screen. The Paperclip reads almost the same upside down, so its own can be
+    #: two off.
     turns: int = 0
 
     @property
@@ -236,8 +237,8 @@ def identify(image: np.ndarray, corners: np.ndarray) -> Optional[Tuple[protocol_
         return None
     vector = _unit(values)
     likeness = {key: float(vector @ drawing) for key, drawing in _drawings().items()}
-    (cube, turns), best = max(likeness.items(), key=lambda item: item[1])
-    closest_other = max(value for (other, _), value in likeness.items() if other != cube)
+    (cube, turns, _), best = max(likeness.items(), key=lambda item: item[1])
+    closest_other = max(value for (other, _, _), value in likeness.items() if other != cube)
     if best < _MIN_LIKENESS or best - closest_other < _MIN_MARGIN:
         return None
     return cube, turns
@@ -271,8 +272,8 @@ def observe_markers(image: Image.Image, calibration: Optional[camera.CameraCalib
 
 
 @functools.lru_cache(maxsize=None)
-def _drawings() -> Dict[Tuple[protocol_encoder.ObjectType, int], np.ndarray]:
-    """ Each cube's drawing, turned each way, as compared: see _symbol(). """
+def _drawings() -> Dict[Tuple[protocol_encoder.ObjectType, int, bool], np.ndarray]:
+    """ Each cube's drawing, turned each way, and mirrored, as compared: see _symbol(). """
     drawings = {}
     for cube in CUBE_MARKERS:
         resource = importlib.resources.files(__package__).joinpath("cube_markers", "{}.png".format(cube.value))
@@ -280,9 +281,11 @@ def _drawings() -> Dict[Tuple[protocol_encoder.ObjectType, int], np.ndarray]:
             drawing = np.asarray(Image.open(f).convert("L"), dtype=np.float64)
         sticker = Image.fromarray(_raise_symbol(drawing).astype(np.uint8))
         pixels = np.asarray(sticker.resize((_SYMBOL_SIZE, _SYMBOL_SIZE), Image.Resampling.BOX), dtype=np.float64)
-        for turns in range(4):
-            # rot90() turns anticlockwise as the rows show on the screen.
-            drawings[(cube, turns)] = _unit(_symbol(np.rot90(pixels, -turns)))
+        for mirrored in (False, True):
+            for turns in range(4):
+                # rot90() turns anticlockwise as the rows show on the screen.
+                picture = np.rot90(pixels[:, ::-1] if mirrored else pixels, -turns)
+                drawings[(cube, turns, mirrored)] = _unit(_symbol(picture))
     return drawings
 
 

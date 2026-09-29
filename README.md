@@ -304,8 +304,9 @@ symbol is told by comparing it with Anki's drawings of the three, in `pycozmo/cu
 placed from the camera's calibration and its size, 25 mm. Checked on a robot, a cube filmed from four head angles
 was found in 16 images out of 16, where it stood with a standard deviation of 0.27 mm, and told for the Deli Slicer it
 was in all of them; nothing else in the room was taken for a marker. Against Anki's own engine, through its SDK, which
-saw a Paperclip and an Anglepoise Lamp in each of 165 images, pycozmo told each of them for what Anki saw every time,
-and placed them within 1.5% of where Anki did, and 0.3 mm to the side. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
+named a Paperclip or an Anglepoise Lamp in 656 frames over four sessions, pycozmo named 655 the same and left one
+unnamed, and placed them within 2% of where Anki did, and 0.3 mm to the side. A cube carries its symbol either way
+round, mirrored on some sides, which is how Anki told them apart: both ways are compared. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
 
 The brain does as the Cozmo application did with the cubes. It connects one of each kind as soon as the robot hears
 it, and lights it with Anki's own cube light animations: a dim cyan breath every five seconds once connected, a steady

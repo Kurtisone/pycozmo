@@ -61,13 +61,17 @@ def turn(yaw: float = 0.0, tilt: float = 0.0) -> np.ndarray:
     return rotation
 
 
-def drawing(cube: pycozmo.protocol_encoder.ObjectType, turns: int = 0, bar: bool = True) -> np.ndarray:
+def drawing(cube: pycozmo.protocol_encoder.ObjectType, turns: int = 0, bar: bool = True,
+            mirrored: bool = False) -> np.ndarray:
     """
-    A cube's marker as the stickers have it, turned quarter turns clockwise, as brightness from 0 to 1: Anki's
-    drawing, its symbol raised a little, and a bar under it.
+    A cube's marker as the stickers have it, mirrored as on some of its sides, and turned quarter turns
+    clockwise, as brightness from 0 to 1: Anki's drawing, its symbol raised a little, and a bar under it.
     """
     path = os.path.join(os.path.dirname(marker_detection.__file__), "cube_markers", "{}.png".format(cube.value))
-    pixels = marker_detection._raise_symbol(np.asarray(Image.open(path).convert("L"), dtype=np.float64)) / 255.0
+    pixels = np.asarray(Image.open(path).convert("L"), dtype=np.float64)
+    if mirrored:
+        pixels = pixels[:, ::-1]
+    pixels = marker_detection._raise_symbol(pixels) / 255.0
     if bar:
         pixels[198:208, 72:184] = 0.1
     turned: np.ndarray = np.rot90(pixels, -turns)
@@ -232,6 +236,14 @@ class TestIdentity(unittest.TestCase):
                     with self.subTest(cube=cube.name, turns=turns, centre=centre):
                         image = render(rotation, centre, picture=drawing(cube, turns))
                         self.assertEqual(self.identify(image), (cube, turns))
+
+    def test_and_by_its_mirrored_sides(self):
+        # A cube carries its symbol either way round, on different sides.
+        for cube in CUBE_MARKERS:
+            for turns in range(4):
+                with self.subTest(cube=cube.name, turns=turns):
+                    image = render(turn(0.3, 0.0), (10.0, 0.0, 180.0), picture=drawing(cube, turns, mirrored=True))
+                    self.assertEqual(self.identify(image), (cube, turns))
 
     def test_a_frame_around_another_symbol_holds_no_cube(self):
         for rotation, centre in self.POSES:
