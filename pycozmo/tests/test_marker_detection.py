@@ -237,6 +237,16 @@ class TestIdentity(unittest.TestCase):
                         image = render(rotation, centre, picture=drawing(cube, turns))
                         self.assertEqual(self.identify(image), (cube, turns))
 
+    def test_and_by_its_top(self):
+        # The top and the bottom have the symbol in the middle, without a bar.
+        path = os.path.join(os.path.dirname(marker_detection.__file__), "cube_markers", "2.png")
+        top = np.asarray(Image.open(path).convert("L"), dtype=np.float64) / 255.0
+        cube = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE2
+        for turns in range(4):
+            with self.subTest(turns=turns):
+                image = render(turn(), (0.0, 0.0, 170.0), picture=np.rot90(top, -turns))
+                self.assertEqual(self.identify(image), (cube, turns))
+
     def test_and_by_its_mirrored_sides(self):
         # A cube carries its symbol either way round, on different sides.
         for cube in CUBE_MARKERS:
