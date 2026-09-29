@@ -8,14 +8,16 @@ real robot's calibration, meets the marker's plane somewhere, and takes the brig
 """
 
 import math
+import os
 import unittest
 from typing import Any, Optional, Tuple
 
 import numpy as np
 from PIL import Image
 
+import pycozmo
 from pycozmo import camera, marker_detection
-from pycozmo.marker_detection import MARKER_SIZE
+from pycozmo.marker_detection import CUBE_MARKERS, MARKER_SIZE
 
 CALIBRATION = camera.DEFAULT_CALIBRATION
 
@@ -43,9 +45,26 @@ def turn(yaw: float = 0.0, tilt: float = 0.0) -> np.ndarray:
     return rotation
 
 
+def drawing(cube: pycozmo.protocol_encoder.ObjectType, turns: int = 0, bar: bool = True) -> np.ndarray:
+    """
+    Anki's drawing of a cube's marker, turned quarter turns clockwise, as brightness from 0 to 1. The
+    stickers also have a bar under the symbol, which the drawings do not.
+    """
+    path = os.path.join(os.path.dirname(marker_detection.__file__), "cube_markers", "{}.png".format(cube.value))
+    pixels = np.asarray(Image.open(path).convert("L"), dtype=np.float64) / 255.0
+    if bar:
+        pixels[196:206, 72:184] = 0.1
+    turned: np.ndarray = np.rot90(pixels, -turns)
+    return turned
+
+
 def marker_texture(x: np.ndarray, y: np.ndarray, size: float, symbol: bool = True, ring: bool = True,
-                   dark: float = 40.0, light: float = 200.0, background: float = 90.0) -> np.ndarray:
-    """ Brightness on a cube side at points x, y in mm from the marker's centre, x right and y down. """
+                   dark: float = 40.0, light: float = 200.0, background: float = 90.0,
+                   picture: Optional[np.ndarray] = None) -> np.ndarray:
+    """
+    Brightness on a cube side at points x, y in mm from the marker's centre, x right and y down: a frame and
+    a bar across it, or a picture of the marker from dark to light.
+    """
     face = 45.0
     radius = 0.12 * size
     thickness = 0.1 * size
@@ -58,6 +77,13 @@ def marker_texture(x: np.ndarray, y: np.ndarray, size: float, symbol: bool = Tru
 
     out = np.full(x.shape, background)
     out[(np.abs(x) <= face / 2) & (np.abs(y) <= face / 2)] = light
+    if picture is not None:
+        side = picture.shape[0]
+        inside = (np.abs(x) < size / 2) & (np.abs(y) < size / 2)
+        u = np.clip(((x[inside] / size + 0.5) * side).astype(int), 0, side - 1)
+        v = np.clip(((y[inside] / size + 0.5) * side).astype(int), 0, side - 1)
+        out[inside] = dark + (light - dark) * picture[v, u]
+        return out
     outer = rounded_square(size / 2, radius)
     inner = rounded_square(size / 2 - thickness, max(radius - thickness, 0.5))
     out[outer & (~inner if ring else True)] = dark
@@ -171,6 +197,41 @@ class TestFinding(unittest.TestCase):
     def test_nothing_in_a_blank_image(self):
         blank = np.random.default_rng(1).normal(120.0, 3.0, (240, 320))
         self.assertEqual(marker_detection.find_frames(blank), [])
+
+
+class TestIdentity(unittest.TestCase):
+
+    POSES = ((turn(), (0.0, 0.0, 150.0)), (turn(0.5, 0.0), (30.0, 10.0, 200.0)),
+             (turn(-0.6, 0.3), (-40.0, -20.0, 180.0)), (turn(), (0.0, 0.0, 350.0)))
+
+    def identify(self, image: np.ndarray) -> Optional[Tuple[pycozmo.protocol_encoder.ObjectType, int]]:
+        frame = only_frame(image)
+        assert frame is not None
+        return marker_detection.identify(image, frame)
+
+    def test_each_cube_is_told_whichever_way_it_is_turned(self):
+        for cube in CUBE_MARKERS:
+            for turns in range(4):
+                for rotation, centre in self.POSES:
+                    with self.subTest(cube=cube.name, turns=turns, centre=centre):
+                        image = render(rotation, centre, picture=drawing(cube, turns))
+                        self.assertEqual(self.identify(image), (cube, turns))
+
+    def test_a_frame_around_another_symbol_holds_no_cube(self):
+        for rotation, centre in self.POSES:
+            with self.subTest(centre=centre):
+                self.assertIsNone(self.identify(render(rotation, centre)))
+
+    def test_an_empty_frame_holds_no_cube(self):
+        picture = drawing(pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1, bar=False)
+        picture[40:216, 40:216] = picture[128, 30]
+        self.assertIsNone(self.identify(render(turn(), (0.0, 0.0, 150.0), picture=picture)))
+
+    def test_observed_markers_say_their_cube(self):
+        cube = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE2
+        image = Image.fromarray(render(turn(), (0.0, 0.0, 150.0), picture=drawing(cube, 1)).astype(np.uint8))
+        observed = marker_detection.observe_markers(image, CALIBRATION, 0.0)
+        self.assertEqual([(marker.cube, marker.turns) for marker in observed], [(cube, 1)])
 
 
 class TestPose(unittest.TestCase):

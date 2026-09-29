@@ -18,3 +18,11 @@ Anki cozmoclad library
 Copyright 2016-2019 Anki Inc.
 This product includes software developed as part of
 The Anki cozmoclad library (https://pypi.org/project/cozmoclad/).
+
+
+=========================================================================
+==  The drawings of the Light Cube markers                             ==
+=========================================================================
+The drawings in pycozmo/cube_markers/ - the Paperclip, the Anglepoise Lamp
+and the Deli Slicer - are Anki's, cut from its reference sheet for the
+Light Cubes' stickers. Copyright Anki Inc.

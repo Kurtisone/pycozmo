@@ -4,8 +4,8 @@ Marker detection in the camera images.
 
 Each side of a Light Cube carries a marker: a symbol inside a dark square frame with rounded corners, on
 the cube's white plastic. The robot does not look for them; the application does, as Anki's engine did on
-the phone. This finds the frames in an image and places each in space: where its centre is and which way
-it faces, in the robot's frame. Which of the three cubes' symbols a frame holds is not told apart yet.
+the phone. This finds the frames in an image, places each in space - where its centre is and which way it
+faces, in the robot's frame - and tells which of the three cubes' symbols it holds.
 
 A frame is found as a ring of dark pixels. Pixels are dark when they are darker than their surroundings,
 so that the frame is found in a dim room as in a bright one. A ring of the right shape - no bigger than
@@ -22,8 +22,16 @@ origin, filmed from four head angles: MARKER_SIZE is the size that puts the mark
 little above the middle of the cube's side. Which way the frame faces is less sure: up to 10 degrees off in those
 images.
 
+The symbol is told by comparing the straightened square with Anki's drawings of the three, in the
+cube_markers directory, each turned four ways. The stickers are not quite the drawings: their strokes are
+thicker, and a bar runs under the symbol that the drawings do not have. So both are blurred a little, and
+only the middle of the square is compared, above the bar. Those 16 images of a Deli Slicer all came out as
+one, the right way up, at a likeness of 0.50 or more, and nothing else came closer than 0.27.
+
 """
 
+import functools
+import importlib.resources
 import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple, Union
@@ -32,16 +40,19 @@ import numpy as np
 from PIL import Image
 
 from . import camera
+from . import protocol_encoder
 
 
 __all__ = [
     "MARKER_SIZE",
+    "CUBE_MARKERS",
 
     "ObservedMarker",
 
     "find_frames",
     "rectify",
     "frame_pose",
+    "identify",
     "observe_markers",
 ]
 
@@ -50,6 +61,14 @@ __all__ = [
 #: on a robot: the size that put a marker filmed in 16 images from four head angles where the cube stood,
 #: 27.02 mm with a standard deviation of 0.06.
 MARKER_SIZE = 27.0
+
+#: The symbol on each Light Cube, as Anki named it, by the cube's object type. Their drawings are in the
+#: cube_markers directory, as the cube's number: Anki's, cut from its reference sheet for the stickers.
+CUBE_MARKERS = {
+    protocol_encoder.ObjectType.Block_LIGHTCUBE1: "Paperclip",
+    protocol_encoder.ObjectType.Block_LIGHTCUBE2: "Anglepoise Lamp",
+    protocol_encoder.ObjectType.Block_LIGHTCUBE3: "Deli Slicer",
+}
 
 #: Smallest frame looked for, in pixels. A marker 27 mm wide is 12 pixels wide at about 670 mm.
 MIN_FRAME_SIZE = 12
@@ -69,6 +88,20 @@ _MARGIN = (0.12, 0.18)
 _AROUND = (0.03, 0.09)
 _MIN_CONTRAST = 15.0
 
+# The side the square is straightened to for telling the symbol, in pixels; the part of it compared, as
+# fractions of the side, away from the margin and the bar under the symbol; and how much it and the drawings
+# are blurred first, as a standard deviation in those pixels.
+_SYMBOL_SIZE = 32
+_SYMBOL = (0.25, 0.72)
+_SYMBOL_BLUR = 1.0
+# How alike the square and the closest drawing have to be, as a correlation, and how much less alike the
+# closest drawing of another cube has to be. The three drawings, blurred the same way, are at most 0.45 alike,
+# the Paperclip and the Anglepoise Lamp.
+_MIN_LIKENESS = 0.35
+_MIN_MARGIN = 0.1
+# How much the symbol has to stand out, as its standard deviation over the frame's contrast with the margin.
+_MIN_SPREAD = 0.1
+
 
 @dataclass(frozen=True)
 class ObservedMarker:
@@ -82,6 +115,11 @@ class ObservedMarker:
     normal: Tuple[float, float, float]
     #: Distance from the camera, in mm.
     distance: float
+    #: The cube whose symbol it holds, one of CUBE_MARKERS; None for a frame that holds none of theirs.
+    cube: Optional[protocol_encoder.ObjectType] = None
+    #: How the symbol is turned from the way it is drawn: quarter turns, clockwise on the screen. The
+    #: Paperclip reads almost the same upside down, so its own can be two off.
+    turns: int = 0
 
     @property
     def facing(self) -> float:
@@ -176,10 +214,34 @@ def frame_pose(corners: np.ndarray, calibration: camera.CameraCalibration,
     return u @ vt, t
 
 
+def identify(image: np.ndarray, corners: np.ndarray) -> Optional[Tuple[protocol_encoder.ObjectType, int]]:
+    """
+    Tell which cube's symbol the frame with these corners holds in a greyscale image, and how it is turned:
+    quarter turns, clockwise on the screen, from the way it is drawn. None for a frame that holds none of
+    theirs, or that looks too much like two of them.
+    """
+    square = rectify(image, corners, _SYMBOL_SIZE)
+    values = _symbol(square)
+    # A frame with nothing inside is only noise there, which by chance can look like one of the drawings.
+    t = (np.arange(_SYMBOL_SIZE) + 0.5) / _SYMBOL_SIZE
+    edge = np.minimum.outer(np.minimum(t, 1.0 - t), np.minimum(t, 1.0 - t))
+    contrast = float(np.median(square[(edge > _MARGIN[0]) & (edge < _MARGIN[1])]) -
+                     np.median(square[(edge > _RING[0]) & (edge < _RING[1])]))
+    if values.std() < _MIN_SPREAD * contrast:
+        return None
+    vector = _unit(values)
+    likeness = {key: float(vector @ drawing) for key, drawing in _drawings().items()}
+    (cube, turns), best = max(likeness.items(), key=lambda item: item[1])
+    closest_other = max(value for (other, _), value in likeness.items() if other != cube)
+    if best < _MIN_LIKENESS or best - closest_other < _MIN_MARGIN:
+        return None
+    return cube, turns
+
+
 def observe_markers(image: Image.Image, calibration: Optional[camera.CameraCalibration],
                     head_angle: float, pitch: float = 0.0) -> List[ObservedMarker]:
     """
-    Find the marker frames in a camera image and place them in the robot's frame.
+    Find the marker frames in a camera image, place them in the robot's frame, and tell their cubes.
 
     head_angle and pitch are in radians, as for camera.ground_points(). Without a calibration, a typical one
     is used.
@@ -193,12 +255,55 @@ def observe_markers(image: Image.Image, calibration: Optional[camera.CameraCalib
         position = camera.camera_to_robot(centre, head_angle, pitch)
         # The marker faces out of its face: against its z axis.
         normal = camera.camera_to_robot(-rotation[:, 2], head_angle, pitch) - origin
+        cube, turns = identify(gray, corners) or (None, 0)
         observed.append(ObservedMarker(
             corners=tuple((float(u), float(v)) for u, v in corners),
             position=(float(position[0]), float(position[1]), float(position[2])),
             normal=(float(normal[0]), float(normal[1]), float(normal[2])),
-            distance=float(np.linalg.norm(centre))))
+            distance=float(np.linalg.norm(centre)),
+            cube=cube, turns=turns))
     return observed
+
+
+@functools.lru_cache(maxsize=None)
+def _drawings() -> Dict[Tuple[protocol_encoder.ObjectType, int], np.ndarray]:
+    """ Each cube's drawing, turned each way, as compared: see _symbol(). """
+    drawings = {}
+    for cube in CUBE_MARKERS:
+        resource = importlib.resources.files(__package__).joinpath("cube_markers", "{}.png".format(cube.value))
+        with resource.open("rb") as f:
+            drawing = Image.open(f).convert("L").resize((_SYMBOL_SIZE, _SYMBOL_SIZE), Image.Resampling.BOX)
+        pixels = np.asarray(drawing, dtype=np.float64)
+        for turns in range(4):
+            # rot90() turns anticlockwise as the rows show on the screen.
+            drawings[(cube, turns)] = _unit(_symbol(np.rot90(pixels, -turns)))
+    return drawings
+
+
+def _symbol(square: np.ndarray) -> np.ndarray:
+    """ The middle of a straightened square, blurred, as a vector. """
+    blur = _blur_matrix(square.shape[0], _SYMBOL_BLUR)
+    t = (np.arange(square.shape[0]) + 0.5) / square.shape[0]
+    middle = (t > _SYMBOL[0]) & (t < _SYMBOL[1])
+    values: np.ndarray = (blur @ square @ blur.T)[np.ix_(middle, middle)].ravel()
+    return values
+
+
+def _unit(values: np.ndarray) -> np.ndarray:
+    """ Values less their mean, scaled to unit length. """
+    centred = values - values.mean()
+    norm = np.linalg.norm(centred)
+    vector: np.ndarray = centred / norm if norm else centred
+    return vector
+
+
+@functools.lru_cache(maxsize=None)
+def _blur_matrix(size: int, sigma: float) -> np.ndarray:
+    """ The matrix that blurs each column of a square of this side by a Gaussian of this deviation. """
+    offsets = np.arange(size)[:, None] - np.arange(size)[None, :]
+    weights = np.exp(-0.5 * (offsets / sigma) ** 2)
+    matrix: np.ndarray = weights / weights.sum(axis=1, keepdims=True)
+    return matrix
 
 
 def _box_mean(gray: np.ndarray, radius: int) -> np.ndarray:

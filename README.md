@@ -283,21 +283,23 @@ With the head down, the bottom of the image is the lift seen from above, which w
 ground closer than 65 mm is left out, as is ground beyond 400 mm.
 
 The markers on the Light Cubes can be found as well, though the brain does not look for them yet. Each is a symbol in
-a dark frame with rounded corners; `pycozmo.marker_detection` finds the frames and places them in the robot's frame:
+a dark frame with rounded corners; `pycozmo.marker_detection` finds the frames, places them in the robot's frame, and
+tells which cube each belongs to:
 
 ```python
 from pycozmo import marker_detection
 
 for marker in marker_detection.observe_markers(image, calibration, cli.head_angle.radians, cli.pose_pitch.radians):
-    print(marker.position, marker.facing, marker.distance)
+    print(marker.cube, marker.position, marker.facing, marker.distance)
 ```
 
-`position` is the middle of the marker in mm, ahead of the robot, to its left and up from the ground, `facing` the way
-it faces, and `corners` where it is in the image. Which of the three cubes' symbols a frame holds is not told apart
-yet. The frame's sides are fitted to a fraction of a pixel, and the lens' distortion taken out, before the frame is
+`cube` is `ObjectType.Block_LIGHTCUBE1` to `3` - the Paperclip, the Anglepoise Lamp and the Deli Slicer - or None,
+`position` the middle of the marker in mm, ahead of the robot, to its left and up from the ground, `facing` the way it
+faces, `turns` the quarter turns its symbol is turned by on the screen, and `corners` where it is in the image. The
+symbol is told by comparing it with Anki's drawings of the three, in `pycozmo/cube_markers`. The frame's sides are fitted to a fraction of a pixel, and the lens' distortion taken out, before the frame is
 placed from the camera's calibration and its size, 27.0 mm. Checked on a robot, a cube filmed from four head angles
-was found in 16 images out of 16, where it stood with a standard deviation of 0.27 mm, and nothing else in the room
-was taken for a marker; finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
+was found in 16 images out of 16, where it stood with a standard deviation of 0.27 mm, and told for the Deli Slicer it
+was in all of them; nothing else in the room was taken for a marker. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
 
 That is what `PounceOnMotion` plays with. Once motion has been seen on the ground, Socialize and Hiking give it the
 robot: it puts its head down to watch, turns towards what moves, creeps up on it, and pounces with the lift. A lift
@@ -396,8 +398,8 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
 - [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection
-- [ ] Cube marker recognition - the markers' frames are found and placed in space, which cube they belong to is not
-    told apart yet, see [What the robot sees](#what-the-robot-sees)
+- [x] Cube marker recognition - the markers are found, placed in space and told apart, though the brain does not look
+    for them yet, see [What the robot sees](#what-the-robot-sees)
 - [ ] Face detection
 - [ ] Face recognition
 - [ ] Facial expression estimation
