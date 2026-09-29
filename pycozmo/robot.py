@@ -23,6 +23,12 @@ __all__ = [
     "TRACK_WIDTH",
     "NECK_JOINT_POSITION",
     "HEAD_CAMERA_POSITION",
+    "PATH_SPEED",
+    "PATH_ACCEL",
+    "PATH_DECEL",
+    "POINT_TURN_SPEED",
+    "POINT_TURN_ACCEL",
+    "POINT_TURN_TOLERANCE",
     "FRAME_RATE",
     "FRAME_MS",
     "DISPLAY_BLANKING_TIME",
@@ -80,6 +86,16 @@ NECK_JOINT_POSITION = (-13.0, 47.7)
 #: them. Its marker, which Anki's engine agrees with, puts it at 110 mm, though: the camera may be tilted
 #: further down than this makes it.
 HEAD_CAMERA_POSITION = (17.52, -8.0)
+
+#: Anki's engine's default path motion profile: speed, acceleration and deceleration along a path, in mm/s and
+#: mm/s2, and speed and acceleration of a turn in place, in rad/s and rad/s2.
+PATH_SPEED = 100.0
+PATH_ACCEL = 200.0
+PATH_DECEL = 500.0
+POINT_TURN_SPEED = 2.0
+POINT_TURN_ACCEL = 10.0
+#: How close to its heading a turn in place ends, in radians.
+POINT_TURN_TOLERANCE = math.radians(2.0)
 
 #: Number of frames per second for animations.
 FRAME_RATE = 30

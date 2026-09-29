@@ -8,6 +8,7 @@ from collections import defaultdict
 from threading import Event
 from typing import Any, Dict, List, Optional, Tuple
 import json
+import math
 import os
 import time
 import io
@@ -117,6 +118,8 @@ class Client(event.Dispatcher):
         self._clips: Dict[str, anim_encoder.AnimClip] = {}
         self._ppclips: Dict[str, anim.PreprocessedClip] = {}
         self._next_anim_id = 1
+        # The last path's event ID. See execute_path() .
+        self._path_event_id = 0
         self.animation_groups: Dict[str, anim.AnimationGroup] = {}
         self.audio_library = audiolib.AudioLibrary()
         # Where the image sequences some animations show are. Set by load_anims().
@@ -441,35 +444,117 @@ class Client(event.Dispatcher):
         pkt = protocol_encoder.StopAllMotors()
         self.conn.send(pkt)
 
-    def go_to_pose(self, pose: util.Pose, relative_to_robot: bool = False) -> None:
-        """ Move to a specific pose (position and orientation). """
-
+    def go_to_pose(self, pose: util.Pose, relative_to_robot: bool = False, wait: bool = True,
+                   timeout: Optional[float] = None) -> bool:
+        """
+        Move to a pose - a position, then a heading - in a straight line, and say whether the robot got there.
+        See execute_path() for waiting.
+        """
         if relative_to_robot:
             pose = util.Pose(self.pose.position.x, self.pose.position.y,
                              self.pose.position.z, angle_z=self.pose.rotation.angle_z).define_pose_relative_this(pose)
+        segments: List[protocol_base.Packet] = [
+            protocol_encoder.AppendPathSegLine(
+                from_x=self.pose.position.x, from_y=self.pose.position.y,
+                to_x=pose.position.x, to_y=pose.position.y,
+                speed_mmps=robot.PATH_SPEED, accel_mmps2=robot.PATH_ACCEL, decel_mmps2=robot.PATH_DECEL),
+            self._point_turn(pose.position.x, pose.position.y, pose.rotation.angle_z.radians)]
+        if timeout is None:
+            distance = math.hypot(pose.position.x - self.pose.position.x, pose.position.y - self.pose.position.y)
+            timeout = self._path_time(distance, robot.PATH_SPEED) + self._path_time(math.pi, robot.POINT_TURN_SPEED)
+        return self.execute_path(segments, wait, timeout)
 
-        pkt: protocol_base.Packet = protocol_encoder.AppendPathSegLine(
-            from_x=self.pose.position.x, from_y=self.pose.position.y,
-            to_x=pose.position.x, to_y=pose.position.y,
-            speed_mmps=100.0, accel_mmps2=20.0, decel_mmps2=20.0)
-        self.conn.send(pkt)
-        pkt = protocol_encoder.AppendPathSegPointTurn(
-            x=pose.position.x, y=pose.position.y,
-            angle_rad=pose.rotation.angle_z.radians,
-            angle_tolerance_rad=0.01,
-            speed_mmps=40.0, accel_mmps2=20.0, decel_mmps2=20.0)
-        self.conn.send(pkt)
-        pkt = protocol_encoder.ExecutePath(event_id=1)
-        self.conn.send(pkt)
+    def turn_in_place(self, angle: util.Angle, speed: float = robot.POINT_TURN_SPEED, wait: bool = True,
+                      timeout: Optional[float] = None) -> bool:
+        """
+        Turn by an angle, left for positive, at a speed in rad/s, and say whether the robot got there. See
+        execute_path() for waiting.
+        """
+        heading = self.pose.rotation.angle_z.radians + angle.radians
+        segment = self._point_turn(self.pose.position.x, self.pose.position.y, heading, speed)
+        if timeout is None:
+            timeout = self._path_time(abs(angle.radians), speed)
+        return self.execute_path([segment], wait, timeout)
 
-        e = Event()
+    def drive_straight(self, distance: util.Distance, speed: float = robot.PATH_SPEED, wait: bool = True,
+                       timeout: Optional[float] = None) -> bool:
+        """
+        Drive straight ahead, or back for a negative distance, at a speed in mm/s, and say whether the robot got
+        there. See execute_path() for waiting.
+        """
+        x, y = self.pose.position.x, self.pose.position.y
+        heading = self.pose.rotation.angle_z.radians
+        segment = protocol_encoder.AppendPathSegLine(
+            from_x=x, from_y=y,
+            to_x=x + distance.mm * math.cos(heading), to_y=y + distance.mm * math.sin(heading),
+            # A negative speed drives backwards, as Anki's engine did.
+            speed_mmps=math.copysign(abs(speed), distance.mm), accel_mmps2=robot.PATH_ACCEL,
+            decel_mmps2=robot.PATH_DECEL)
+        if timeout is None:
+            timeout = self._path_time(abs(distance.mm), abs(speed))
+        return self.execute_path([segment], wait, timeout)
 
-        def event_wait(_: conn.Connection, pkt2: protocol_encoder.PathFollowingEvent) -> None:
-            if pkt2.event_type != protocol_encoder.PathEventType.PATH_STARTED:
-                e.set()
+    def execute_path(self, segments: List[protocol_base.Packet], wait: bool = True,
+                     timeout: Optional[float] = None) -> bool:
+        """
+        Have the robot follow path segments - AppendPathSegLine, AppendPathSegArc, AppendPathSegPointTurn - and
+        say whether it got to the end.
 
-        self.add_handler(protocol_encoder.PathFollowingEvent, event_wait)
-        e.wait()
+        Without waiting, it says True as soon as the path has gone out. Waiting, it returns once the robot reports
+        the path completed, True, or interrupted - a cliff, say - or once the timeout, in seconds, has run out,
+        False. The report comes through the client's own dispatching, so this must not wait from a handler of
+        the client's events: the brain's behaviors run on a thread of their own and can.
+        """
+        self._path_event_id = self._path_event_id % 0xffff + 1
+        event_id = self._path_event_id
+        result: List[bool] = []
+        done = Event()
+
+        def on_path_event(cli: conn.Connection, pkt: protocol_encoder.PathFollowingEvent) -> None:
+            if pkt.event_id != event_id or pkt.event_type == protocol_encoder.PathEventType.PATH_STARTED:
+                return
+            result.append(pkt.event_type == protocol_encoder.PathEventType.PATH_COMPLETED)
+            done.set()
+
+        handler = self.add_handler(protocol_encoder.PathFollowingEvent, on_path_event) if wait else None
+        try:
+            for segment in segments:
+                self.conn.send(segment)
+            self.conn.send(protocol_encoder.ExecutePath(event_id=event_id))
+            if handler is None:
+                return True
+            return done.wait(timeout) and result[0]
+        finally:
+            if handler is not None:
+                self.del_handler(protocol_encoder.PathFollowingEvent, handler)
+
+    @staticmethod
+    def _point_turn(x: float, y: float, heading: float,
+                    speed: float = robot.POINT_TURN_SPEED) -> protocol_encoder.AppendPathSegPointTurn:
+        # Its speed and acceleration are angular, in rad/s and rad/s2, whatever the fields are named: Anki's
+        # engine gave point turns in its path motion profile so. A speed of 40, as go_to_pose() used to send, the
+        # robot turned at its 300 degrees a second.
+        return protocol_encoder.AppendPathSegPointTurn(
+            x=x, y=y, angle_rad=heading, angle_tolerance_rad=robot.POINT_TURN_TOLERANCE,
+            speed_mmps=speed, accel_mmps2=robot.POINT_TURN_ACCEL, decel_mmps2=robot.POINT_TURN_ACCEL)
+
+    @staticmethod
+    def _path_time(amount: float, speed: float) -> float:
+        """ A generous time for the robot to cover an amount of mm, or radians, at a speed. """
+        return 2.0 * amount / max(abs(speed), 1e-3) + 3.0
+
+    def enable_stop_on_cliff(self, enable: bool = True) -> None:
+        """ Have the robot stop by itself at a cliff, as the Cozmo application had it. """
+        self.conn.send(protocol_encoder.EnableStopOnCliff(enable=enable))
+
+    def set_camera_exposure(self, exposure_ms: int, gain: float) -> None:
+        """ Set the camera's exposure, in ms, and gain, and turn automatic exposure off. """
+        self.conn.send(protocol_encoder.SetCameraParams(gain=gain, exposure_ms=exposure_ms,
+                                                        auto_exposure_enabled=False))
+
+    def enable_auto_exposure(self) -> None:
+        """ Let the camera set its exposure itself again, after set_camera_exposure(). """
+        self.conn.send(protocol_encoder.SetCameraParams(gain=0.0, exposure_ms=0, auto_exposure_enabled=True))
 
     def set_backpack_lights(self,
                             left_light: protocol_encoder.LightState,

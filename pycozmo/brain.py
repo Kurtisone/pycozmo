@@ -190,7 +190,8 @@ class Brain:
         # One cube of each kind, as the Cozmo application connected them.
         self.cli.cubes.auto_connect = True
 
-        # TODO: Enable stop on cliff.
+        # The robot stops by itself at a cliff, as the Cozmo application had it.
+        self.cli.enable_stop_on_cliff(True)
         # TODO: Drive off if on charger.
 
     def listen(self, evt: type, f: Callable) -> None:

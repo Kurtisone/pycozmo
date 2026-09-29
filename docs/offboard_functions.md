@@ -162,8 +162,11 @@ moved to, and reacts to one moved in its sight.
 Moving and handling
 -------------------
 
-The robot follows paths made of lines, arcs and turns in place, and PyCozmo drives it along them
-(`Client.go_to_pose()`). Anki's engine planned those paths with the motion primitives in `cozmo_mprim.json`, around
+The robot follows paths made of lines, arcs and turns in place, and PyCozmo drives it along them:
+`Client.go_to_pose()`, `turn_in_place()`, `drive_straight()` and, for any path, `execute_path()`, which report
+whether the robot got there - a cliff interrupts a path when the robot stops at cliffs, which the brain turns on.
+They go at the speeds of Anki's engine's default path motion profile: 100 mm/s, and turns in place at 2 rad/s,
+which the robot takes in rad/s whatever the protocol's field names say. Anki's engine planned those paths with the motion primitives in `cozmo_mprim.json`, around
 the obstacles in its map, and docked with cubes by their markers.
 
 Missing: planning around obstacles, going to an object, docking with a cube, picking it up, placing it on the ground
@@ -187,7 +190,7 @@ The SDK drove Anki's engine through the application. What its robot and world of
 |---|---|
 | Robot state, IMU, cliff, charger, pose, head and lift | Yes: `Client` and its events |
 | `drive_wheel_motors`, `move_head`, `move_lift`, `set_head_angle`, `set_lift_height`, `stop_all_motors` | Yes |
-| `turn_in_place`, `drive_straight` | The robot's `TurnInPlace` and paths; no `Client` method |
+| `turn_in_place`, `drive_straight` | Yes, along paths, reporting whether the robot got there |
 | `go_to_pose` | Yes, without obstacle avoidance |
 | `go_to_object`, `dock_with_cube`, `pickup_object`, `place_on_object`, `place_object_on_ground_here`, `roll_cube`, `pop_a_wheelie` | No |
 | `play_anim`, `play_anim_trigger`, idle animations | Animations and triggers yes; idle animations no |
@@ -195,8 +198,8 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | `say_text` | No |
 | `play_song` | No |
 | Backpack lights, head light, OLED face image | Yes |
-| Camera images, colour, exposure | Images and colour yes; exposure control not wrapped (`SetCameraParams` exists) |
-| `enable_stop_on_cliff` | Not wrapped (`EnableStopOnCliff` exists) |
+| Camera images, colour, exposure | Yes |
+| `enable_stop_on_cliff` | Yes, and the brain turns it on, as the application did |
 | Light cubes: connection, lights, taps, moves | Yes: `Client.cubes` |
 | Light cubes: pose | Yes, from their markers |
 | Charger pose, custom objects | No |
