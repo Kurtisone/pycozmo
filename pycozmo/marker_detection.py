@@ -23,10 +23,13 @@ little above the middle of the cube's side. Which way the frame faces is less su
 images.
 
 The symbol is told by comparing the straightened square with Anki's drawings of the three, in the
-cube_markers directory, each turned four ways. The stickers are not quite the drawings: their strokes are
-thicker, and a bar runs under the symbol that the drawings do not have. So both are blurred a little, and
-only the middle of the square is compared, above the bar. Those 16 images of a Deli Slicer all came out as
-one, the right way up, at a likeness of 0.50 or more, and nothing else came closer than 0.27.
+cube_markers directory, each turned four ways. The stickers are not quite the drawings: the symbol sits
+higher, by 4.5% of the side, over a bar that the drawings do not have, and its strokes are thicker. So the
+drawings are raised as much, both are blurred a little, and only the middle of the square is compared,
+above the bar. Checked against Anki's own engine, through its SDK, which saw a Paperclip and an Anglepoise
+Lamp in each of 165 images: each frame found of them came out as the cube Anki saw there, the right way up,
+at a likeness of 0.87 or more, and nothing else came closer than 0.45; so did a Deli Slicer in 16 other
+images.
 
 """
 
@@ -89,16 +92,19 @@ _AROUND = (0.03, 0.09)
 _MIN_CONTRAST = 15.0
 
 # The side the square is straightened to for telling the symbol, in pixels; the part of it compared, as
-# fractions of the side, away from the margin and the bar under the symbol; and how much it and the drawings
-# are blurred first, as a standard deviation in those pixels.
+# fractions of the side, away from the margin and the bar under the symbol; how much it and the drawings are
+# blurred first, as a standard deviation in those pixels; and how much higher than in the drawings the
+# symbol sits on the stickers, as a fraction of the side.
 _SYMBOL_SIZE = 32
 _SYMBOL = (0.25, 0.72)
-_SYMBOL_BLUR = 1.0
+_SYMBOL_BLUR = 0.7
+_SYMBOL_RAISE = 0.045
+# The inside of the frame, as fractions of the side: what is raised.
+_INSIDE = (0.14, 0.86)
 # How alike the square and the closest drawing have to be, as a correlation, and how much less alike the
-# closest drawing of another cube has to be. The three drawings, blurred the same way, are at most 0.45 alike,
-# the Paperclip and the Anglepoise Lamp.
-_MIN_LIKENESS = 0.35
-_MIN_MARGIN = 0.1
+# closest drawing of another cube has to be.
+_MIN_LIKENESS = 0.5
+_MIN_MARGIN = 0.15
 # How much the symbol has to stand out, as its standard deviation over the frame's contrast with the margin.
 _MIN_SPREAD = 0.1
 
@@ -272,12 +278,26 @@ def _drawings() -> Dict[Tuple[protocol_encoder.ObjectType, int], np.ndarray]:
     for cube in CUBE_MARKERS:
         resource = importlib.resources.files(__package__).joinpath("cube_markers", "{}.png".format(cube.value))
         with resource.open("rb") as f:
-            drawing = Image.open(f).convert("L").resize((_SYMBOL_SIZE, _SYMBOL_SIZE), Image.Resampling.BOX)
-        pixels = np.asarray(drawing, dtype=np.float64)
+            drawing = np.asarray(Image.open(f).convert("L"), dtype=np.float64)
+        sticker = Image.fromarray(_raise_symbol(drawing).astype(np.uint8))
+        pixels = np.asarray(sticker.resize((_SYMBOL_SIZE, _SYMBOL_SIZE), Image.Resampling.BOX), dtype=np.float64)
         for turns in range(4):
             # rot90() turns anticlockwise as the rows show on the screen.
             drawings[(cube, turns)] = _unit(_symbol(np.rot90(pixels, -turns)))
     return drawings
+
+
+def _raise_symbol(drawing: np.ndarray) -> np.ndarray:
+    """ A drawing as the stickers have it: what is inside the frame moved up, the margin's colour below. """
+    side = drawing.shape[0]
+    inside = slice(round(_INSIDE[0] * side), round(_INSIDE[1] * side))
+    shift = round(_SYMBOL_RAISE * side)
+    region = drawing[inside, inside]
+    raised = np.full_like(region, float(np.median(region)))
+    raised[:-shift] = region[shift:]
+    sticker = drawing.copy()
+    sticker[inside, inside] = raised
+    return sticker
 
 
 def _symbol(square: np.ndarray) -> np.ndarray:

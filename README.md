@@ -300,7 +300,9 @@ faces, `turns` the quarter turns its symbol is turned by on the screen, and `cor
 symbol is told by comparing it with Anki's drawings of the three, in `pycozmo/cube_markers`. The frame's sides are fitted to a fraction of a pixel, and the lens' distortion taken out, before the frame is
 placed from the camera's calibration and its size, 27.0 mm. Checked on a robot, a cube filmed from four head angles
 was found in 16 images out of 16, where it stood with a standard deviation of 0.27 mm, and told for the Deli Slicer it
-was in all of them; nothing else in the room was taken for a marker. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
+was in all of them; nothing else in the room was taken for a marker. Against Anki's own engine, through its SDK, which
+saw a Paperclip and an Anglepoise Lamp in each of 165 images, pycozmo told each of them for what Anki saw every time.
+It placed them 9% further than Anki did, though, sideways as much as ahead: the marker's size is in question. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
 
 The brain does as the Cozmo application did with the cubes. It connects one of each kind as soon as the robot hears
 it, and lights it with Anki's own cube light animations: a dim cyan breath every five seconds once connected, a steady

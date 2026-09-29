@@ -47,13 +47,13 @@ def turn(yaw: float = 0.0, tilt: float = 0.0) -> np.ndarray:
 
 def drawing(cube: pycozmo.protocol_encoder.ObjectType, turns: int = 0, bar: bool = True) -> np.ndarray:
     """
-    Anki's drawing of a cube's marker, turned quarter turns clockwise, as brightness from 0 to 1. The
-    stickers also have a bar under the symbol, which the drawings do not.
+    A cube's marker as the stickers have it, turned quarter turns clockwise, as brightness from 0 to 1: Anki's
+    drawing, its symbol raised a little, and a bar under it.
     """
     path = os.path.join(os.path.dirname(marker_detection.__file__), "cube_markers", "{}.png".format(cube.value))
-    pixels = np.asarray(Image.open(path).convert("L"), dtype=np.float64) / 255.0
+    pixels = marker_detection._raise_symbol(np.asarray(Image.open(path).convert("L"), dtype=np.float64)) / 255.0
     if bar:
-        pixels[196:206, 72:184] = 0.1
+        pixels[198:208, 72:184] = 0.1
     turned: np.ndarray = np.rot90(pixels, -turns)
     return turned
 
