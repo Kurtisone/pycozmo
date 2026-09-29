@@ -77,3 +77,35 @@ class TestCancel(unittest.TestCase):
         cancel.set()
         with self.assertRaises(cube_handling.Cancelled):
             cube_handling.go_to_cube(cli, cube, cancel=cancel)
+
+
+class TestPutDownBy(unittest.TestCase):
+
+    def setUp(self):
+        self.cli = pycozmo.client.Client()
+        self.cube = self.cli.cubes[CUBE2]
+        self.cli.cubes.carried = self.cube
+        self.cli.lift_position = pycozmo.robot.LiftPosition(height=pycozmo.robot.MAX_LIFT_HEIGHT)
+
+    def report(self, x, lift):
+        """ Have the robot report where it stands and where its lift is, as its RobotState does. """
+        self.cli.pose = util.Pose(x, 0.0, 0.0, angle_z=util.Angle(radians=0.0))
+        self.cli.lift_position = pycozmo.robot.LiftPosition(height=util.Distance(mm=lift))
+        self.cli.dispatch(pycozmo.event.EvtRobotStateUpdated, self.cli)
+
+    def test_where_the_lift_came_down(self):
+        # The animation drives, sets the cube down and pushes it on a little, backs off, and lowers the empty lift
+        # once more.
+        def animation():
+            for x, lift in ((0.0, 92.0), (30.0, 60.0), (35.0, 32.0), (40.0, 32.0), (-20.0, 32.0), (-20.0, 92.0),
+                            (-40.0, 32.0), (60.0, 32.0)):
+                self.report(x, lift)
+
+        self.assertTrue(cube_handling.put_down_by(self.cli, animation))
+        assert self.cube.pose is not None
+        self.assertAlmostEqual(self.cube.pose.x, 40.0 + cube_handling.DOCK_DISTANCE)
+        self.assertIsNone(self.cli.cubes.carried)
+
+    def test_a_lift_that_stays_up_says_so(self):
+        self.assertFalse(cube_handling.put_down_by(self.cli, lambda: self.report(0.0, 92.0)))
+        self.assertIs(self.cli.cubes.carried, self.cube)

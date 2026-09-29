@@ -76,6 +76,8 @@ class LightCube:
         #: When it was last asked to connect, while it has not.
         self.connecting_since: Optional[float] = None
         self.moving = False
+        #: When the cube last started moving, by time.perf_counter().
+        self.moving_since: Optional[float] = None
         self.up_axis: Optional[protocol_encoder.UpAxis] = None
         self.battery_level: Optional[int] = None
         #: Where it was last seen.
@@ -117,6 +119,8 @@ class Cubes:
         self.auto_connect = False
         #: Cube light animations by trigger. See cube_lights.load_cube_light_animations().
         self.light_animations: Dict[str, List[CubeLightPattern]] = {}
+        #: The cube in the lift, as far as cube_handling knows.
+        self.carried: Optional[LightCube] = None
 
     def __iter__(self):
         return iter(self.cubes.values())
@@ -181,6 +185,13 @@ class Cubes:
             if cube is None or cube.moving == moving:
                 return
             cube.moving = moving
+            if moving:
+                cube.moving_since = time.perf_counter()
+            elif cube is not self.carried and cube.pose is not None and cube.moving_since is not None and \
+                    cube.pose.time < cube.moving_since:
+                # Moved by someone else, it has to be seen again to be known where it is. One the lift set down
+                # has been placed since it started moving.
+                cube.pose = None
         self.cli.dispatch(event.EvtCubeMovingChange, self.cli, cube, moving)
 
     def on_object_tapped(self, cli: Any, pkt: protocol_encoder.ObjectTapped) -> None:
@@ -260,14 +271,15 @@ class Cubes:
         self.cli.dispatch(event.EvtCubeObserved, self.cli, cube)
         return cube
 
-    def place(self, cube: LightCube, x: float, y: float, angle: float, now: Optional[float] = None) -> None:
+    def place(self, cube: LightCube, x: float, y: float, angle: float, z: float = CUBE_SIDE / 2,
+              now: Optional[float] = None) -> None:
         """
         Take a cube to be somewhere it was not seen: where the lift set it down, say, in the robot's world frame,
-        its side facing the heading given.
+        its centre z up and its side facing the heading given.
         """
         now = time.perf_counter() if now is None else now
         with self.lock:
-            cube.pose = CubePose(x=x, y=y, z=CUBE_SIDE / 2, angle=_wrap(angle), time=now)
+            cube.pose = CubePose(x=x, y=y, z=z, angle=_wrap(angle), time=now)
 
     def update(self, now: Optional[float] = None) -> None:
         """ Move the light animations on, and let the cubes the robot no longer sees go back to Connected. """
@@ -299,6 +311,7 @@ class Cubes:
                 cube.connecting_since = None
                 cube.moving = False
                 cube.lights = None
+            self.carried = None
 
 
 def _wrap(angle: float) -> float:

@@ -119,6 +119,35 @@ class TestEvents(CubesTestCase):
         self.assertEqual(self.cli.events, [])
 
 
+class TestMovedAway(CubesTestCase):
+
+    def move(self):
+        self.cubes.on_object_moved(self.cli, pycozmo.protocol_encoder.ObjectMoved(object_id=5))
+        self.cubes.on_object_stopped_moving(self.cli, pycozmo.protocol_encoder.ObjectStoppedMoving(object_id=5))
+
+    def test_a_cube_moved_is_no_longer_known_where_it_is(self):
+        cube = self.connected()
+        self.cubes.place(cube, 200.0, 0.0, math.pi)
+        self.move()
+        self.assertIsNone(cube.pose)
+
+    def test_one_in_the_lift_is(self):
+        cube = self.connected()
+        self.cubes.place(cube, 200.0, 0.0, math.pi)
+        self.cubes.carried = cube
+        self.move()
+        self.assertIsNotNone(cube.pose)
+
+    def test_so_is_one_placed_since_it_started_moving(self):
+        # The lift sets a cube down: it moves, cube_handling places it, and it stops.
+        cube = self.connected()
+        self.cubes.on_object_moved(self.cli, pycozmo.protocol_encoder.ObjectMoved(object_id=5))
+        self.cubes.place(cube, 200.0, 0.0, math.pi)
+        self.cubes.on_object_stopped_moving(self.cli, pycozmo.protocol_encoder.ObjectStoppedMoving(object_id=5))
+        assert cube.pose is not None
+        self.assertEqual(cube.pose.x, 200.0)
+
+
 class TestSeeing(CubesTestCase):
 
     def test_where_a_cube_is(self):
