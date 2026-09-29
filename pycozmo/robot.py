@@ -29,6 +29,7 @@ __all__ = [
     "POINT_TURN_SPEED",
     "POINT_TURN_ACCEL",
     "POINT_TURN_TOLERANCE",
+    "DOCK_SPEED",
     "FRAME_RATE",
     "FRAME_MS",
     "DISPLAY_BLANKING_TIME",
@@ -94,6 +95,8 @@ PATH_ACCEL = 200.0
 PATH_DECEL = 500.0
 POINT_TURN_SPEED = 2.0
 POINT_TURN_ACCEL = 10.0
+#: The speed the engine docked with cubes at, in mm/s.
+DOCK_SPEED = 60.0
 #: How close to its heading a turn in place ends, in radians.
 POINT_TURN_TOLERANCE = math.radians(2.0)
 

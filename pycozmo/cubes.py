@@ -260,6 +260,15 @@ class Cubes:
         self.cli.dispatch(event.EvtCubeObserved, self.cli, cube)
         return cube
 
+    def place(self, cube: LightCube, x: float, y: float, angle: float, now: Optional[float] = None) -> None:
+        """
+        Take a cube to be somewhere it was not seen: where the lift set it down, say, in the robot's world frame,
+        its side facing the heading given.
+        """
+        now = time.perf_counter() if now is None else now
+        with self.lock:
+            cube.pose = CubePose(x=x, y=y, z=CUBE_SIDE / 2, angle=_wrap(angle), time=now)
+
     def update(self, now: Optional[float] = None) -> None:
         """ Move the light animations on, and let the cubes the robot no longer sees go back to Connected. """
         now = time.perf_counter() if now is None else now

@@ -120,6 +120,8 @@ class Client(event.Dispatcher):
         self._next_anim_id = 1
         # The last path's event ID. See execute_path() .
         self._path_event_id = 0
+        #: The camera's calibration, once read_camera_calibration() has read it.
+        self.camera_calibration: Optional[camera.CameraCalibration] = None
         self.animation_groups: Dict[str, anim.AnimationGroup] = {}
         self.audio_library = audiolib.AudioLibrary()
         # Where the image sequences some animations show are. Set by load_anims().
@@ -619,7 +621,8 @@ class Client(event.Dispatcher):
         if not results or results[0] != protocol_encoder.NvResult.NV_OKAY:
             return None
         try:
-            return camera.CameraCalibration.from_nv(b"".join(chunks))
+            self.camera_calibration = camera.CameraCalibration.from_nv(b"".join(chunks))
+            return self.camera_calibration
         except ValueError as e:
             logger.warning("Unreadable camera calibration: %s", e)
             return None
