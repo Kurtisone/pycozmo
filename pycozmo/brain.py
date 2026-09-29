@@ -18,6 +18,7 @@ from . import event
 from . import emotions
 from . import needs
 from . import behavior
+from . import cube_behaviors
 from . import activity
 from . import motion_detection
 from . import marker_detection
@@ -27,6 +28,7 @@ from . import cubes
 from . import protocol_encoder
 from . import util
 from . import robot
+from . import unlocks
 
 
 __all__ = [
@@ -105,6 +107,12 @@ class Brain:
         # them, and they are what makes a robot left alone start asking to be played with.
         self.needs = needs.load_needs(resource_dir)
         self.behaviors = behavior.load_behaviors(resource_dir, self.cli, self.needs)
+        # What the robot has earned the right to do: everything, since nothing here keeps a progression. See
+        # pycozmo.unlocks .
+        self.unlocks = unlocks.load_all_unlocks(resource_dir)
+        for script in self.behaviors.values():
+            if isinstance(script, cube_behaviors.BehaviorScript):
+                script.get_mood = self.get_mood
         self.reaction_trigger_behavior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
         self.emotion_types = emotions.load_emotion_types(resource_dir)
         self.emotion_events = emotions.load_emotion_events(resource_dir)
@@ -536,15 +544,17 @@ class Brain:
         """
         Whether the engine may offer a behavior the robot now.
 
-        On top of the behavior's own answer, two behaviors in the resources ask for something to
-        have just happened: the hiking intro wants to run within a quarter of a second of its
-        activity being entered, the hiking wake-up within a second of driving off the charger.
+        On top of the behavior's own answer, a behavior can need an unlock the robot has not earned,
+        and two behaviors in the resources ask for something to have just happened: the hiking intro
+        wants to run within a quarter of a second of its activity being entered, the hiking wake-up
+        within a second of driving off the charger.
         """
-        # TODO: Honour requiredUnlockId. Seventy-seven behaviors carry one, nothing here tracks
-        #  which sparks have been earned, and none of those behaviors is reachable for now.
         candidate = self.behaviors.get(behavior_id)
         if candidate is None:
             logger_behavior.error("Failed to find behavior {}.".format(behavior_id))
+            return False
+        required_unlock = candidate.conf.get("requiredUnlockId")
+        if required_unlock is not None and required_unlock not in self.unlocks:
             return False
         if not candidate.wants_to_run():
             return False

@@ -471,6 +471,20 @@ class TestActivityEngine(unittest.TestCase):
         self.assertTrue(self.brain.can_run_behavior("Hiking_FirstLookWakeUp", 1000.0, 1000.5))
         self.assertFalse(self.brain.can_run_behavior("Hiking_FirstLookWakeUp", 1000.0, 1002.0))
 
+    def test_a_behavior_needs_its_unlock(self):
+        # Stacking comes with a new robot, the workout with the sixth level of the needs.
+        self.brain.cli.cubes.carried = self.brain.cli.cubes[pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1]
+        self.addCleanup(setattr, self.brain.cli.cubes, "carried", None)
+        self.assertTrue(self.brain.can_run_behavior("PutDownBlock", 1000.0, 1000.0))
+        self.assertIn("Workout", self.brain.unlocks)
+        self.brain.unlocks = set(pycozmo.unlocks.load_default_unlocks(str(pycozmo.util.get_cozmo_asset_dir())))
+        self.addCleanup(setattr, self.brain, "unlocks",
+                        pycozmo.unlocks.load_all_unlocks(str(pycozmo.util.get_cozmo_asset_dir())))
+        with mock.patch.object(self.brain.behaviors["CubeLiftWorkout"], "wants_to_run", return_value=True), \
+                mock.patch.object(self.brain.behaviors["StackBlocks"], "wants_to_run", return_value=True):
+            self.assertFalse(self.brain.can_run_behavior("CubeLiftWorkout", 1000.0, 1000.0))
+            self.assertTrue(self.brain.can_run_behavior("StackBlocks", 1000.0, 1000.0))
+
     def test_only_the_animations_of_nothing_to_do_can_run(self):
         # The other four need to drive into a cube, see an obstacle or be holding something.
         chooser = self.brain.activities["NothingToDo"].behavior_chooser
