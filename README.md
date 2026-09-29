@@ -130,7 +130,7 @@ gave them, resolved through `AnimationTriggerMap.json`. The remaining three - `M
 and `ReturnedToTreads` - have no animation anywhere in the resources, under their behavior ID, their trigger name or
 any name close to either, so they log a warning and end.
 
-Of those 21 triggers, ten are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
+Of those 21 triggers, eleven are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
 `Hiccup`, the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
 `ReturnedToTreads`, and for the cubes `ObjectPositionUpdated` and `CubeMoved` - see below. The rest wait on parts
 that are not implemented: the other vision triggers need face and pet detection, and the others come from game and
@@ -405,11 +405,16 @@ On-board functions (see [docs/functions.md](docs/functions.md) for details:
 Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md) for details:
 - [x] Procedural face generation
 - [x] Cozmo animations from FlatBuffers .bin files
+- [x] Cube connection and lights - the brain connects one cube of each kind and lights it with Anki's cube light
+    animations, see [What the robot sees](#what-the-robot-sees)
 - [ ] Personality engine - the mood engine works and gates the one activity whose configuration asks it to, and the
     three nurture needs fall and drive the requests and activities that read them, see
     [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
-    them, see [Cozmo's Own Behavior](#cozmos-own-behavior)
+    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 25 of the 76 behavior classes are implemented, and what
+    the others need is in [docs/offboard_functions.md](docs/offboard_functions.md)
+- [ ] Cube handling - going to a cube, docking with it, picking it up, placing, rolling and stacking it
+- [ ] Games - Quick Tap, Memory Match and Keep Away were the application's code, not resources
 - [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection - the cubes are placed by their markers, see
@@ -422,8 +427,8 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
 - [ ] Pet detection
 - [ ] Camera calibration - the robot's factory calibration is read and used; calibrating anew is not done
 - [ ] Navigation map building
-- [ ] Text-to-speech
-- [ ] Songs
+- [ ] Text-to-speech - the resources' voices are Acapela's, whose engine is not among them
+- [ ] Songs - the singing behaviors name Wwise switches, which nothing plays yet
 - [x] Animation audio - two thirds of what the animations trigger plays from the robot's own
     resources, and 98% once the WWise Vorbis files have been converted with the codebooks from the
     Cozmo application, see [Sound](#sound)
