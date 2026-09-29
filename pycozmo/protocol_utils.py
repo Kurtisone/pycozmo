@@ -195,11 +195,7 @@ class BinaryReader(object):
         """ Reads in a fixed-length array of the given format and length. """
         result: Union[bytes, bytearray, tuple]
         if fmt == "B" and length > 1:
-            if self._index + length > len(self._buffer):
-                raise IndexError('Buffer not large enough to read serialized message. Received {0} bytes.'.format(
-                    len(self._buffer)))
-            result = self._buffer[self._index:self._index+length]
-            self._index += length
+            result = self._read_bytes(length)
         else:
             reader = _get_struct(fmt, length)
             if self._index + reader.size > len(self._buffer):
@@ -209,9 +205,20 @@ class BinaryReader(object):
             self._index += reader.size
         return result
 
+    def _read_bytes(self, length):
+        if self._index + length > len(self._buffer):
+            raise IndexError('Buffer not large enough to read serialized message. Received {0} bytes.'.format(
+                len(self._buffer)))
+        result = self._buffer[self._index:self._index+length]
+        self._index += length
+        return result
+
     def read_varray(self, data_format, length_format):
         """ Reads in a variable-length array with the given length format and data format. """
         length = self.read(length_format)
+        if data_format == "B":
+            # Bytes whatever the length: an image chunk can hold a single one, or none.
+            return self._read_bytes(length)
         return self.read_farray(data_format, length)
 
     def read_string(self, length_format):
