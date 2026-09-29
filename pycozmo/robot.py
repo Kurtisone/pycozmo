@@ -75,9 +75,10 @@ NECK_JOINT_POSITION = (-13.0, 47.7)
 #: Position of the camera in the head's frame, in mm: forward and up from the neck joint, with the
 #: head level. It turns with the head.
 #:
-#: These are the values of Anki's engine. They were checked on a robot: a cube standing 100 mm ahead of
-#: its treads, filmed at seven head angles from -24 to -1.5 degrees, projects to 118 to 120 mm ahead of
-#: the origin at every one of them - which also puts the front of the treads 19 mm ahead of it.
+#: These are the values of Anki's engine. On a robot, a cube standing 100 mm ahead of its treads, filmed at
+#: seven head angles from -24 to -1.5 degrees, projects to 118 to 120 mm ahead of the origin at every one of
+#: them. Its marker, which Anki's engine agrees with, puts it at 110 mm, though: the camera may be tilted
+#: further down than this makes it.
 HEAD_CAMERA_POSITION = (17.52, -8.0)
 
 #: Number of frames per second for animations.

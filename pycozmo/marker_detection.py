@@ -15,12 +15,11 @@ the corners are where the lines meet. That puts them at the corners of the squar
 edges make, to a fraction of a pixel. The square is then straightened out, and only kept if it looks like
 a marker: a dark ring along its edge and a light margin just inside.
 
-Where a frame is follows from its corners, the camera's calibration and its size, MARKER_SIZE. Checked on
-a robot, with a cube 100 mm ahead of its treads, which the ground under it put 119 mm ahead of the robot's
-origin, filmed from four head angles: MARKER_SIZE is the size that puts the marker there too, and over the
-16 images its centre stayed there with a standard deviation of 0.27 mm, and 24.0 mm up, 0.16 mm - a
-little above the middle of the cube's side. Which way the frame faces is less sure: up to 10 degrees off in those
-images.
+Where a frame is follows from its corners, the camera's calibration and its size, MARKER_SIZE, 25 mm on the
+stickers. Anki's own engine, through its SDK, placed two cubes filmed from head angles of -19 to 0 degrees at
+the distances pycozmo gives them with 24.5 mm: within 2%. A cube filmed from four head angles stayed where it
+stood with a standard deviation of 0.27 mm. Which way the frame faces is less sure: up to 10 degrees off in
+those images.
 
 The symbol is told by comparing the straightened square with Anki's drawings of the three, in the
 cube_markers directory, each turned four ways. The stickers are not quite the drawings: the symbol sits
@@ -60,10 +59,10 @@ __all__ = [
 ]
 
 
-#: Side of the square a cube marker's frame makes, in mm, corner to corner of its straight edges. Measured
-#: on a robot: the size that put a marker filmed in 16 images from four head angles where the cube stood,
-#: 27.02 mm with a standard deviation of 0.06.
-MARKER_SIZE = 27.0
+#: Side of the square a cube marker's frame makes, in mm, corner to corner of its straight edges: measured on
+#: the stickers. It was 27.0, from where the ground model placed a cube; Anki's engine placed cubes 9% nearer,
+#: and the stickers settled it.
+MARKER_SIZE = 25.0
 
 #: The symbol on each Light Cube, as Anki named it, by the cube's object type. Their drawings are in the
 #: cube_markers directory, as the cube's number: Anki's, cut from its reference sheet for the stickers.

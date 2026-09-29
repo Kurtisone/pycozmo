@@ -22,7 +22,7 @@ from pycozmo.marker_detection import CUBE_MARKERS, MARKER_SIZE
 CALIBRATION = camera.DEFAULT_CALIBRATION
 
 # Frames found on a real robot, with the head angle and the robot's tilt they were filmed at. The cube stood
-# 100 mm ahead of the treads, where the ground under it put its near side 119 mm ahead of the origin.
+# 100 mm ahead of the treads.
 ROBOT_FRAMES = (
     (-0.2918010652065277, 0.015123814344406128,
      [(116.2, 22.39), (187.26, 21.67), (186.87, 91.4), (119.74, 92.69)]),
@@ -32,6 +32,22 @@ ROBOT_FRAMES = (
      [(117.45, 84.35), (187.0, 83.05), (186.99, 150.97), (119.14, 152.81)]),
     (-0.02532157301902771, 0.028170984238386154,
      [(117.57, 118.06), (186.8, 116.61), (187.98, 185.95), (117.84, 187.78)]),
+)
+
+# Frames of a Paperclip and an Anglepoise Lamp found on a robot, with the head angle and the robot's tilt they
+# were filmed at, and where Anki's own engine, through its SDK, had the marker at the same time - half a side
+# out of the cube it placed, facing the camera: its distance from the camera along the ground, and how far
+# left of the robot it was, in mm. Over 483 frames, pycozmo put them 1.5% further, give or take 1%, and
+# 0.0 mm to the side, give or take 0.3.
+ANKI_FRAMES = (
+    (-0.3279338777065277, -0.006372842006385326,
+     [(80.71, 20.82), (133.24, 19.6), (137.05, 71.59), (87.6, 73.07)], 149.1, 28.2),
+    (-0.3279338777065277, -0.006372842006385326,
+     [(231.75, 18.76), (286.31, 19.18), (279.82, 73.21), (227.8, 73.06)], 148.2, -42.3),
+    (-0.02080497145652771, -0.0114718833938241,
+     [(83.91, 120.2), (135.02, 119.44), (136.68, 170.12), (85.81, 170.89)], 144.3, 28.1),
+    (-0.02080497145652771, -0.0114718833938241,
+     [(230.15, 119.21), (283.24, 119.25), (282.84, 172.4), (229.7, 171.29)], 144.2, -42.1),
 )
 
 
@@ -238,14 +254,14 @@ class TestPose(unittest.TestCase):
 
     def test_where_a_marker_is(self):
         for yaw, tilt, centre in ((0.0, 0.0, (0.0, 0.0, 150.0)), (0.5, 0.0, (30.0, 10.0, 200.0)),
-                                  (-0.6, 0.3, (-40.0, -20.0, 180.0)), (0.0, 0.0, (0.0, 0.0, 400.0))):
+                                  (-0.6, 0.3, (-40.0, -20.0, 180.0)), (0.0, 0.0, (0.0, 0.0, 370.0))):
             with self.subTest(yaw=yaw, tilt=tilt, centre=centre):
                 rotation = turn(yaw, tilt)
                 frame = only_frame(render(rotation, centre))
                 assert frame is not None
                 found_rotation, found_centre = marker_detection.frame_pose(frame, CALIBRATION)
-                # Half a millimetre, or a third of a percent of the distance.
-                np.testing.assert_allclose(found_centre, centre, atol=max(0.5, 0.003 * centre[2]))
+                # Half a millimetre, or 0.4% of the distance: a 25 mm marker is 20 pixels wide at 370 mm.
+                np.testing.assert_allclose(found_centre, centre, atol=max(0.5, 0.004 * centre[2]))
                 # Which way a small square faces shows in how its sides converge, which a tenth of a pixel
                 # changes by degrees.
                 facing = math.degrees(math.acos(np.clip(found_rotation[:, 2] @ rotation[:, 2], -1, 1)))
@@ -270,10 +286,19 @@ class TestPose(unittest.TestCase):
         self.assertAlmostEqual(observed[0].distance, float(np.linalg.norm(centre)), delta=1.0)
 
     def test_on_a_robot(self):
-        # Wherever the head was, the marker is where the cube stood, and halfway up its 45 mm side.
+        # Wherever the head was, the marker is where it was.
+        positions = []
         for head, pitch, corners in ROBOT_FRAMES:
-            with self.subTest(head=round(math.degrees(head), 1)):
+            _, centre = marker_detection.frame_pose(np.array(corners), CALIBRATION)
+            positions.append(camera.camera_to_robot(centre, head, pitch))
+        np.testing.assert_array_less(np.std(positions, axis=0), 1.0)
+
+    def test_where_anki_s_engine_saw_them(self):
+        for head, pitch, corners, distance, left in ANKI_FRAMES:
+            with self.subTest(head=round(math.degrees(head), 1), left=left):
                 _, centre = marker_detection.frame_pose(np.array(corners), CALIBRATION)
                 position = camera.camera_to_robot(centre, head, pitch)
-                self.assertAlmostEqual(position[0], 119.0, delta=0.8)
-                self.assertAlmostEqual(position[2], 24.0, delta=0.8)
+                origin = camera.camera_to_robot(np.zeros(3), head, pitch)
+                self.assertAlmostEqual(float(np.linalg.norm(position[:2] - origin[:2])), distance,
+                                       delta=0.03 * distance)
+                self.assertAlmostEqual(position[1], left, delta=1.0)

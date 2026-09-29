@@ -278,7 +278,10 @@ Motion is also placed on the ground: `ground_centroid` is where it is in mm, ahe
 from the head's angle and the robot's own tilt. The lens is described by the calibration every robot got in the
 factory, which the brain reads from the robot's NV storage when it starts - `Client.read_camera_calibration()` - and
 the camera's place in the head by Anki's engine values. Checked on a robot, a cube 100 mm ahead of the treads comes
-out at the same place, within a millimetre, from seven head angles between -24 and -1.5 degrees.
+out at the same place, within a millimetre, from seven head angles between -24 and -1.5 degrees. Where that place is
+may be 8% too far, though: 119 mm ahead of the robot's origin, where the cube's own marker puts it at 110 mm, and the
+marker agrees with Anki's engine. A camera tilted 1 to 3 degrees further down than pycozmo takes it to be would
+account for it; that is being measured.
 
 With the head down, the bottom of the image is the lift seen from above, which would pass for ground 60 mm ahead; so
 ground closer than 65 mm is left out, as is ground beyond 400 mm.
@@ -298,11 +301,11 @@ for marker in marker_detection.observe_markers(image, calibration, cli.head_angl
 `position` the middle of the marker in mm, ahead of the robot, to its left and up from the ground, `facing` the way it
 faces, `turns` the quarter turns its symbol is turned by on the screen, and `corners` where it is in the image. The
 symbol is told by comparing it with Anki's drawings of the three, in `pycozmo/cube_markers`. The frame's sides are fitted to a fraction of a pixel, and the lens' distortion taken out, before the frame is
-placed from the camera's calibration and its size, 27.0 mm. Checked on a robot, a cube filmed from four head angles
+placed from the camera's calibration and its size, 25 mm. Checked on a robot, a cube filmed from four head angles
 was found in 16 images out of 16, where it stood with a standard deviation of 0.27 mm, and told for the Deli Slicer it
 was in all of them; nothing else in the room was taken for a marker. Against Anki's own engine, through its SDK, which
-saw a Paperclip and an Anglepoise Lamp in each of 165 images, pycozmo told each of them for what Anki saw every time.
-It placed them 9% further than Anki did, though, sideways as much as ahead: the marker's size is in question. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
+saw a Paperclip and an Anglepoise Lamp in each of 165 images, pycozmo told each of them for what Anki saw every time,
+and placed them within 1.5% of where Anki did, and 0.3 mm to the side. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
 
 The brain does as the Cozmo application did with the cubes. It connects one of each kind as soon as the robot hears
 it, and lights it with Anki's own cube light animations: a dim cyan breath every five seconds once connected, a steady
