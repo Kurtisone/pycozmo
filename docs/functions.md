@@ -417,7 +417,10 @@ message taking its length and 3 bytes, so it fits about ten frames of sound. A m
 "BufferFull" and "Failed to buffer a keyframe! Clearing Animation buffer!", and the robot drops everything waiting.
 
 `AnimationState` reports how many frames the robot has played, silences included, and how many bytes, each message
-counting its length and 1; what a cleared buffer drops counts as played. PyCozmo sends a frame only while fewer than ten
-are waiting and they take less than 7.5 KB.
+counting its length and 1; what a cleared buffer drops counts as played. The samples of an `OutputAudio` count only
+once the next frame starts, and those of the last one before an `OutputSilence` never do: they appear to keep their
+room until the buffer is cleared, since a robot whose flow was judged by the frames alone ran out of room in most
+animations that followed a sound. PyCozmo sends a frame only while fewer than ten are waiting, by the frames count,
+and less than 7.5 KB, by the bytes count.
    
 See `examples/anim.py` for example usage.

@@ -95,11 +95,14 @@ class AnimationController:
     #: "needed 747".
     MESSAGE_OVERHEAD = 3
     #: Bytes sent ahead of what the robot has played, at most. Its animation buffer holds 8 KB: a robot that
-    #: ran out of room held about 7 590 bytes and had 601 left. A margin is kept for what this count misses.
+    #: ran out of room held 7 591 bytes, exactly the frames it had not played, and had 601 left.
     MAX_BYTES_AHEAD = 8192 - 512
-    #: How long frames are held back for a robot that does not report playing anything, before they go out
-    #: anyway.
+    #: How long the robot may go without playing anything before frames go out however many it holds - never
+    #: more than its buffer takes, though. A robot that is not playing is not making room.
     MAX_HOLD = 1.0
+    #: How long it may go before what it was sent is taken for played, and frames go out a tick at a time
+    #: again. A count gone wrong would otherwise hold every animation up for good.
+    MAX_STALL = 5.0
 
     def __init__(self, cli):
         self.cli = cli
@@ -124,15 +127,22 @@ class AnimationController:
         # Whether a StartAnimation has gone out that no EndAnimation has closed yet.
         self._animation_open = False
         self._pending_lock = Lock()
-        # Flow control. The robot reports how many frames it has played; None until it reports having
-        # played anything, and for as long as it does not, frames go out at the frame rate. See
-        # _has_room() .
-        self.num_audio_frames_played: Optional[int] = None
-        # When it last reported playing a frame.
+        # Flow control. What the robot last reported having played; None until it reports having played
+        # anything, and for as long as it does not, frames go out at the frame rate. See _has_room() .
+        self.animation_state: Optional[protocol_encoder.AnimationState] = None
+        # The report last counted, its two counts as they came, and the same since this connection, without
+        # the wrapping. When the frames count last changed.
+        self._counted: Optional[protocol_encoder.AnimationState] = None
+        self._reported = (0, 0)
+        self._frames_played = 0
+        self._bytes_played = 0
         self._played_time = 0.0
+        # The same counts for what was sent from here.
         self._frames_sent = 0
-        # Number and size of each frame sent that the robot has not played yet, oldest first.
-        self._unplayed: Deque[Tuple[int, int]] = deque()
+        self._bytes_sent = 0
+        # Number, messages and bytes counted of each frame sent that the robot has not played yet, oldest first.
+        self._unplayed: Deque[Tuple[int, int, int]] = deque()
+        self._unplayed_messages = 0
         self._unplayed_bytes = 0
         # A frame taken from the queue that the robot had no room for yet.
         self._held: Optional[List[protocol_base.Packet]] = None
@@ -147,10 +157,12 @@ class AnimationController:
         self.displayed_time = 0.0
         self.expected_anim_id = None
         # Nor about what it has played.
-        self.num_audio_frames_played = None
+        self.animation_state = None
+        self._counted = None
+        self._reported = (0, 0)
         self._frames_sent = 0
-        self._unplayed.clear()
-        self._unplayed_bytes = 0
+        self._bytes_sent = 0
+        self._forget_unplayed()
         self._held = None
         # __class__ is bound inside a method body; the checker does not model it.
         self.thread = Thread(
@@ -172,12 +184,11 @@ class AnimationController:
             self.thread = None
 
     def _on_animation_state(self, cli: conn.Connection, pkt: protocol_encoder.AnimationState) -> None:
-        if not pkt.num_anim_bytes_played:
+        # Kept as it comes, both counts together: the frame loop makes sense of it. See _count_played() .
+        if not pkt.num_anim_bytes_played and self.animation_state is None:
             # Nothing played yet - or a robot, or an emulator, that does not say.
             return
-        if pkt.num_audio_frames_played != self.num_audio_frames_played:
-            self._played_time = time.perf_counter()
-            self.num_audio_frames_played = pkt.num_audio_frames_played
+        self.animation_state = pkt
 
     def _on_keyframe(self, cli: conn.Connection, pkt: protocol_encoder.Keyframe) -> None:
         pass
@@ -301,36 +312,92 @@ class AnimationController:
         size = sum(len(pkt) + self.MESSAGE_OVERHEAD for pkt in self._held)
         if not self._has_room(size, now):
             return False
+        counted = 0
         for pkt in self._held:
             self.cli.conn.send(pkt)
-        self._held = None
-        self._unplayed.append((self._frames_sent, size))
-        self._unplayed_bytes += size
+            counted += len(pkt) + 1
+        self._unplayed.append((self._frames_sent, len(self._held), counted))
+        self._unplayed_messages += len(self._held)
+        self._unplayed_bytes += counted
         self._frames_sent += 1
+        self._bytes_sent += counted
+        self._held = None
         return True
 
     def _flow_controlled(self, now: float) -> bool:
         """ Say whether frames go out as the robot plays them, rather than one a tick. """
-        # A robot that has stopped playing - or saying so - does not hold up the frames for ever.
-        return self.num_audio_frames_played is not None and now - self._played_time <= self.MAX_HOLD
+        return self.animation_state is not None and now - self._played_time <= self.MAX_HOLD
 
     def _has_room(self, size: int, now: float) -> bool:
         """
         Say whether the robot has room for one more frame of this many bytes.
 
-        The robot reports the frames it has played - silences too - in AnimationState, and counts the
-        frames it drops when it clears its buffer as played, so the count stays right after an error.
+        The robot reports in AnimationState the frames it has played, silences too, and the bytes: every
+        message it takes from its buffer counts its length and one more, and what it drops when it clears the
+        buffer counts as played. Both matched what was sent, exactly, through the 25 s of a sound. The frames
+        tell how far ahead of it this is. The bytes tell how much room there is: the samples of a sound count
+        only once the next frame starts, and when that sound ended its last frame counted as played, but not
+        its 744 samples. Counting by the frames alone, a robot playing animations ran out of room in most of
+        those that followed one with a sound, and seldom in one that followed a cleared buffer: the samples a
+        sound leaves uncounted are taken to keep their room until the buffer is cleared.
         """
-        played = self.num_audio_frames_played
-        if played is None or not self._flow_controlled(now):
+        if self.animation_state is None:
             return True
-        if played > self._frames_sent:
-            # It has played more than was sent from here: a count carried over from before.
-            self._frames_sent = played
-        while self._unplayed and self._unplayed[0][0] < played:
-            self._unplayed_bytes -= self._unplayed.popleft()[1]
-        return self._frames_sent - played < self.MAX_FRAMES_AHEAD and \
-            self._unplayed_bytes + size <= self.MAX_BYTES_AHEAD
+        self._count_played(now)
+        waited = now - self._played_time
+        if waited > self.MAX_STALL:
+            self._forget_unplayed()
+            return True
+        # The count leaves out 2 of the 3 bytes each message takes over its length.
+        room = self._bytes_sent - self._bytes_played + (self.MESSAGE_OVERHEAD - 1) * self._unplayed_messages
+        if room + size > self.MAX_BYTES_AHEAD:
+            if self._unplayed:
+                return False
+            # With every frame played, what takes the room is the ends of sounds, which only a cleared buffer
+            # gives back: waiting would only starve the robot. The frame goes out, and the robot clears its
+            # buffer if it has to.
+            self._bytes_played = self._bytes_sent
+        # A robot that waits for more before it plays anything gets it, as much as its buffer takes.
+        return self._frames_sent - self._frames_played < self.MAX_FRAMES_AHEAD or waited > self.MAX_HOLD
+
+    def _count_played(self, now: float) -> None:
+        """ Bring what the robot has played up to its last report. """
+        state = self.animation_state
+        if state is None or state is self._counted:
+            return
+        self._counted = state
+        reported = (state.num_audio_frames_played, state.num_anim_bytes_played)
+        frames = self._frames_played + self._change(reported[0], self._reported[0])
+        played = self._bytes_played + self._change(reported[1], self._reported[1])
+        self._reported = reported
+        if frames != self._frames_played:
+            self._played_time = now
+        if not (self._frames_played <= frames <= self._frames_sent and self._bytes_played <= played):
+            # Counting from scratch again, or counting frames that were not sent from here - a count carried
+            # over from before this connection: what the robot still holds cannot be told apart any more.
+            self._forget_unplayed()
+            return
+        self._frames_played = frames
+        while self._unplayed and self._unplayed[0][0] < frames:
+            _, messages, counted = self._unplayed.popleft()
+            self._unplayed_messages -= messages
+            self._unplayed_bytes -= counted
+        # The bytes can run ahead of the frames: a cleared buffer counts as played the ends of sounds that never
+        # counted. What is left to play is then what the frames say.
+        self._bytes_played = min(played, self._bytes_sent - self._unplayed_bytes)
+
+    @staticmethod
+    def _change(count: int, last: int) -> int:
+        """ How far a signed 32-bit count, which wraps, has gone since it was last. """
+        return (count - last + 2 ** 31) % 2 ** 32 - 2 ** 31
+
+    def _forget_unplayed(self) -> None:
+        """ Take everything sent for played. """
+        self._frames_played = self._frames_sent
+        self._bytes_played = self._bytes_sent
+        self._unplayed.clear()
+        self._unplayed_messages = 0
+        self._unplayed_bytes = 0
 
     def _next_frame(self, now: float) -> List[protocol_base.Packet]:
         """
