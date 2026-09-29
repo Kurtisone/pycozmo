@@ -361,6 +361,51 @@ class TestEventThread(unittest.TestCase):
 
 
 @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestCubes(unittest.TestCase):
+    """ The brain lights the cubes up as Anki's engine did, and reacts to them as it did. """
+
+    CUBE = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1
+    brain: pycozmo.brain.Brain
+
+    @classmethod
+    def setUpClass(cls):
+        cls.brain = pycozmo.brain.Brain(pycozmo.client.Client())
+
+    def setUp(self):
+        self.brain.acknowledged_cubes.clear()
+        self.cube = self.brain.cli.cubes[self.CUBE]
+        self.cube.pose = None
+        patcher = mock.patch.object(self.brain, "post_reaction")
+        self.posted = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def see(self, now=None):
+        self.brain.cli.cubes.observe(self.CUBE, (150.0, 0.0, 24.0), (-1.0, 0.0, 0.0), now)
+
+    def move(self):
+        self.brain.cli.dispatch(pycozmo.event.EvtCubeMovingChange, self.brain.cli, self.cube, True)
+
+    def reactions(self):
+        return [call.args[0] for call in self.posted.call_args_list]
+
+    def test_the_light_animations_are_anki_s(self):
+        self.assertIn("Visible", self.brain.cli.cubes.light_animations)
+
+    def test_a_cube_is_acknowledged_when_first_seen_and_once_moved(self):
+        self.see()
+        self.see()
+        self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
+        self.move()
+        self.see()
+        self.assertEqual(self.reactions(), ["ObjectPositionUpdated", "CubeMoved", "ObjectPositionUpdated"])
+
+    def test_a_cube_moved_out_of_sight_is_not_reacted_to(self):
+        self.see(now=time.perf_counter() - self.brain.CUBE_IN_VIEW_TIME - 1.0)
+        self.move()
+        self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
+
+
+@unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
 class TestActivityEngine(unittest.TestCase):
     """
     What the robot does when nothing has happened to it.

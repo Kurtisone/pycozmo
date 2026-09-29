@@ -30,6 +30,7 @@ from . import conn
 from . import lights
 from . import image_encoder
 from . import anim
+from . import cubes
 from . import anim_encoder
 from . import audio
 from . import audiolib
@@ -104,6 +105,8 @@ class Client(event.Dispatcher):
         # Object state
         self.available_objects: Dict[int, object.Object] = dict()
         self.connected_objects: Dict[int, Dict[str, Any]] = dict()
+        #: The Light Cubes: connections, lights, and where they were seen.
+        self.cubes = cubes.Cubes(self)
         # Filters
         self.packet_type_filter = filter.Filter()
         self.packet_type_filter.deny_ids({protocol_declaration.PacketType.PING.value})
@@ -129,6 +132,13 @@ class Client(event.Dispatcher):
         self.add_handler(protocol_encoder.AnimationState, self._on_animation_state)
         self.add_handler(protocol_encoder.ObjectAvailable, self._on_object_available)
         self.add_handler(protocol_encoder.ObjectConnectionState, self._on_object_connection_state)
+        self.add_handler(protocol_encoder.ObjectAvailable, self.cubes.on_object_available)
+        self.add_handler(protocol_encoder.ObjectConnectionState, self.cubes.on_object_connection_state)
+        self.add_handler(protocol_encoder.ObjectMoved, self.cubes.on_object_moved)
+        self.add_handler(protocol_encoder.ObjectStoppedMoving, self.cubes.on_object_stopped_moving)
+        self.add_handler(protocol_encoder.ObjectTapped, self.cubes.on_object_tapped)
+        self.add_handler(protocol_encoder.ObjectUpAxisChanged, self.cubes.on_object_up_axis_changed)
+        self.add_handler(protocol_encoder.ObjectPowerLevel, self.cubes.on_object_power_level)
         self.add_handler(protocol_encoder.DebugData, self._on_debug_data)
         self.add_handler(event.EvtRobotPickedUpChange, self._on_robot_picked_up)
         self.add_handler(event.EvtMotionObserved, self._on_motion_observed)
@@ -143,6 +153,8 @@ class Client(event.Dispatcher):
 
     def connect(self) -> None:
         logger.debug("Connecting...")
+        # A new connection to the robot starts with no cube connected.
+        self.cubes.reset()
         self.conn.connect()
 
     def disconnect(self) -> None:

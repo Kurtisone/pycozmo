@@ -130,10 +130,11 @@ gave them, resolved through `AnimationTriggerMap.json`. The remaining three - `M
 and `ReturnedToTreads` - have no animation anywhere in the resources, under their behavior ID, their trigger name or
 any name close to either, so they log a warning and end.
 
-Of those 21 triggers, eight are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
-`Hiccup`, and the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
-`ReturnedToTreads`. The rest wait on parts that are not implemented: the vision triggers need face, object and pet
-detection, and the others come from game and engine states the activity engine does not reach yet. None of them needs
+Of those 21 triggers, ten are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
+`Hiccup`, the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
+`ReturnedToTreads`, and for the cubes `ObjectPositionUpdated` and `CubeMoved` - see below. The rest wait on parts
+that are not implemented: the other vision triggers need face and pet detection, and the others come from game and
+engine states the activity engine does not reach yet. None of them needs
 motion detection - `UnexpectedMovement`, despite its name, is not something the camera sees.
 
 Two details matter for the result to look right rather than merely work:
@@ -282,7 +283,7 @@ out at the same place, within a millimetre, from seven head angles between -24 a
 With the head down, the bottom of the image is the lift seen from above, which would pass for ground 60 mm ahead; so
 ground closer than 65 mm is left out, as is ground beyond 400 mm.
 
-The markers on the Light Cubes can be found as well, though the brain does not look for them yet. Each is a symbol in
+The markers on the Light Cubes can be found as well. Each is a symbol in
 a dark frame with rounded corners; `pycozmo.marker_detection` finds the frames, places them in the robot's frame, and
 tells which cube each belongs to:
 
@@ -300,6 +301,14 @@ symbol is told by comparing it with Anki's drawings of the three, in `pycozmo/cu
 placed from the camera's calibration and its size, 27.0 mm. Checked on a robot, a cube filmed from four head angles
 was found in 16 images out of 16, where it stood with a standard deviation of 0.27 mm, and told for the Deli Slicer it
 was in all of them; nothing else in the room was taken for a marker. Finding them takes about 20 ms an image. Which way a marker faces is less sure, a few degrees at best.
+
+The brain does as the Cozmo application did with the cubes. It connects one of each kind as soon as the robot hears
+it, and lights it with Anki's own cube light animations: a dim cyan breath every five seconds once connected, a steady
+cyan while the robot sees it. It looks for markers five times a second while the robot keeps still, and places each
+cube it sees in the robot's world frame, in `cli.cubes`. A cube seen for the first time, or where it was moved to, is
+acknowledged (`ObjectPositionUpdated`), and one moved while the robot sees it is reacted to (`CubeMoved`). Taps and
+moves come as `EvtCubeTapped` and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. How long a light frame lasts
+is not measured yet: 30 ms fits Anki's periods.
 
 That is what `PounceOnMotion` plays with. Once motion has been seen on the ground, Socialize and Hiking give it the
 robot: it puts its head down to watch, turns towards what moves, creeps up on it, and pounces with the lift. A lift
@@ -335,8 +344,8 @@ part of its score and wins it back over time: `GuardDog` scores nothing for 5 mi
 an hour on, and the bored animations keep half their score for 9 seconds, which is what keeps the robot from playing
 two bored sequences in a row.
 
-What actually runs today is what needs no cube, no face and no player: `DriveOffCharger`, the hiking intro, and the
-`NothingToDo` idle and bored animations. An activity that wants the robot but can offer nothing is passed over rather
+What actually runs today is what needs no face and no player, and no more of a cube than seeing it: `DriveOffCharger`,
+the hiking intro, the `NothingToDo` idle and bored animations, and `PounceOnMotion`. An activity that wants the robot but can offer nothing is passed over rather
 than entered, since entering it would leave the robot still for as long as its duration - 25 s for `PlayAlone`, a
 minute for `Hiking`.
 
@@ -397,9 +406,10 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     them, see [Cozmo's Own Behavior](#cozmos-own-behavior)
 - [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
-- [ ] Object (cube and platform) detection
-- [x] Cube marker recognition - the markers are found, placed in space and told apart, though the brain does not look
-    for them yet, see [What the robot sees](#what-the-robot-sees)
+- [ ] Object (cube and platform) detection - the cubes are placed by their markers, see
+    [What the robot sees](#what-the-robot-sees); the platform is not
+- [x] Cube marker recognition - the markers are found, placed in space and told apart, and the brain looks for them,
+    see [What the robot sees](#what-the-robot-sees)
 - [ ] Face detection
 - [ ] Face recognition
 - [ ] Facial expression estimation

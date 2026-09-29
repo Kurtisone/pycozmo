@@ -4,7 +4,7 @@ Brain class - high level behavior and emotion engine.
 
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from PIL import Image
 from threading import Event, RLock, Thread
 from typing import Optional as _Optional
@@ -20,7 +20,11 @@ from . import needs
 from . import behavior
 from . import activity
 from . import motion_detection
+from . import marker_detection
+from . import cube_lights
 from . import camera
+from . import cubes
+from . import protocol_encoder
 from . import util
 from . import robot
 
@@ -63,6 +67,12 @@ class Brain:
     #: nothing. Every activity is consulted each time, so this is not free.
     IDLE_RETRY_TIME = 1.0
 
+    #: How often the camera images are searched for cube markers, at most, in seconds: it takes about 20 ms an
+    #: image, where motion detection takes 2.4.
+    MARKER_INTERVAL = 0.2
+    #: How recently a cube must have been seen for its moving to be something the robot saw.
+    CUBE_IN_VIEW_TIME = 2.0
+
     #: Need action applied for each orientation the robot can end up in. Only being laid on its
     #: side is worth anything in Anki's table; landing on its back or face is not.
     ORIENTATION_NEED_ACTIONS = {
@@ -102,6 +112,7 @@ class Brain:
         self.motion_detector = motion_detection.MotionDetector(
             motion_detection.load_motion_detector_config(resource_dir), camera.DEFAULT_CALIBRATION)
         self.cli.load_anims()
+        self.cli.cubes.light_animations = cube_lights.load_cube_light_animations(resource_dir)
         logger.info("Loaded resources in {:.02f} s.".format(time.perf_counter() - start_time))
 
         # The brain's handlers, and the behavior running, which it makes a child of this. They get the client's
@@ -118,7 +129,14 @@ class Brain:
         self.listen(event.EvtRobotFallingChange, self.on_robot_falling_change)
         self.listen(event.EvtRobotOnChargerChange, self.on_robot_on_charger_change)
         self.listen(event.EvtNewRawCameraImage, self.on_camera_image)
+        self.listen(event.EvtCubeMovingChange, self.on_cube_moving_change)
+        self.listen(event.EvtCubeObserved, self.on_cube_observed)
         # TODO: ...
+
+        # When the camera images were last searched for cube markers. See on_camera_image() .
+        self.markers_time = 0.0
+        # The cubes seen since they last moved: seeing any other is news. See on_cube_observed() .
+        self.acknowledged_cubes: Set[protocol_encoder.ObjectType] = set()
 
         # Reaction trigger queue
         self.reaction_queue: Queue = Queue()
@@ -169,6 +187,8 @@ class Brain:
             logger.warning("Could not read the camera calibration. Using a typical one.")
         # Grayscale is all motion detection needs.
         self.cli.enable_camera(True, color=False)
+        # One cube of each kind, as the Cozmo application connected them.
+        self.cli.cubes.auto_connect = True
 
         # TODO: Enable stop on cliff.
         # TODO: Drive off if on charger.
@@ -269,27 +289,49 @@ class Brain:
     def on_camera_image(self, cli: client.Client, new_im: Image.Image) -> None:
         """ Process images, coming from the robot camera. """
         pose = cli.pose
+        now = time.perf_counter()
+        moving = bool(cli.robot_status & robot.RobotStatusFlag.IS_MOVING) or cli.robot_picked_up
         motion = self.motion_detector.process(
-            new_im, time.perf_counter(),
+            new_im, now,
             pose=(pose.position.x, pose.position.y, pose.rotation.angle_z.radians, cli.head_angle.radians),
-            moving=bool(cli.robot_status & robot.RobotStatusFlag.IS_MOVING) or cli.robot_picked_up,
+            moving=moving,
             timestamp=cli.last_image_timestamp,
             pitch=cli.pose_pitch.radians)
         if motion is not None and motion.any:
             cli.dispatch(event.EvtMotionObserved, cli, motion)
+        # Markers are placed by the robot's pose, which a moving robot's images lag behind.
+        if not moving and now - self.markers_time >= self.MARKER_INTERVAL:
+            self.markers_time = now
+            for marker in marker_detection.observe_markers(new_im, self.motion_detector.calibration,
+                                                           cli.head_angle.radians, cli.pose_pitch.radians):
+                if marker.cube is not None:
+                    cli.cubes.observe(marker.cube, marker.position, marker.normal, now)
         # TODO: See cozmo_resources/config/engine/vision_config.json
         # TODO: face detection
         # self.process_reaction_trigger("FacePositionUpdate")?
         # TODO: pet detection
         # self.process_reaction_trigger("PetInitialDetection")
         # TODO: laser detection
-        # TODO: cube marker detection
         # TODO: facial expression estimation
         # TODO: smile amount detection
         # TODO: blink amount detection
         # TODO: gaze detection?
         # TODO: image quality check
         pass
+
+    def on_cube_moving_change(self, cli: client.Client, cube: cubes.LightCube, moving: bool) -> None:
+        if not moving:
+            return
+        # Where it is now is news again.
+        self.acknowledged_cubes.discard(cube.object_type)
+        if cube.seen_within(self.CUBE_IN_VIEW_TIME) and not cli.robot_picked_up:
+            self.post_reaction("CubeMoved")
+
+    def on_cube_observed(self, cli: client.Client, cube: cubes.LightCube) -> None:
+        # A cube seen for the first time, or where it was moved to, is acknowledged, as Anki's engine did.
+        if cube.object_type not in self.acknowledged_cubes:
+            self.acknowledged_cubes.add(cube.object_type)
+            self.post_reaction("ObjectPositionUpdated")
 
     def post_reaction(self, reaction_trigger: str) -> None:
         """ Post a reaction trigger to the reaction trigger queue. """
@@ -564,6 +606,7 @@ class Brain:
             self.update_needs()
             self.update_hiccups()
             self.update_activity()
+            self.cli.cubes.update()
             # TODO: Timers
 
             timer.sleep()

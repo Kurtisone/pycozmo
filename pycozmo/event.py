@@ -45,6 +45,10 @@ __all__ = [
     "EvtBehaviorDone",
     "EvtEmotionEvent",
     "EvtMotionObserved",
+    "EvtCubeConnectionChange",
+    "EvtCubeMovingChange",
+    "EvtCubeTapped",
+    "EvtCubeObserved",
 
     "STATUS_EVENTS",
 
@@ -206,6 +210,22 @@ class EvtEmotionEvent(Event):
 
 class EvtMotionObserved(Event):
     """ Triggered with a motion_detection.ObservedMotion when the camera images show something moving. """
+
+
+class EvtCubeConnectionChange(Event):
+    """ Triggered with a cubes.LightCube and whether it is now connected. """
+
+
+class EvtCubeMovingChange(Event):
+    """ Triggered with a cubes.LightCube and whether it now moves. """
+
+
+class EvtCubeTapped(Event):
+    """ Triggered with a cubes.LightCube and the number of taps. """
+
+
+class EvtCubeObserved(Event):
+    """ Triggered with a cubes.LightCube each time the camera sees it; its pose is where. """
 
 
 class Dispatcher(object):
