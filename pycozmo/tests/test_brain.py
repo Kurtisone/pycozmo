@@ -284,7 +284,7 @@ class TestStop(unittest.TestCase):
         self.brain.stop()
         self.assertIsNone(self.brain.behavior)
         self.assertIsNone(charger.timer, "a timer left armed fires into a stopped session")
-        self.assertNotIn(charger, self.brain.cli.dispatch_children)
+        self.assertNotIn(charger, self.brain.dispatcher.dispatch_children)
 
     def test_nothing_is_left_to_resume(self):
         self.brain.start()
@@ -296,12 +296,68 @@ class TestStop(unittest.TestCase):
 
     def test_the_brain_stops_listening(self):
         self.brain.start()
-        self.assertTrue(self.brain.handlers)
+        self.assertIn(self.brain.event_relay, self.brain.cli.dispatch_children)
         self.brain.stop()
-        self.assertEqual(self.brain.handlers, [])
+        self.assertNotIn(self.brain.event_relay, self.brain.cli.dispatch_children)
         # A reaction posted now would queue up for a thread that no longer runs.
         self.brain.cli.dispatch(pycozmo.event.EvtRobotPickedUpChange, self.brain.cli, True)
         self.assertTrue(self.brain.reaction_queue.empty())
+
+
+@unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestEventThread(unittest.TestCase):
+    """
+    The brain and its behavior get the client's events on a thread of their own. On the one that handles
+    everything the robot sends, a behavior starting an animation for the first time held the robot's state up
+    for as much as 0.64 s, and the animation frames waiting on the robot's reports with it.
+    """
+
+    def setUp(self):
+        self.brain = pycozmo.brain.Brain(pycozmo.client.Client())
+        # Only the event thread: start() would wait for a robot to read the camera's calibration from.
+        assert self.brain.event_thread is not None
+        self.brain.event_thread.start()
+        self.addCleanup(self.brain.stop)
+        self.threads: List[str] = []
+
+    def wait_for_threads(self):
+        deadline = time.perf_counter() + 2.0
+        while not self.threads and time.perf_counter() < deadline:
+            time.sleep(0.01)
+
+    def test_a_slow_behavior_does_not_hold_the_dispatch_up(self):
+        cli = self.brain.cli
+        self.brain.behaviors["TwoAnimations"] = pycozmo.behavior.BehaviorPlayAnim(
+            cli, {"behaviorID": "TwoAnimations", "animTriggers": ["ReactToCliff", "ReactToCliff"]})
+
+        def play_anim_group(name):
+            if threading.current_thread() is not threading.main_thread():
+                self.threads.append(threading.current_thread().name)
+                time.sleep(0.5)
+
+        with mock.patch.object(cli, "play_anim_group", side_effect=play_anim_group):
+            self.brain.activate_behavior("TwoAnimations")
+            start = time.perf_counter()
+            cli.dispatch(pycozmo.event.EvtAnimationCompleted, cli)
+            self.assertLess(time.perf_counter() - start, 0.1)
+            self.wait_for_threads()
+        self.assertEqual(self.threads, ["BrainEventThread"])
+
+    def test_the_brain_s_own_handlers_run_on_its_thread(self):
+        self.brain.listen(pycozmo.event.EvtRobotPickedUpChange,
+                          lambda cli, state: self.threads.append(threading.current_thread().name))
+        self.brain.cli.dispatch(pycozmo.event.EvtRobotPickedUpChange, self.brain.cli, True)
+        self.wait_for_threads()
+        self.assertEqual(self.threads, ["BrainEventThread"])
+
+    def test_what_nothing_listens_to_stays_where_it_is(self):
+        # Everything the robot sends is dispatched through the client, thirty AnimationState a second among it.
+        with mock.patch.object(self.brain.event_queue, "put") as put:
+            self.brain.relay(pycozmo.protocol_encoder.AnimationState, self.brain.cli.conn,
+                             pycozmo.protocol_encoder.AnimationState())
+            put.assert_not_called()
+            self.brain.relay(pycozmo.event.EvtRobotPickedUpChange, self.brain.cli, True)
+            put.assert_called_once()
 
 
 @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")

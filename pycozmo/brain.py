@@ -4,7 +4,7 @@ Brain class - high level behavior and emotion engine.
 
 """
 
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from PIL import Image
 from threading import Event, RLock, Thread
 from typing import Optional as _Optional
@@ -28,6 +28,16 @@ from . import robot
 __all__ = [
     "Brain"
 ]
+
+
+class EventRelay:
+    """ A child dispatcher of the client that hands what the client dispatches to a brain. See Brain.relay() . """
+
+    def __init__(self, brain: "Brain") -> None:
+        self.brain = brain
+
+    def dispatch(self, evt: type, *args: Any, **kwargs: Any) -> None:
+        self.brain.relay(evt, *args, **kwargs)
 
 
 class Brain:
@@ -94,8 +104,12 @@ class Brain:
         self.cli.load_anims()
         logger.info("Loaded resources in {:.02f} s.".format(time.perf_counter() - start_time))
 
-        # Kept so that stop() can stop listening.
-        self.handlers: List[Tuple[type, event.Handler]] = []
+        # The brain's handlers, and the behavior running, which it makes a child of this. They get the client's
+        # events on the brain's own thread, through the relay. See relay() .
+        self.dispatcher = event.Dispatcher()
+        self.event_queue: Queue = Queue()
+        self.event_relay = EventRelay(self)
+        self.cli.add_child_dispatcher(self.event_relay)
         self.listen(event.EvtBehaviorDone, self.on_behavior_done)
         self.listen(event.EvtEmotionEvent, self.on_emotion_event)
         self.listen(event.EvtCliffDetectedChange, self.on_cliff_detected)
@@ -110,6 +124,8 @@ class Brain:
         self.reaction_queue: Queue = Queue()
 
         self.stop_flag = False
+        self.event_thread: _Optional[Thread] = \
+            Thread(daemon=True, name="BrainEventThread", target=self.event_thread_run)
         self.reaction_thread: _Optional[Thread] = \
             Thread(daemon=True, name="ReactionThread", target=self.reaction_thread_run)
         self.heartbeat_thread: _Optional[Thread] = \
@@ -124,7 +140,7 @@ class Brain:
         # Behavior a reaction interrupted, to put back once the reaction is over
         self.behavior_to_resume: Optional[behavior.Behavior] = None
         # Three threads activate behaviors: the heartbeat looking for something to do, the reaction
-        # thread answering a trigger, and the client's dispatcher reporting a behavior done.
+        # thread answering a trigger, and the event thread reporting a behavior done.
         self.behavior_lock = RLock()
         # When the engine may look for something to do again. See update_activity() .
         self.next_choice_time = 0.0
@@ -138,9 +154,11 @@ class Brain:
         self.schedule_hiccup_bout()
 
     def start(self) -> None:
-        # Connect to robot. Both threads are created in __init__ and only cleared by stop(), which a Thread
+        # Connect to robot. The threads are created in __init__ and only cleared by stop(), which a Thread
         # cannot be restarted after anyway.
-        assert self.reaction_thread is not None and self.heartbeat_thread is not None
+        assert self.event_thread is not None and self.reaction_thread is not None and \
+            self.heartbeat_thread is not None
+        self.event_thread.start()
         self.reaction_thread.start()
         self.heartbeat_thread.start()
 
@@ -156,23 +174,48 @@ class Brain:
         # TODO: Drive off if on charger.
 
     def listen(self, evt: type, f: Callable) -> None:
-        """ Handle an event from the client, and remember it so that stop() can undo it. """
-        self.handlers.append((evt, self.cli.add_handler(evt, f)))
+        """ Handle an event from the client, on the brain's thread. """
+        self.dispatcher.add_handler(evt, f)
+
+    def relay(self, evt: type, *args: Any, **kwargs: Any) -> None:
+        """
+        Pass an event the client dispatches on to the brain's handlers and the behavior running.
+
+        The client dispatches on the thread that handles everything the robot sends, so what a handler does
+        holds all that up. Behaviors start animations there, which the first time loads and prepares them:
+        up to 0.64 s without the robot's state, and without its reports of the animation frames it has played,
+        which the frames it is sent wait on. The event goes to the brain's thread instead - or is handled at
+        once while the brain is not started, which is how it is driven without a robot.
+        """
+        if not self.dispatcher.listens_to(evt):
+            return
+        if self.event_thread is not None and self.event_thread.is_alive():
+            self.event_queue.put((evt, args, kwargs))
+        else:
+            self.dispatcher.dispatch(evt, *args, **kwargs)
+
+    def event_thread_run(self) -> None:
+        """ Event thread loop. The client's events, relayed. """
+        while not self.stop_flag:
+            try:
+                evt, args, kwargs = self.event_queue.get(timeout=0.05)
+            except Empty:
+                continue
+            try:
+                self.dispatcher.dispatch(evt, *args, **kwargs)
+            except Exception as e:
+                logger.error("Failed to process event {}. {}".format(evt, e))
 
     def stop(self) -> None:
         # Disconnect from robot
         self.stop_flag = True
-        if self.heartbeat_thread:
-            self.heartbeat_thread.join()
-            self.heartbeat_thread = None
-        if self.reaction_thread:
-            self.reaction_thread.join()
-            self.reaction_thread = None
+        for thread in (self.heartbeat_thread, self.reaction_thread, self.event_thread):
+            if thread is not None and thread.ident is not None:
+                thread.join()
+        self.heartbeat_thread = self.reaction_thread = self.event_thread = None
         # Stop listening. A reaction posted from here on would queue up for nobody to process, and a
         # behavior reporting itself done would have the brain start another one.
-        for evt, handler in self.handlers:
-            self.cli.del_handler(evt, handler)
-        self.handlers = []
+        self.cli.del_child_dispatcher(self.event_relay)
         # Whatever was running keeps its animation playing and its timers armed otherwise.
         with self.behavior_lock:
             self.behavior_to_resume = None
@@ -351,7 +394,7 @@ class Brain:
         self.behavior_to_resume = interrupted
         logger_behavior.info("Activating {}".format(behavior_id))
         self.behavior = new_behavior
-        self.cli.activate_behavior(new_behavior)
+        self.cli.activate_behavior(new_behavior, self.dispatcher)
 
     def resume_behavior(self) -> None:
         """ Put back the behavior a reaction interrupted, if there is one. """
@@ -361,12 +404,12 @@ class Brain:
         # A behavior has no notion of being suspended, so a resumed one starts over.
         logger_behavior.info("Resuming {}".format(resumed.get_id()))
         self.behavior = resumed
-        self.cli.activate_behavior(resumed)
+        self.cli.activate_behavior(resumed, self.dispatcher)
 
     def deactivate_behavior(self) -> None:
         if self.behavior:
             logger_behavior.info("Deactivating {}".format(self.behavior.get_id()))
-            self.cli.deactivate_behavior(self.behavior)
+            self.cli.deactivate_behavior(self.behavior, self.dispatcher)
             self.behavior = None
 
     def update_activity(self, now: Optional[float] = None) -> None:

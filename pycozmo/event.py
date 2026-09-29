@@ -239,6 +239,11 @@ class Dispatcher(object):
     def del_all_handlers(self):
         self.dispatch_handlers = collections.defaultdict(list)
 
+    def listens_to(self, event: type) -> bool:
+        """ Say whether a handler, here or in a child dispatcher, would get this event. """
+        return bool(self.dispatch_handlers.get(event)) or \
+            any(child.listens_to(event) for child in list(self.dispatch_children))
+
     def dispatch(self, event, *args, **kwargs):
         # Dispatch to handlers.
         handlers = []

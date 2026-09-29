@@ -655,13 +655,17 @@ class Client(event.Dispatcher):
         pkts = audio.load_wav(fspec)
         self.anim_controller.play_audio(pkts)
 
-    def activate_behavior(self, behavior):
-        self.add_child_dispatcher(behavior)
+    def activate_behavior(self, behavior: Any, dispatcher: Optional[event.Dispatcher] = None) -> None:
+        """
+        Put a behavior on the robot. It gets its events from the dispatcher given - the client itself by
+        default, which dispatches them on the thread that handles everything the robot sends.
+        """
+        (dispatcher or self).add_child_dispatcher(behavior)
         behavior.deactivated = False
         behavior.activate()
 
-    def deactivate_behavior(self, behavior):
-        self.del_child_dispatcher(behavior)
+    def deactivate_behavior(self, behavior: Any, dispatcher: Optional[event.Dispatcher] = None) -> None:
+        (dispatcher or self).del_child_dispatcher(behavior)
         # Set before deactivating, so that anything the behavior is still waiting on cannot report
         # it done and end whatever takes its place.
         behavior.deactivated = True
