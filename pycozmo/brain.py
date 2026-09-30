@@ -329,7 +329,8 @@ class Brain:
         pass
 
     def on_cube_moving_change(self, cli: client.Client, cube: cubes.LightCube, moving: bool) -> None:
-        if not moving:
+        if not moving or cube.in_use or cube is cli.cubes.carried:
+            # The robot's own doing, or a game's, is no news.
             return
         # Where it is now is news again.
         self.acknowledged_cubes.discard(cube.object_type)

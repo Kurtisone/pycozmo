@@ -25,7 +25,7 @@ from . import event
 from . import marker_detection
 from . import robot
 from . import util
-from .cubes import CUBE_SIDE, LightCube
+from .cubes import CUBE_SIDE, LightCube, in_use
 
 
 __all__ = [
@@ -166,7 +166,8 @@ def go_to_cube(cli: Any, cube: LightCube, gap: float = PREDOCK_GAP,
     _check(cancel)
     if cube.pose is None:
         return False
-    return bool(cli.go_to_pose(dock_pose(cube, DOCK_DISTANCE + gap)))
+    with in_use(cube):
+        return bool(cli.go_to_pose(dock_pose(cube, DOCK_DISTANCE + gap)))
 
 
 def dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
@@ -174,6 +175,11 @@ def dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] 
     From in front of a cube, look at it once more and drive up until it sits in the lift's fork, and say
     whether it got there. The last few centimetres are driven blind: the marker is too close to be seen whole.
     """
+    with in_use(cube):
+        return _dock_with_cube(cli, cube, cancel)
+
+
+def _dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event]) -> bool:
     if not look_for_cube(cli, cube, cancel=cancel):
         return False
     target = dock_pose(cube, DOCK_DISTANCE)
@@ -198,6 +204,11 @@ def pick_up_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = 
     Go to a cube, dock with it and lift it, and say whether the cube came up. A connected cube tells: it reports
     moving as the lift rises.
     """
+    with in_use(cube):
+        return _pick_up_cube(cli, cube, cancel)
+
+
+def _pick_up_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event]) -> bool:
     cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
     if not (go_to_cube(cli, cube, cancel=cancel) and dock_with_cube(cli, cube, cancel=cancel)):
         return False
@@ -224,13 +235,14 @@ def put_down_cube(cli: Any, cube: Optional[LightCube] = None, cancel: Optional[t
     Lower the lift, set down the cube it carries, and back off. The cube is then taken to be where the fork put
     it until it is seen again.
     """
-    cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
-    _pause(SETTLE_TIME, cancel)
     cube = cube or cli.cubes.carried
-    if cube is not None:
-        _place_ahead(cli, cube, cli.pose)
-    cli.cubes.carried = None
-    return bool(cli.drive_straight(util.Distance(mm=-(PREDOCK_GAP / 2))))
+    with in_use(*([cube] if cube is not None else [])):
+        cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
+        _pause(SETTLE_TIME, cancel)
+        if cube is not None:
+            _place_ahead(cli, cube, cli.pose)
+        cli.cubes.carried = None
+        return bool(cli.drive_straight(util.Distance(mm=-(PREDOCK_GAP / 2))))
 
 
 def put_down_by(cli: Any, action: Callable[[], Any], cube: Optional[LightCube] = None) -> bool:
@@ -262,7 +274,8 @@ def put_down_by(cli: Any, action: Callable[[], Any], cube: Optional[LightCube] =
 
     handler = cli.add_handler(event.EvtRobotStateUpdated, on_state)
     try:
-        action()
+        with in_use(*([cube] if cube is not None else [])):
+            action()
     finally:
         cli.del_handler(event.EvtRobotStateUpdated, handler)
     if not lowered:
@@ -296,14 +309,15 @@ def place_on_cube(cli: Any, target: LightCube, cancel: Optional[threading.Event]
     carried = cli.cubes.carried
     if not find_cube(cli, target, cancel=cancel):
         return False
-    if not (go_to_cube(cli, target, cancel=cancel) and dock_with_cube(cli, target, cancel=cancel)):
-        return False
-    cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
-    _pause(SETTLE_TIME, cancel)
-    if carried is not None and target.pose is not None:
-        cli.cubes.place(carried, target.pose.x, target.pose.y, target.pose.angle, z=target.pose.z + CUBE_SIDE)
-    cli.cubes.carried = None
-    return bool(cli.drive_straight(util.Distance(mm=-PREDOCK_GAP)))
+    with in_use(*([target] if carried is None else [target, carried])):
+        if not (go_to_cube(cli, target, cancel=cancel) and dock_with_cube(cli, target, cancel=cancel)):
+            return False
+        cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
+        _pause(SETTLE_TIME, cancel)
+        if carried is not None and target.pose is not None:
+            cli.cubes.place(carried, target.pose.x, target.pose.y, target.pose.angle, z=target.pose.z + CUBE_SIDE)
+        cli.cubes.carried = None
+        return bool(cli.drive_straight(util.Distance(mm=-PREDOCK_GAP)))
 
 
 def _wrap(angle: float) -> float:

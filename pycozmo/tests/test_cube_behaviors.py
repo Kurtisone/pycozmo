@@ -60,12 +60,20 @@ class TestUsableCubes(unittest.TestCase):
     def test_only_those_known_on_the_ground_the_right_way_up(self):
         cubes = self.cli.cubes
         cubes.place(cubes[CUBE1], 200.0, 0.0, 0.0)
-        cubes.place(cubes[CUBE2], 200.0, 0.0, 0.0, z=22.5 + 45.0)
+        # One on top of another, elsewhere.
+        cubes.place(cubes[CUBE2], 400.0, 0.0, 0.0, z=22.5 + 45.0)
         cubes.place(cubes[CUBE3], 300.0, 0.0, 0.0)
         cubes[CUBE3].up_axis = UpAxis.XNegative
         self.assertEqual(cube_behaviors.usable_cubes(self.cli), [cubes[CUBE1]])
         cubes.carried = cubes[CUBE1]
         self.assertEqual(cube_behaviors.usable_cubes(self.cli), [])
+
+    def test_nor_one_under_another(self):
+        cubes = self.cli.cubes
+        cubes.place(cubes[CUBE1], 200.0, 0.0, 0.0)
+        cubes.place(cubes[CUBE2], 205.0, 3.0, 0.0, z=22.5 + 45.0)
+        cubes.place(cubes[CUBE3], 300.0, 0.0, 0.0)
+        self.assertEqual(cube_behaviors.usable_cubes(self.cli), [cubes[CUBE3]])
 
     def test_not_the_disconnected(self):
         self.cli.cubes[CUBE1].connected = False
@@ -99,7 +107,7 @@ class ScriptClient(FakeClient):
 
     def __init__(self) -> None:
         super().__init__()
-        self.cubes = mock.Mock(carried=None)
+        self.cubes: Any = mock.Mock(carried=None)
 
     def play_anim_group(self, name):
         super().play_anim_group(name)

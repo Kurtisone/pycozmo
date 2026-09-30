@@ -404,6 +404,16 @@ class TestCubes(unittest.TestCase):
         self.move()
         self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
 
+    def test_nor_one_the_robot_handles(self):
+        # Lifting a cube moves it, and so does tapping it in a game: neither is to cut the behavior short.
+        self.see()
+        with pycozmo.cubes.in_use(self.cube):
+            self.move()
+        self.brain.cli.cubes.carried = self.cube
+        self.addCleanup(setattr, self.brain.cli.cubes, "carried", None)
+        self.move()
+        self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
+
 
 @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
 class TestActivityEngine(unittest.TestCase):

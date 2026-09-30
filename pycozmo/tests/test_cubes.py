@@ -138,6 +138,16 @@ class TestMovedAway(CubesTestCase):
         self.move()
         self.assertIsNotNone(cube.pose)
 
+    def test_and_one_in_use(self):
+        cube = self.connected()
+        self.cubes.place(cube, 200.0, 0.0, math.pi)
+        with cubes.in_use(cube):
+            with cubes.in_use(cube):
+                self.move()
+            self.assertTrue(cube.in_use)
+        self.assertFalse(cube.in_use)
+        self.assertIsNotNone(cube.pose)
+
     def test_so_is_one_placed_since_it_started_moving(self):
         # The lift sets a cube down: it moves, cube_handling places it, and it stops.
         cube = self.connected()

@@ -41,19 +41,56 @@ __all__ = [
 
     "usable_cubes",
     "load_workouts",
+    "play_and_wait",
 ]
 
 
 def usable_cubes(cli: Any) -> List[LightCube]:
     """
     The cubes a behavior can go for: connected, seen since they last moved, standing on the ground the right
-    way up, and not in the lift. Nearest first.
+    way up with nothing on top, and not in the lift. Nearest first.
     """
     x, y = cli.pose.position.x, cli.pose.position.y
     cubes = [cube for cube in cli.cubes
              if cube.connected and cube.pose is not None and cube is not cli.cubes.carried
-             and cube.up_axis in (None, UpAxis.ZPositive) and abs(cube.pose.z - CUBE_SIDE / 2) < CUBE_SIDE / 4]
+             and cube.up_axis in (None, UpAxis.ZPositive) and abs(cube.pose.z - CUBE_SIDE / 2) < CUBE_SIDE / 4
+             and not _covered(cli, cube)]
     return sorted(cubes, key=lambda cube: (cube.pose.x - x) ** 2 + (cube.pose.y - y) ** 2)
+
+
+def _covered(cli: Any, cube: LightCube) -> bool:
+    """ Whether another cube is known to sit on top of one. """
+    assert cube.pose is not None
+    for other in cli.cubes:
+        if other is cube or other.pose is None or other is cli.cubes.carried:
+            continue
+        if abs(other.pose.z - cube.pose.z - CUBE_SIDE) < CUBE_SIDE / 4 and \
+                (other.pose.x - cube.pose.x) ** 2 + (other.pose.y - cube.pose.y) ** 2 < (CUBE_SIDE / 2) ** 2:
+            return True
+    return False
+
+
+def play_and_wait(cli: Any, trigger: str, cancel: Optional[threading.Event] = None, timeout: float = 15.0) -> bool:
+    """
+    Play an animation group, by trigger or by name, and wait for it to end; say whether it did. Cancelling raises
+    Cancelled.
+    """
+    if trigger not in cli.animation_groups:
+        logger.warning("No animation for {}.".format(trigger))
+        return False
+    done = threading.Event()
+    handler = cli.add_handler(event.EvtAnimationCompleted, lambda cli: done.set(), one_shot=True)
+    try:
+        cli.play_anim_group(trigger)
+        deadline = time.perf_counter() + timeout
+        while not done.wait(0.05):
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
+            if time.perf_counter() > deadline:
+                return False
+        return True
+    finally:
+        cli.del_handler(event.EvtAnimationCompleted, handler)
 
 
 class BehaviorScript(behavior.Behavior):
@@ -96,22 +133,7 @@ class BehaviorScript(behavior.Behavior):
 
     def play(self, trigger: str, cancel: threading.Event) -> bool:
         """ Play an animation trigger and wait for it to end; say whether it did. """
-        if trigger not in (self.cli.animation_groups or {}):
-            logger.warning("Behavior '{}' has no animation for {}.".format(self.get_id(), trigger))
-            return False
-        done = threading.Event()
-        handler = self.cli.add_handler(event.EvtAnimationCompleted, lambda cli: done.set(), one_shot=True)
-        try:
-            self.cli.play_anim_group(trigger)
-            deadline = time.perf_counter() + self.ANIMATION_TIMEOUT
-            while not done.wait(0.05):
-                if cancel.is_set():
-                    raise Cancelled()
-                if time.perf_counter() > deadline:
-                    return False
-            return True
-        finally:
-            self.cli.del_handler(event.EvtAnimationCompleted, handler)
+        return play_and_wait(self.cli, trigger, cancel, self.ANIMATION_TIMEOUT)
 
     def need_action(self) -> None:
         """ Credit the need action the configuration names, once the behavior has done its part. """

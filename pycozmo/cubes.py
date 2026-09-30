@@ -16,11 +16,12 @@ update() called a few times a second.
 
 """
 
+import contextlib
 import math
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from . import event
 from . import protocol_encoder
@@ -35,6 +36,8 @@ __all__ = [
     "CubePose",
     "LightCube",
     "Cubes",
+
+    "in_use",
 ]
 
 
@@ -78,6 +81,9 @@ class LightCube:
         self.moving = False
         #: When the cube last started moving, by time.perf_counter().
         self.moving_since: Optional[float] = None
+        #: Whether the robot is handling the cube, or playing with it: its moves are then the robot's doing, or the
+        #: player's, and no news. See in_use().
+        self.in_use = False
         self.up_axis: Optional[protocol_encoder.UpAxis] = None
         self.battery_level: Optional[int] = None
         #: Where it was last seen.
@@ -187,8 +193,8 @@ class Cubes:
             cube.moving = moving
             if moving:
                 cube.moving_since = time.perf_counter()
-            elif cube is not self.carried and cube.pose is not None and cube.moving_since is not None and \
-                    cube.pose.time < cube.moving_since:
+            elif cube is not self.carried and not cube.in_use and cube.pose is not None and \
+                    cube.moving_since is not None and cube.pose.time < cube.moving_since:
                 # Moved by someone else, it has to be seen again to be known where it is. One the lift set down
                 # has been placed since it started moving.
                 cube.pose = None
@@ -239,6 +245,15 @@ class Cubes:
             cube._light_steps = list(self.light_animations[trigger])
             cube._light_step = 0
             self._show_step(cube, now)
+
+    def show_lights(self, cube: LightCube, name: str, states: Sequence[protocol_encoder.LightState],
+                    rotation_period_frames: int = 0) -> None:
+        """ Show lights of one's own, under a name: update() leaves them be until another animation is played. """
+        with self.lock:
+            cube.lights = name
+            cube._light_steps = []
+            cube._light_until = None
+        self.set_lights(cube, states, rotation_period_frames)
 
     def _show_step(self, cube: LightCube, now: float) -> None:
         step = cube._light_steps[cube._light_step]
@@ -312,6 +327,19 @@ class Cubes:
                 cube.moving = False
                 cube.lights = None
             self.carried = None
+
+
+@contextlib.contextmanager
+def in_use(*cubes: LightCube) -> Iterator[None]:
+    """ Mark cubes in use for as long as the context lasts. See LightCube.in_use. """
+    were = [cube.in_use for cube in cubes]
+    for cube in cubes:
+        cube.in_use = True
+    try:
+        yield
+    finally:
+        for cube, was in zip(cubes, were):
+            cube.in_use = was
 
 
 def _wrap(angle: float) -> float:
