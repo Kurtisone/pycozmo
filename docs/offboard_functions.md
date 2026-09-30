@@ -83,8 +83,9 @@ Cube lights
 Forty cube light animations, by trigger: patterns of on and off colours, periods and fades per light, rotating
 round the cube or not, in steps with durations. `pycozmo.cube_lights` loads them and `Client.cubes.play_lights()`
 shows them. The brain lights connected cubes as the application did: `Connected`, a dim cyan breath every five
-seconds, and `Visible`, a steady cyan while the robot sees the cube. The others serve games and tricks that are not
-implemented yet. How long a light frame lasts is not measured; 30 ms fits Anki's periods.
+seconds, and `Visible`, a steady cyan while the robot sees the cube. Quick Tap shows its own colours, and
+`speedTapWin` and `speedTapLose` after each hand; the others serve games and tricks that are not implemented yet. How
+long a light frame lasts is not measured; 30 ms fits Anki's periods.
 
 
 Emotions and needs
@@ -105,20 +106,23 @@ Behaviors are small programs over the robot's API, configured in `behaviors/`. T
 robot does when nothing has happened, in priority order: 14 sparks, which the application asked for, 3 severe-need
 activities, and the freeplay ones.
 
-PyCozmo implements 25 classes, 55 behaviors: the animation players, the reactions to being picked up, shaken, put on
+PyCozmo implements 31 classes, 76 behaviors: the animation players, the reactions to being picked up, shaken, put on
 its side or on the charger, cliffs, cube moves, driving off the charger, pouncing on motion, expressing needs,
-waiting. Eleven of the reaction triggers are raised. The activity engine runs freeplay as Anki's configuration says,
-with its scores, cooldowns and mood gates.
+waiting, picking cubes up, putting them down, stacking them, working out with one, and asking for a game of Quick
+Tap. Eleven of the reaction triggers are raised. The activity engine runs freeplay as Anki's configuration says,
+with its scores, cooldowns and mood gates, and honours the unlock a behavior needs: `pycozmo.unlocks` reads those of
+a new robot and those the needs levels reward; nothing keeps a progression, so the robot is taken to have them all.
 
 Missing classes, by what they need:
 
 | Needs | Classes |
 |---|---|
-| Handling cubes | `PickUpCube`, `PutDownBlock`, `PickUpAndPutDownCube`, `RollBlock`, `RespondPossiblyRoll`, `PopAWheelie`, `KnockOverCubes`, `StackBlocks`, `CheckForStackAtInterval`, `CantHandleTallStack`, `ReactToStackOfCubes`, `BuildPyramid`, `BuildPyramidBase`, `ReactToPyramid`, `PyramidThankYou`, `CubeLiftWorkout`, `BringCubeToBeacon`, `ThinkAboutBeacons`, `GuardDog`, `Bouncer`, `FeedingSearchForCube`, `FeedingEat`, `OnboardingShowCube` |
+| Rolling and knocking over cubes: the robot's own manoeuvres, to be recorded on one | `RollBlock`, `RespondPossiblyRoll`, `PopAWheelie`, `KnockOverCubes` |
+| More handling of cubes | `CheckForStackAtInterval`, `CantHandleTallStack`, `ReactToStackOfCubes`, `BuildPyramid`, `BuildPyramidBase`, `ReactToPyramid`, `PyramidThankYou`, `BringCubeToBeacon`, `ThinkAboutBeacons`, `GuardDog`, `Bouncer`, `FeedingSearchForCube`, `FeedingEat`, `OnboardingShowCube` |
 | Faces | `FindFaces`, `SearchForFace`, `DriveToFace`, `InteractWithFaces`, `PeekABoo`, `PlayAnimWithFace`, `LookForFaceAndCube`, `EnrollFace`, `RespondToRenameFace` |
 | A map of the surroundings | `ExploreLookAroundInPlace`, `ExploreVisitPossibleMarker`, `VisitInterestingEdge`, `LookInPlaceMemoryMap` |
 | Sound | `Singing`, `Dance`, `FireTruckAlarm` |
-| The application | `RequestGameSimple` (asks for a game), `EarnedSparks`, `OnConfigSeen` |
+| The application | `EarnedSparks`, `OnConfigSeen` |
 | A laser pointer | `TrackLaser` |
 | An animation the resources lack | `ReactToMotorCalibration`, `ReactToPlacedOnSlope`, `ReactToReturnedToTreads` |
 
@@ -156,7 +160,8 @@ Cubes
 The robot talks to its Light Cubes over Bluetooth LE. `Client.cubes` keeps the three: which of each kind the robot
 hears, connects and drops, their taps, moves and up axis, and where the camera last saw them, in the robot's world
 frame. The brain connects one of each kind, lights them, acknowledges a cube seen for the first time or where it was
-moved to, and reacts to one moved in its sight.
+moved to, and reacts to one moved in its sight - not to one it is handling or playing with, which is marked in use,
+nor to the one in its lift. A cube moved by someone else is no longer taken to be where it was seen.
 
 
 Moving and handling
@@ -166,19 +171,34 @@ The robot follows paths made of lines, arcs and turns in place, and PyCozmo driv
 `Client.go_to_pose()`, `turn_in_place()`, `drive_straight()` and, for any path, `execute_path()`, which report
 whether the robot got there - a cliff interrupts a path when the robot stops at cliffs, which the brain turns on.
 They go at the speeds of Anki's engine's default path motion profile: 100 mm/s, and turns in place at 2 rad/s,
-which the robot takes in rad/s whatever the protocol's field names say. Anki's engine planned those paths with the motion primitives in `cozmo_mprim.json`, around
-the obstacles in its map, and docked with cubes by their markers.
+which the robot takes in rad/s whatever the protocol's field names say. Anki's engine planned those paths with the
+motion primitives in `cozmo_mprim.json`, around the obstacles in its map, and docked with cubes by their markers.
 
-Missing: planning around obstacles, going to an object, docking with a cube, picking it up, placing it on the ground
-or on another cube, rolling it, popping a wheelie against it. Most of the missing behaviors above wait on these.
+`pycozmo.cube_handling` handles the cubes: it finds one, looking round for it if need be, goes to face the side it
+saw, has a last look from there and docks, driving the last centimetres blind at 60 mm/s as Anki's engine did. It
+picks the cube up, puts it down, sets it on another, and follows a cube an animation sets down: the workout's
+put-down lowers the lift, pushes the cube on and backs off. A cube in the fork is taken to be 58 mm ahead of the
+robot's origin, by its 3D model, and half a side beyond; this is not measured on a robot.
+
+Missing: planning around obstacles; rolling a cube, popping a wheelie against it and knocking a stack over. Anki's
+engine had the robot's firmware do these - its docking actions `DA_ROLL_LOW`, `DA_POP_A_WHEELIE` - through a message
+PyCozmo's protocol does not know; the lift and wheel moves they make are to be recorded on a robot, through the SDK,
+before they can be done again.
 
 
 Games
 -----
 
 `RequestGameSimple` behaviors ask the player for a game: Quick Tap, Memory Match, Keep Away, and Cozmo performing a
-trick. The games themselves were the application's code, not resources; only their cube light animations -
-`SpeedTapWin`, `SpeedTapLose`, ... - are there. None is implemented.
+trick. The games themselves were the application's code, not resources: their animations and cube lights are there,
+not their rules.
+
+`pycozmo.quick_tap` plays Quick Tap, by PyCozmo's reading of the game: the cubes light up, the same colour and the
+first to tap wins the point, different colours and whoever taps loses it; five points a round, two rounds the game.
+The robot sits at its cube, the lift over it, and taps it with Anki's animations. `examples/quick_tap.py` plays a
+game. In freeplay the robot asks for one, through `PlayWithHumans`; the player answers on a cube rather than on a
+phone - a tap takes the game up - and the robot asks from where it is, without looking for a face or bringing a cube
+over. Memory Match and Keep Away are not implemented.
 
 
 Compared with the Cozmo SDK
@@ -192,7 +212,8 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | `drive_wheel_motors`, `move_head`, `move_lift`, `set_head_angle`, `set_lift_height`, `stop_all_motors` | Yes |
 | `turn_in_place`, `drive_straight` | Yes, along paths, reporting whether the robot got there |
 | `go_to_pose` | Yes, without obstacle avoidance |
-| `go_to_object`, `dock_with_cube`, `pickup_object`, `place_on_object`, `place_object_on_ground_here`, `roll_cube`, `pop_a_wheelie` | No |
+| `go_to_object`, `dock_with_cube`, `pickup_object`, `place_on_object`, `place_object_on_ground_here` | Yes, for cubes: `pycozmo.cube_handling` |
+| `roll_cube`, `pop_a_wheelie` | No |
 | `play_anim`, `play_anim_trigger`, idle animations | Animations and triggers yes; idle animations no |
 | `play_audio`, `set_robot_volume` | Yes |
 | `say_text` | No |
@@ -205,7 +226,7 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | Charger pose, custom objects | No |
 | Faces, facial expressions, pets | No |
 | Navigation memory map | No |
-| `start_behavior`: `FindFaces`, `KnockOverCubes`, `LookAroundInPlace`, `PounceOnMotion`, `RollBlock`, `StackBlocks` | `PounceOnMotion` only |
+| `start_behavior`: `FindFaces`, `KnockOverCubes`, `LookAroundInPlace`, `PounceOnMotion`, `RollBlock`, `StackBlocks` | `PounceOnMotion` and `StackBlocks` |
 | Freeplay | Yes: `pycozmo.brain` |
 | Needs levels | Yes |
 
@@ -217,12 +238,14 @@ Compared with the Cozmo application
 |---|---|
 | Freeplay: waking up, reactions, bored and idle animations, pouncing on motion, hiking | Yes |
 | Freeplay with cubes: seeing them, lighting them, reacting to them | Yes |
-| Freeplay with cubes: stacking, rolling, knocking over, lifting, pyramids | No |
+| Freeplay with cubes: lifting, working out, stacking | Yes, not yet tried on a robot |
+| Freeplay with cubes: rolling, popping wheelies, knocking over, pyramids | No |
 | Freeplay with faces: greeting, peek-a-boo, fist bumps | The fist bump behavior is there, and nothing asks for it; the others need faces |
 | Needs, and asking to be played with | Yes |
 | Feeding, repairing | Taken as actions; no minigame |
 | Sparks: tricks on request | No way to ask for one |
-| Games: Quick Tap, Memory Match, Keep Away | No |
+| Games: Quick Tap | Yes, asked for in freeplay and answered on a cube; not yet tried on a robot |
+| Games: Memory Match, Keep Away | No |
 | Meeting people: enrolling faces, saying names | No |
 | Songs | No |
 | Explorer mode: driving by hand, with the camera | `examples/rc.py` drives it with an Xbox 360 controller, without the camera |

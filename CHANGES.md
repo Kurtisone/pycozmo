@@ -8,6 +8,38 @@ upstream development stopped in November 2020. "Upstream" below it is the inheri
 Fork
 ====
 
+Unreleased
+----------
+
+Checked against the cozmo-emu emulator, not yet against a robot.
+
+New features:
+- Handling the cubes. pycozmo.cube_handling finds a cube, looking round for it if need be, goes to face the side it
+    saw, has a last look from there and docks, driving the last centimetres blind at Anki's 60 mm/s; then it picks
+    the cube up, puts it down, or sets it on another. A cube an animation sets down is followed where the fork
+    pushes it. Where the fork holds a cube - 58 mm ahead of the robot's origin, by its 3D model - is not measured.
+- Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, and CubeLiftWorkout, which
+    reads Anki's four workouts, lifts as many times as the robot is confident, and has its energy choose the
+    workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A behavior goes for a
+    cube connected, seen, the right way up, with nothing on top and not in the lift.
+- Unlocks. A behavior needing an unlock runs only if the robot has it; pycozmo.unlocks reads those of a new robot
+    and those the needs levels reward. Nothing keeps a progression, so the brain takes the robot to have them all.
+- Quick Tap. pycozmo.quick_tap plays the game of the Cozmo application, by PyCozmo's reading of its rules: the
+    cubes light up, the same colour and the first to tap wins the point, different colours and whoever taps loses
+    it. The robot taps its cube with Anki's animations, the lift raised over it. examples/quick_tap.py plays a game.
+- Asking for a game. RequestGameSimple asks for Quick Tap, and the PlayWithHumans activity is evaluated: the robot
+    asks now and then, the player takes the game up by tapping a cube, and a no makes it wait 120 s, 1.3 times as
+    long for each no in a row. EvtGameRequestAnswered carries the answer.
+- The top and bottom of a cube, whose symbol has no bar, are recognized as well as its sides.
+
+Bug fixes:
+- A camera image whose last chunk held a single byte, or none, was lost with an error: such byte arrays were read
+    as lists.
+- The brain reacted to cubes the robot moved itself - lifting one, docking with it, tapping it - and the reaction
+    cut short the behavior that had moved it. Cubes in use are left alone, and so is the one in the lift.
+- A cube moved by someone else is no longer taken to be where it was last seen.
+
+
 v0.9.21 (Sep 28, 2026)
 ----------------------
 

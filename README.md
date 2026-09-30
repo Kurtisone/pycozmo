@@ -312,9 +312,23 @@ The brain does as the Cozmo application did with the cubes. It connects one of e
 it, and lights it with Anki's own cube light animations: a dim cyan breath every five seconds once connected, a steady
 cyan while the robot sees it. It looks for markers five times a second while the robot keeps still, and places each
 cube it sees in the robot's world frame, in `cli.cubes`. A cube seen for the first time, or where it was moved to, is
-acknowledged (`ObjectPositionUpdated`), and one moved while the robot sees it is reacted to (`CubeMoved`). Taps and
-moves come as `EvtCubeTapped` and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. How long a light frame lasts
-is not measured yet: 30 ms fits Anki's periods.
+acknowledged (`ObjectPositionUpdated`), and one moved while the robot sees it is reacted to (`CubeMoved`) - unless
+the robot moved it itself, lifting it, docking with it or tapping it in a game. Taps and moves come as `EvtCubeTapped`
+and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. How long a light frame lasts is not measured yet: 30 ms
+fits Anki's periods.
+
+`pycozmo.cube_handling` goes to a cube, docks with it by its marker, and picks it up, puts it down or sets it on
+another; the brain's behaviors build on it. `PlayAlone` picks a cube up and works out with it (`CubeLiftWorkout`, as
+many lifts as the robot is confident, in a workout its energy chooses) or stacks one on another (`StackBlocks`). Where
+the fork holds a cube comes from the robot's 3D model and is not measured on a robot yet. Rolling a cube, popping a
+wheelie and knocking a stack over are not done: the robot's firmware did them, through a message PyCozmo does not know.
+
+`pycozmo.quick_tap` plays Quick Tap, the cube game of the Cozmo application: both cubes light up, and on the same
+colour the first to tap their cube wins the point, on different colours whoever taps loses it. The robot sits at its
+cube, the lift raised over it, and taps it with Anki's animations. The game's rules were the application's code; these
+are PyCozmo's reading of them. `PlayWithHumans` has the robot ask for a game now and then: the player takes it up by
+tapping a cube, which becomes theirs, and turning it down - letting the request time out - makes the robot wait
+longer before asking again.
 
 That is what `PounceOnMotion` plays with. Once motion has been seen on the ground, Socialize and Hiking give it the
 robot: it puts its head down to watch, turns towards what moves, creeps up on it, and pounces with the lift. A lift
@@ -342,7 +356,8 @@ robot:
 - `Socialize`, when the robot has not been social lately: its configuration scores the `Social` emotion through a graph
   and asks for 0.5, which the graph gives while `Social` is at or below 0.3. This is the only place in Anki's resources
   where the mood decides an activity.
-- `Singing`, `PlayWithHumans`, `BuildPyramid`, whose strategies need a need level, a player or a pyramid of cubes.
+- `Singing` and `BuildPyramid`, whose strategies need a need level or a pyramid of cubes.
+- `PlayWithHumans`, when the robot can ask for a game of Quick Tap: two cubes connected, one of them seen.
 - `PlayAlone`, `Hiking` and `NothingToDo`.
 
 Within an activity, behaviors are drawn in a random order weighted by their score. A behavior that has just run loses
@@ -350,8 +365,8 @@ part of its score and wins it back over time: `GuardDog` scores nothing for 5 mi
 an hour on, and the bored animations keep half their score for 9 seconds, which is what keeps the robot from playing
 two bored sequences in a row.
 
-What actually runs today is what needs no face and no player, and no more of a cube than seeing it: `DriveOffCharger`,
-the hiking intro, the `NothingToDo` idle and bored animations, and `PounceOnMotion`. An activity that wants the robot but can offer nothing is passed over rather
+What actually runs today is what needs no face: `DriveOffCharger`, the hiking intro, the `NothingToDo` idle and bored
+animations, `PounceOnMotion`, and with cubes the workout, stacking, putting a carried cube down and asking for a game. An activity that wants the robot but can offer nothing is passed over rather
 than entered, since entering it would leave the robot still for as long as its duration - 25 s for `PlayAlone`, a
 minute for `Hiking`.
 
@@ -411,10 +426,11 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     three nurture needs fall and drive the requests and activities that read them, see
     [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
-    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 25 of the 76 behavior classes are implemented, and what
+    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 31 of the 76 behavior classes are implemented, and what
     the others need is in [docs/offboard_functions.md](docs/offboard_functions.md)
-- [ ] Cube handling - going to a cube, docking with it, picking it up, placing, rolling and stacking it
-- [ ] Games - Quick Tap, Memory Match and Keep Away were the application's code, not resources
+- [ ] Cube handling - going to a cube, docking with it, picking it up, putting it down and stacking it are done, not
+    yet tried on a robot; rolling it and popping a wheelie are not
+- [ ] Games - Quick Tap is played, and asked for in freeplay; Memory Match and Keep Away are not
 - [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection - the cubes are placed by their markers, see
