@@ -8,7 +8,9 @@ as the app presented it. Both cubes go dark, then light up. The same colour on b
 wins the point; different colours, and whoever taps loses it. Five points win a round, two rounds the game.
 
 Cozmo sits in front of its cube, the lift raised over it, and taps it by bringing the lift down on it, with Anki's
-animations for the game - which the app played by their group's name, not by trigger. The taps are timed when the
+animations for the game - which the app played by their group's name, not by trigger. Those animations turn the robot
+a few degrees at a time, which moves the fork off the cube: before each hand, the robot turns back to where it was
+when the game started, and drives back if need be. The taps are timed when the
 cubes report them, Cozmo's as the player's: both come the same way, by radio through the robot, so whichever comes
 first came first. A tap of Cozmo's that its cube does not report counts when its animation ends.
 
@@ -16,6 +18,7 @@ Everything here blocks until done, so it must not run on the thread that dispatc
 
 """
 
+import math
 import os
 import random
 import threading
@@ -74,6 +77,9 @@ COLORS = (
 )
 #: The longest Cozmo's tap or fake is waited for, in seconds.
 ANIMATION_TIMEOUT = 2.0
+#: How far off its place the robot may have drifted before it goes back, in radians and in mm.
+DRIFT_ANGLE = math.radians(1.5)
+DRIFT_DISTANCE = 4.0
 #: The name the game's lights are shown under: see Cubes.show_lights().
 LIGHTS_NAME = "QuickTap"
 
@@ -146,6 +152,8 @@ class QuickTap:
         # The taps reported since the cubes last lit up: when, and on which cube.
         self._taps: List[Tuple[float, LightCube]] = []
         self._lock = threading.Lock()
+        #: Where the robot stands to tap its cube: where it was when the game started.
+        self.place: Optional[util.Pose] = None
 
     def play(self, cancel: Optional[threading.Event] = None) -> str:
         """ Play a game, and say who won it: COZMO or PLAYER. """
@@ -182,6 +190,7 @@ class QuickTap:
             return self._play_hand(cancel)
 
     def _play_hand(self, cancel: Optional[threading.Event]) -> Optional[str]:
+        self._go_back(cancel)
         self._show(self.cozmo_cube, lights.off)
         self._show(self.player_cube, lights.off)
         self.cli.play_anim_group(WAIT)
@@ -244,6 +253,24 @@ class QuickTap:
         tapper = first[1]
         return tapper if match else self._other(tapper)
 
+    def _go_back(self, cancel: Optional[threading.Event]) -> None:
+        """ Go back to where the robot stood when the game started, if its animations have moved it off. """
+        pose = self.cli.pose
+        if self.place is None:
+            self.place = pose
+            return
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        heading = self.place.rotation.angle_z.radians
+        error = _wrap(heading - pose.rotation.angle_z.radians)
+        if abs(error) > DRIFT_ANGLE:
+            self.cli.turn_in_place(util.Angle(radians=error))
+        # How far ahead of its place the robot stands, along its heading.
+        ahead = ((pose.position.x - self.place.position.x) * math.cos(heading) +
+                 (pose.position.y - self.place.position.y) * math.sin(heading))
+        if abs(ahead) > DRIFT_DISTANCE:
+            self.cli.drive_straight(util.Distance(mm=-ahead), speed=robot.DOCK_SPEED)
+
     def _hand_over(self, winner: str, cancel: Optional[threading.Event]) -> None:
         winner_cube, loser_cube = self._cubes(winner)
         self.cli.cubes.play_lights(winner_cube, WIN_LIGHTS)
@@ -304,3 +331,7 @@ class QuickTap:
         groups, light_animations = load_resources(str(util.get_cozmo_asset_dir()))
         self.cli.animation_groups.update(groups)
         self.cli.cubes.light_animations.update(light_animations)
+
+
+def _wrap(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))

@@ -8,7 +8,7 @@ reported by its cube at once; the player taps from a timer. The waits are shorte
 import random
 import threading
 import unittest
-from typing import List
+from typing import Any, List
 from unittest import mock
 
 import pycozmo
@@ -38,6 +38,9 @@ class GameClient(CubesClient):
         self.played: List[str] = []
         #: Whether Cozmo's cube reports the lift coming down on it.
         self.cube_reports_taps = True
+        # Moving about, for the tests that look at it.
+        self.turn_in_place: Any = None
+        self.drive_straight: Any = None
 
     def play_anim_group(self, name: str) -> None:
         self.played.append(name)
@@ -124,6 +127,32 @@ class TestHand(GameTestCase):
         self.assertEqual(len(shown), 4)
         self.assertEqual(shown[0][1], shown[1][1])
         self.assertNotEqual(shown[2][1], shown[3][1])
+
+
+class TestPlace(GameTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.cli.turn_in_place = mock.Mock()
+        self.cli.drive_straight = mock.Mock()
+
+    def test_the_robot_goes_back_to_where_it_started(self):
+        game = self.game(match=False)
+        game.play_hand()
+        self.cli.turn_in_place.assert_not_called()
+        # The animations turned it 6 degrees and moved it 10 mm on.
+        self.cli.pose = pycozmo.util.Pose(10.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(degrees=6.0))
+        game.play_hand()
+        self.assertAlmostEqual(self.cli.turn_in_place.call_args.args[0].degrees, -6.0)
+        self.assertAlmostEqual(self.cli.drive_straight.call_args.args[0].mm, -10.0)
+
+    def test_a_little_drift_is_let_be(self):
+        game = self.game(match=False)
+        game.play_hand()
+        self.cli.pose = pycozmo.util.Pose(2.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(degrees=1.0))
+        game.play_hand()
+        self.cli.turn_in_place.assert_not_called()
+        self.cli.drive_straight.assert_not_called()
 
 
 class TestGame(GameTestCase):
