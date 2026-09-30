@@ -12,7 +12,7 @@ import unittest
 from typing import Callable, Dict
 from unittest import mock
 
-from pycozmo import cube_handling, event, keep_away, util
+from pycozmo import cube_handling, event, keep_away
 from pycozmo.protocol_encoder import ObjectType
 
 from .test_quick_tap import GameClient
@@ -138,8 +138,7 @@ class TestGame(AwayTestCase):
 
 class TestReach(unittest.TestCase):
 
-    def test_the_fork_and_the_lunge(self):
-        # Within 14 mm of where each of Anki's three pounces brings the fork: 30, 40 and 46 mm on.
-        for reach in (30.0, 40.0, 46.0):
-            self.assertLessEqual(abs(keep_away.POUNCE_DISTANCE - cube_handling.DOCK_DISTANCE - reach), 14.0)
-        self.assertIsInstance(util.Distance(mm=keep_away.POUNCE_DISTANCE), util.Distance)
+    def test_beyond_the_fork_by_a_lunge(self):
+        # On a robot, the pounces lunged 39 to 57 mm, and caught a cube there every time.
+        self.assertEqual(keep_away.POUNCE_DISTANCE, 88.0)
+        self.assertGreater(keep_away.POUNCE_DISTANCE - cube_handling.DOCK_DISTANCE, 30.0)

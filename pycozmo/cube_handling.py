@@ -1,14 +1,19 @@
 """
 
-Handling the Light Cubes: going to one, docking with it, picking it up and putting it down.
+Handling the Light Cubes: going to one, docking with it, picking it up, putting it down, setting it on another,
+rolling it, and popping a wheelie against it.
 
 The robot has no notion of a cube. It drives and moves its lift, and a cube that sits in the lift's fork goes up
 with it. Anki's engine did the rest - seeing the cube, working out where to stand, getting there - and so does
 this module, for the brain's behaviors and for applications.
 
-Where a cube's centre is when the lift holds it comes from the robot's 3D model, not from a measurement: the
-fork reaches 58 mm ahead of the robot's origin with the lift down. The cozmo-emu emulator takes the same, so
-the whole of it can be tried without a robot, but it has to be checked on one.
+What it does is what Anki's engine was seen doing, through the official SDK, on a robot: it goes to stand some
+15 cm from the cube and has a look, then docks with its head down, looking at the marker again on the way, and
+from there makes the manoeuvre's own moves. Picking a cube up, it lifts while creeping on: the fork slides under
+as it rises. Setting one on another, it lets go at 76 mm, not with the lift all the way down. Rolling one, it
+hooks the top edge with the fork at 74 mm, and lowers the lift backing off: the cube tips over towards it. Popping
+a wheelie, it brings the lift down hard on the cube driving on at 150 mm/s, and ends up on its back. The distances
+are Anki's, 2.5 mm longer: PyCozmo places a cube that much further than Anki's engine did on the same images.
 
 Everything here blocks until done and waits for the robot's reports, so it must not run on the thread that
 dispatches the client's events: a behavior's own thread will do. Each step can be cut short with a cancel event.
@@ -30,8 +35,13 @@ from .cubes import CUBE_SIDE, LightCube, in_use
 
 __all__ = [
     "DOCK_DISTANCE",
+    "PICKUP_DISTANCE",
+    "PLACE_ON_DISTANCE",
+    "ROLL_DISTANCE",
+    "WHEELIE_DISTANCE",
     "PREDOCK_GAP",
     "LOOK_HEAD_ANGLE",
+    "DOCK_HEAD_ANGLE",
     "CARRY_HEIGHT",
 
     "Cancelled",
@@ -46,17 +56,47 @@ __all__ = [
     "put_down_cube",
     "put_down_by",
     "place_on_cube",
+    "roll_cube",
+    "pop_a_wheelie",
 ]
 
 
-#: Where the centre of a cube in the lift's fork is, ahead of the robot's origin, in mm: the fork reaches 58 mm
-#: ahead, by the robot's 3D model, and the cube's centre is half a side beyond. Not measured on a robot.
-DOCK_DISTANCE = 58.0 + CUBE_SIDE / 2
-#: How far short of docking the robot stops to have a last look at the cube, in mm.
-PREDOCK_GAP = 60.0
+#: Where the centre of a cube in the lift's fork is, ahead of the robot's origin, in mm: where it was set down,
+#: measured on a robot after Anki's engine picked it up.
+DOCK_DISTANCE = 52.5
+#: Where the robot stops, the cube's centre that far ahead, before it lifts; and how far it creeps on while it does,
+#: and how fast. Anki's engine stopped at 44.4 mm, by its own reckoning, and crept on 7 mm.
+PICKUP_DISTANCE = 47.0
+PICKUP_CREEP = 8.0
+CREEP_SPEED = 15.0
+#: How far the robot backs off from a cube it has set down, in mm, as Anki's engine did.
+PUT_DOWN_BACKOFF = 30.0
+#: Where the robot stops to set the cube it carries on another, the other's centre that far ahead, and how far it
+#: lowers the lift to let go of it, and backs off before lowering it all the way. Anki's engine stopped at 36.1 mm.
+PLACE_ON_DISTANCE = 38.5
+PLACE_ON_LIFT_HEIGHT = 76.0
+PLACE_ON_BACKOFF = 55.0
+#: Rolling a cube: where the robot stops, the lift up; the lift's height hooking the cube's top edge; and how fast
+#: and how long it backs off lowering the lift. Anki's engine stopped at 31 mm.
+ROLL_DISTANCE = 34.0
+ROLL_HOOK_HEIGHT = 74.0
+ROLL_PULL_SPEED = 55.0
+ROLL_PULL_TIME = 1.0
+#: Popping a wheelie: where the robot stops, the lift up; and how fast and how long it drives on, bringing the lift
+#: down. Anki's engine stopped at 30 mm, and drove on at 150 mm/s; the robot was on its back, at 74 degrees, a
+#: third of a second later.
+WHEELIE_DISTANCE = 32.5
+WHEELIE_SPEED = 150.0
+WHEELIE_TIME = 0.35
+#: How far beyond where it docks the robot stands to have a look at the cube, in mm: some 15 cm from it.
+PREDOCK_GAP = 100.0
+#: Where the robot stops on the way in to have another look, beyond where it docks, in mm.
+DOCK_STAGE_GAP = 35.0
 #: The head's angle for looking at a cube on the ground nearby, in radians: the whole marker is in sight from
 #: the lift's fork to 450 mm.
 LOOK_HEAD_ANGLE = math.radians(-8.0)
+#: The head's angle docking, as Anki's engine had it: the marker stays in sight down to 40 mm.
+DOCK_HEAD_ANGLE = math.radians(-17.0)
 #: The lift's height for carrying a cube, in mm.
 CARRY_HEIGHT = robot.MAX_LIFT_HEIGHT.mm
 #: How long the head and the lift take to get where they are sent, at most, in seconds.
@@ -116,10 +156,10 @@ def observe(cli: Any, timeout: float = 1.0) -> List[LightCube]:
 
 
 def look_for_cube(cli: Any, cube: LightCube, timeout: float = 3.0,
-                  cancel: Optional[threading.Event] = None) -> bool:
+                  cancel: Optional[threading.Event] = None, head_angle: float = LOOK_HEAD_ANGLE) -> bool:
     """ Point the head at the ground nearby, and say whether the cube is seen there before the timeout. """
     cli.enable_camera(True, color=False)
-    cli.set_head_angle(LOOK_HEAD_ANGLE)
+    cli.set_head_angle(head_angle)
     _pause(SETTLE_TIME, cancel)
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
@@ -170,39 +210,62 @@ def go_to_cube(cli: Any, cube: LightCube, gap: float = PREDOCK_GAP,
         return bool(cli.go_to_pose(dock_pose(cube, DOCK_DISTANCE + gap)))
 
 
-def dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
+def dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None,
+                   distance: float = PICKUP_DISTANCE) -> bool:
     """
-    From in front of a cube, look at it once more and drive up until it sits in the lift's fork, and say
-    whether it got there. The last few centimetres are driven blind: the marker is too close to be seen whole.
+    From in front of a cube, look at it once more, and drive up until its centre is that far ahead, facing it
+    squarely; say whether it got there. The head goes down, and the robot stops on the way to look again, as Anki's
+    engine kept the marker in sight to the end.
     """
     with in_use(cube):
-        return _dock_with_cube(cli, cube, cancel)
+        if not look_for_cube(cli, cube, cancel=cancel):
+            return False
+        cli.set_head_angle(DOCK_HEAD_ANGLE)
+        if not _drive_up(cli, cube, distance + DOCK_STAGE_GAP, cancel):
+            return False
+        # Closer, the cube is placed better. Not seen, the first look will do.
+        look_for_cube(cli, cube, timeout=1.0, cancel=cancel, head_angle=DOCK_HEAD_ANGLE)
+        return _drive_up(cli, cube, distance, cancel)
 
 
-def _dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event]) -> bool:
-    if not look_for_cube(cli, cube, cancel=cancel):
-        return False
-    target = dock_pose(cube, DOCK_DISTANCE)
+def _drive_up(cli: Any, cube: LightCube, distance: float, cancel: Optional[threading.Event]) -> bool:
+    """ Drive to where the cube's centre is that far ahead, facing it squarely. """
+    target = dock_pose(cube, distance)
     x, y = cli.pose.position.x, cli.pose.position.y
     dx, dy = target.position.x - x, target.position.y - y
-    distance = math.hypot(dx, dy)
-    if distance > 1.0:
-        # Face the spot, drive to it, and face the cube.
+    remaining = math.hypot(dx, dy)
+    if remaining > 1.0:
+        # Face the spot, drive to it, and face the cube. Backwards, if the spot is behind.
+        heading = math.atan2(dy, dx)
+        backwards = abs(_wrap(heading - cli.pose.rotation.angle_z.radians)) > math.pi / 2
+        if backwards:
+            heading += math.pi
         _check(cancel)
-        if not cli.turn_in_place(util.Angle(radians=_wrap(math.atan2(dy, dx) - cli.pose.rotation.angle_z.radians))):
+        if not cli.turn_in_place(util.Angle(radians=_wrap(heading - cli.pose.rotation.angle_z.radians))):
             return False
         _check(cancel)
-        if not cli.drive_straight(util.Distance(mm=distance), speed=robot.DOCK_SPEED):
+        if not cli.drive_straight(util.Distance(mm=-remaining if backwards else remaining), speed=robot.DOCK_SPEED):
             return False
     _check(cancel)
     return bool(cli.turn_in_place(util.Angle(
         radians=_wrap(target.rotation.angle_z.radians - cli.pose.rotation.angle_z.radians))))
 
 
+def _creep(cli: Any, speed: float, seconds: float, cancel: Optional[threading.Event]) -> None:
+    """ Drive straight at a speed for a while, the lift and the head left to what they are doing. """
+    cli.drive_wheels(speed, speed)
+    try:
+        _pause(seconds, cancel)
+    finally:
+        cli.drive_wheels(0.0, 0.0)
+
+
 def pick_up_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
     """
-    Go to a cube, dock with it and lift it, and say whether the cube came up. A connected cube tells: it reports
-    moving as the lift rises.
+    Go to a cube, dock with it and lift it, and say whether the cube came up.
+
+    A cube that the fork only knocks moves too: what tells is that it is no longer on the ground in front of the
+    robot. Anki's engine, the cube up, saw only the ground there.
     """
     with in_use(cube):
         return _pick_up_cube(cli, cube, cancel)
@@ -221,12 +284,24 @@ def _pick_up_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event]) 
     handler = cli.add_handler(event.EvtCubeMovingChange, on_moving)
     try:
         cli.set_lift_height(CARRY_HEIGHT)
-        _pause(SETTLE_TIME, cancel)
+        _creep(cli, CREEP_SPEED, PICKUP_CREEP / CREEP_SPEED, cancel)
+        _pause(SETTLE_TIME / 2, cancel)
     finally:
         cli.del_handler(event.EvtCubeMovingChange, handler)
+    if _on_the_ground_ahead(cli, cube):
+        cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
+        return False
     if moved.is_set() or cli.robot_status & robot.RobotStatusFlag.IS_CARRYING_BLOCK:
         cli.cubes.carried = cube
         return True
+    return False
+
+
+def _on_the_ground_ahead(cli: Any, cube: LightCube) -> bool:
+    """ Whether the cube is still seen on the ground in front of the robot. """
+    for _ in range(3):
+        if cube in observe(cli) and cube.pose is not None and cube.pose.z < CUBE_SIDE:
+            return True
     return False
 
 
@@ -242,7 +317,7 @@ def put_down_cube(cli: Any, cube: Optional[LightCube] = None, cancel: Optional[t
         if cube is not None:
             _place_ahead(cli, cube, cli.pose)
         cli.cubes.carried = None
-        return bool(cli.drive_straight(util.Distance(mm=-(PREDOCK_GAP / 2))))
+        return bool(cli.drive_straight(util.Distance(mm=-PUT_DOWN_BACKOFF)))
 
 
 def put_down_by(cli: Any, action: Callable[[], Any], cube: Optional[LightCube] = None) -> bool:
@@ -310,14 +385,64 @@ def place_on_cube(cli: Any, target: LightCube, cancel: Optional[threading.Event]
     if not find_cube(cli, target, cancel=cancel):
         return False
     with in_use(*([target] if carried is None else [target, carried])):
-        if not (go_to_cube(cli, target, cancel=cancel) and dock_with_cube(cli, target, cancel=cancel)):
+        if not (go_to_cube(cli, target, cancel=cancel) and
+                dock_with_cube(cli, target, cancel=cancel, distance=PLACE_ON_DISTANCE)):
             return False
-        cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
+        # Low enough for the cube to rest on the other, and no lower: the fork lets go of it.
+        cli.set_lift_height(PLACE_ON_LIFT_HEIGHT)
         _pause(SETTLE_TIME, cancel)
         if carried is not None and target.pose is not None:
             cli.cubes.place(carried, target.pose.x, target.pose.y, target.pose.angle, z=target.pose.z + CUBE_SIDE)
         cli.cubes.carried = None
-        return bool(cli.drive_straight(util.Distance(mm=-PREDOCK_GAP)))
+        backed = bool(cli.drive_straight(util.Distance(mm=-PLACE_ON_BACKOFF)))
+        cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
+        return backed
+
+
+def roll_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
+    """
+    Roll a cube over onto its side towards the robot, and say whether it did - whether the cube says its up axis
+    changed. The robot stops at cliffs again afterwards; it cannot while the roll tips it up.
+    """
+    with in_use(cube):
+        axis = cube.up_axis
+        cli.set_lift_height(CARRY_HEIGHT)
+        if not (go_to_cube(cli, cube, cancel=cancel) and
+                dock_with_cube(cli, cube, cancel=cancel, distance=ROLL_DISTANCE)):
+            return False
+        cli.enable_stop_on_cliff(False)
+        try:
+            # The fork on the cube's top edge, then down, pulling it over.
+            cli.set_lift_height(ROLL_HOOK_HEIGHT)
+            _pause(SETTLE_TIME / 2, cancel)
+            cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
+            _creep(cli, -ROLL_PULL_SPEED, ROLL_PULL_TIME, cancel)
+            _pause(SETTLE_TIME / 2, cancel)
+        finally:
+            cli.enable_stop_on_cliff(True)
+        # Where it is now has to be seen: on its side, a side's length nearer.
+        cube.pose = None
+        return cube.up_axis != axis
+
+
+def pop_a_wheelie(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
+    """
+    Pop a wheelie against a cube: dock with it the lift up, and bring the lift down hard driving on, which tips the
+    robot onto its back. Say whether it got there. The robot stops at cliffs again afterwards.
+    """
+    with in_use(cube):
+        cli.set_lift_height(CARRY_HEIGHT)
+        if not (go_to_cube(cli, cube, cancel=cancel) and
+                dock_with_cube(cli, cube, cancel=cancel, distance=WHEELIE_DISTANCE)):
+            return False
+        cli.enable_stop_on_cliff(False)
+        try:
+            cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm, accel=100.0, max_speed=10.0)
+            _creep(cli, WHEELIE_SPEED, WHEELIE_TIME, cancel)
+            _pause(SETTLE_TIME / 2, cancel)
+        finally:
+            cli.enable_stop_on_cliff(True)
+        return bool(cli.pose_pitch.radians > robot.ON_BACK_PITCH)
 
 
 def _wrap(angle: float) -> float:

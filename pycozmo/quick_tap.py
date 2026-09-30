@@ -75,6 +75,9 @@ COLORS = (
     lights.Color(name="yellow", rgb=(255, 200, 0)),
     lights.Color(name="purple", rgb=(160, 0, 255)),
 )
+#: Where Cozmo stands to tap its cube, the cube's centre that far ahead, in mm: there, on a robot, the tap came
+#: down to 65 mm and the cube said so two times out of three - the end of the animation stands in for the third.
+TAP_DISTANCE = 50.0
 #: The longest Cozmo's tap or fake is waited for, in seconds.
 ANIMATION_TIMEOUT = 2.0
 #: How far off its place the robot may have drifted before it goes back, in radians and in mm.
@@ -112,7 +115,8 @@ def load_resources(resource_dir: str) -> Tuple[Dict[str, anim.AnimationGroup], D
 def take_position(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
     """ Go and sit in front of a cube, the lift raised over it, ready to tap it. Say whether it got there. """
     cli.set_lift_height(robot.MAX_LIFT_HEIGHT.mm)
-    return cube_handling.go_to_cube(cli, cube, cancel=cancel) and cube_handling.dock_with_cube(cli, cube, cancel=cancel)
+    return cube_handling.go_to_cube(cli, cube, cancel=cancel) and \
+        cube_handling.dock_with_cube(cli, cube, cancel=cancel, distance=TAP_DISTANCE)
 
 
 def leave_position(cli: Any) -> bool:

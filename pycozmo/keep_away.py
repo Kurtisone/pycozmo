@@ -49,10 +49,9 @@ PLAYER = "player"
 #: Points to win a round, and rounds to win the game.
 POINTS_TO_WIN_ROUND = 5
 ROUNDS_TO_WIN_GAME = 2
-#: Where the cube's centre has to be, ahead of the robot's origin, for the pounce to catch it, in mm: the fork's
-#: reach and the lunge. Anki's three pounces have the robot 30, 40 and 46 mm further on when the lift comes down, in
-#: the emulator, and the fork catches a cube 14 mm either side of where it holds one. Not measured on a robot.
-POUNCE_DISTANCE = cube_handling.DOCK_DISTANCE + 38.0
+#: Where the cube's centre has to be, ahead of the robot's origin, for the pounce to catch it, in mm. On a robot,
+#: Anki's three pounces had it 39, 47 and 57 mm further on when the lift came down, and each caught a cube there.
+POUNCE_DISTANCE = 88.0
 #: How far off that the robot moves to put it right, in mm, and how far off its heading it turns, in radians.
 POSITION_TOLERANCE = 10.0
 HEADING_TOLERANCE = math.radians(8.0)
