@@ -106,19 +106,20 @@ Behaviors are small programs over the robot's API, configured in `behaviors/`. T
 robot does when nothing has happened, in priority order: 14 sparks, which the application asked for, 3 severe-need
 activities, and the freeplay ones.
 
-PyCozmo implements 31 classes, 76 behaviors: the animation players, the reactions to being picked up, shaken, put on
+PyCozmo implements 33 classes, 82 behaviors: the animation players, the reactions to being picked up, shaken, put on
 its side or on the charger, cliffs, cube moves, driving off the charger, pouncing on motion, expressing needs,
-waiting, picking cubes up, putting them down, stacking them, working out with one, and asking for a game of Quick
-Tap. Eleven of the reaction triggers are raised. The activity engine runs freeplay as Anki's configuration says,
-with its scores, cooldowns and mood gates, and honours the unlock a behavior needs: `pycozmo.unlocks` reads those of
-a new robot and those the needs levels reward; nothing keeps a progression, so the robot is taken to have them all.
+waiting, picking cubes up, putting them down, stacking them, working out with one, rolling one back upright, popping
+wheelies, and asking for a game. Eleven of the reaction triggers are raised. The activity engine runs freeplay as
+Anki's configuration says, with its scores, cooldowns and mood gates, and honours the unlock a behavior needs:
+`pycozmo.unlocks` reads those of a new robot and those the needs levels reward; nothing keeps a progression, so the
+robot is taken to have them all.
 
 Missing classes, by what they need:
 
 | Needs | Classes |
 |---|---|
-| Rolling and knocking over cubes: the robot's own manoeuvres, to be recorded on one | `RollBlock`, `RespondPossiblyRoll`, `PopAWheelie`, `KnockOverCubes` |
-| More handling of cubes | `CheckForStackAtInterval`, `CantHandleTallStack`, `ReactToStackOfCubes`, `BuildPyramid`, `BuildPyramidBase`, `ReactToPyramid`, `PyramidThankYou`, `BringCubeToBeacon`, `ThinkAboutBeacons`, `GuardDog`, `Bouncer`, `FeedingSearchForCube`, `FeedingEat`, `OnboardingShowCube` |
+| Knocking a stack over: recorded on a robot, Anki's own behavior gave it up, and left nothing to go by | `KnockOverCubes` |
+| More handling of cubes | `RespondPossiblyRoll`, `CheckForStackAtInterval`, `CantHandleTallStack`, `ReactToStackOfCubes`, `BuildPyramid`, `BuildPyramidBase`, `ReactToPyramid`, `PyramidThankYou`, `BringCubeToBeacon`, `ThinkAboutBeacons`, `GuardDog`, `Bouncer`, `FeedingSearchForCube`, `FeedingEat`, `OnboardingShowCube` |
 | Faces | `FindFaces`, `SearchForFace`, `DriveToFace`, `InteractWithFaces`, `PeekABoo`, `PlayAnimWithFace`, `LookForFaceAndCube`, `EnrollFace`, `RespondToRenameFace` |
 | A map of the surroundings | `ExploreLookAroundInPlace`, `ExploreVisitPossibleMarker`, `VisitInterestingEdge`, `LookInPlaceMemoryMap` |
 | Sound | `Singing`, `Dance`, `FireTruckAlarm` |
@@ -174,16 +175,34 @@ They go at the speeds of Anki's engine's default path motion profile: 100 mm/s, 
 which the robot takes in rad/s whatever the protocol's field names say. Anki's engine planned those paths with the
 motion primitives in `cozmo_mprim.json`, around the obstacles in its map, and docked with cubes by their markers.
 
-`pycozmo.cube_handling` handles the cubes: it finds one, looking round for it if need be, goes to face the side it
-saw, has a last look from there and docks, driving the last centimetres blind at 60 mm/s as Anki's engine did. It
-picks the cube up, puts it down, sets it on another, and follows a cube an animation sets down: the workout's
-put-down lowers the lift, pushes the cube on and backs off. A cube in the fork is taken to be 58 mm ahead of the
-robot's origin, by its 3D model, and half a side beyond; this is not measured on a robot.
+`pycozmo.cube_handling` handles the cubes as Anki's engine was seen doing it, through the SDK, on a robot - 30 times
+a second, its pose, lift, head and wheels, and where it placed the cube. It finds a cube, looking round for it if need
+be, goes to stand some 15 cm from the side it saw and has a look, then docks with its head down at -17 degrees,
+looking at the marker again on the way. From there it makes the manoeuvre's own moves:
 
-Missing: planning around obstacles; rolling a cube, popping a wheelie against it and knocking a stack over. Anki's
-engine had the robot's firmware do these - its docking actions `DA_ROLL_LOW`, `DA_POP_A_WHEELIE` - through a message
-PyCozmo's protocol does not know; the lift and wheel moves they make are to be recorded on a robot, through the SDK,
-before they can be done again.
+| Manoeuvre | Cube's centre ahead of the robot's origin | Then |
+|---|---|---|
+| Picking up | 47 mm | The lift rises while the robot creeps on 8 mm at 15 mm/s: the fork slides under as it goes up |
+| Putting down | 52.5 mm, where it is set down | The lift comes down, the robot backs off 30 mm |
+| Setting on another | 38.5 mm, the lift up | The lift comes down to 76 mm only, which lets go; the robot backs off 55 mm |
+| Rolling | 34 mm, the lift up | The fork comes down on the top edge at 74 mm, then all the way down as the robot backs off at 55 mm/s: the cube tips over towards it |
+| Popping a wheelie | 32.5 mm, the lift up | The lift slams down while the robot drives on at 150 mm/s: it ends up on its back, at some 74 degrees |
+
+The distances are Anki's, 2.5 mm longer: PyCozmo places a cube that much further than Anki's engine did on the same
+images. The robot does not stop at cliffs while it rolls a cube or pops a wheelie, which tip it up, as Anki's engine
+did not. A cube is taken to be in the fork if the cube says it moved or the robot says it carries one, and it is not
+still seen on the ground ahead. The workout's put-down, which an animation makes, lowers the lift, pushes the cube on
+and backs off: the cube is followed there.
+
+A cube's accelerometer says which of its sides is up, not which way its top points on the ground, which Anki's engine
+read off its markers: they differ from one side to another. `RollBlock` rolls a cube lying on its side back upright
+from where the robot stands. When a roll takes the cube from one side to another, its top points to the robot's left
+or right, and the two sides that were up tell which: the robot goes round to the cube's bottom and rolls it from there.
+
+Before this, on a robot, PyCozmo's own docking picked a cube up twice out of two, and once went to set a cube on
+another without it in the fork. The handling as it now is, from the recordings, is not yet tried on a robot.
+
+Missing: planning around obstacles, and knocking a stack over.
 
 
 Games
@@ -203,9 +222,12 @@ cube rather than on a phone - a tap takes the game up - and the robot asks from 
 face or bringing a cube over. `pycozmo.keep_away` plays Keep Away: Cozmo moves to where its pounce reaches the
 player's cube, raises its lift and pounces, or pretends to; the cube tells what happened - a tap when the lift comes
 down on it, a move when it is pulled away - and a cube moved while Cozmo only waited or pretended is a flinch, and
-Cozmo's point. Its pounces reach 30 to 46 mm further than the fork in the emulator; this is not measured on a
-robot.
-`examples/keep_away.py`.
+Cozmo's point; `examples/keep_away.py`.
+
+The games' moves were measured on a robot, not the games played through on one: Quick Tap's tap comes down on a cube
+50 mm ahead of the robot's origin; Keep Away's pounces carried the robot 39 to 57 mm on as the lift came down, and
+caught a cube 88 mm ahead; Memory Match's turns were 20 to 27 degrees small and 46 big, and the robot points straight
+ahead at a cube less than 12 degrees off, with a big turn from 35.
 
 
 Compared with the Cozmo SDK
@@ -220,7 +242,7 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | `turn_in_place`, `drive_straight` | Yes, along paths, reporting whether the robot got there |
 | `go_to_pose` | Yes, without obstacle avoidance |
 | `go_to_object`, `dock_with_cube`, `pickup_object`, `place_on_object`, `place_object_on_ground_here` | Yes, for cubes: `pycozmo.cube_handling` |
-| `roll_cube`, `pop_a_wheelie` | No |
+| `roll_cube`, `pop_a_wheelie` | Yes: `pycozmo.cube_handling` |
 | `play_anim`, `play_anim_trigger`, idle animations | Animations and triggers yes; idle animations no |
 | `play_audio`, `set_robot_volume` | Yes |
 | `say_text` | No |
@@ -233,7 +255,7 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | Charger pose, custom objects | No |
 | Faces, facial expressions, pets | No |
 | Navigation memory map | No |
-| `start_behavior`: `FindFaces`, `KnockOverCubes`, `LookAroundInPlace`, `PounceOnMotion`, `RollBlock`, `StackBlocks` | `PounceOnMotion` and `StackBlocks` |
+| `start_behavior`: `FindFaces`, `KnockOverCubes`, `LookAroundInPlace`, `PounceOnMotion`, `RollBlock`, `StackBlocks` | `PounceOnMotion`, `RollBlock` and `StackBlocks` |
 | Freeplay | Yes: `pycozmo.brain` |
 | Needs levels | Yes |
 
@@ -245,13 +267,13 @@ Compared with the Cozmo application
 |---|---|
 | Freeplay: waking up, reactions, bored and idle animations, pouncing on motion, hiking | Yes |
 | Freeplay with cubes: seeing them, lighting them, reacting to them | Yes |
-| Freeplay with cubes: lifting, working out, stacking | Yes, not yet tried on a robot |
-| Freeplay with cubes: rolling, popping wheelies, knocking over, pyramids | No |
+| Freeplay with cubes: lifting, working out, stacking, rolling, popping wheelies | Yes, as Anki's engine was recorded doing them; not yet tried on a robot as written |
+| Freeplay with cubes: knocking over, pyramids | No |
 | Freeplay with faces: greeting, peek-a-boo, fist bumps | The fist bump behavior is there, and nothing asks for it; the others need faces |
 | Needs, and asking to be played with | Yes |
 | Feeding, repairing | Taken as actions; no minigame |
 | Sparks: tricks on request | No way to ask for one |
-| Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; not yet tried on a robot |
+| Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; their moves measured on a robot, the games not yet played through on one |
 | Meeting people: enrolling faces, saying names | No |
 | Songs | No |
 | Explorer mode: driving by hand, with the camera | `examples/rc.py` drives it with an Xbox 360 controller, without the camera |

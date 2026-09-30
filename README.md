@@ -316,11 +316,17 @@ acknowledged (`ObjectPositionUpdated`), and one moved while the robot sees it is
 the robot moved it itself, lifting it, docking with it or tapping it in a game. Taps and moves come as `EvtCubeTapped`
 and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. A light frame lasts 33.3 ms, measured on a robot.
 
-`pycozmo.cube_handling` goes to a cube, docks with it by its marker, and picks it up, puts it down or sets it on
-another; the brain's behaviors build on it. `PlayAlone` picks a cube up and works out with it (`CubeLiftWorkout`, as
-many lifts as the robot is confident, in a workout its energy chooses) or stacks one on another (`StackBlocks`). Where
-the fork holds a cube comes from the robot's 3D model and is not measured on a robot yet. Rolling a cube, popping a
-wheelie and knocking a stack over are not done: the robot's firmware did them, through a message PyCozmo does not know.
+`pycozmo.cube_handling` handles the cubes as Anki's engine was seen doing it, recorded through the official SDK on a
+robot: it goes to stand some 15 cm from a cube and has a look, docks with its head down, looking at the marker again on
+the way, and makes the manoeuvre's own moves. It picks the cube up, the lift rising as the robot creeps on; puts it
+down; sets it on another, letting go at 76 mm; rolls it, the fork hooking the top edge at 74 mm and coming down as the
+robot backs off, which tips the cube over towards it; and pops a wheelie, the lift slamming down on the cube as the
+robot drives on at 150 mm/s. The brain's behaviors build on it. `PlayAlone` picks a cube up and works out with it
+(`CubeLiftWorkout`, as many lifts as the robot is confident, in a workout its energy chooses), stacks one on another
+(`StackBlocks`), rolls one lying on its side back upright (`RollBlock`) and pops wheelies (`PopAWheelie`). A cube says
+which side is up, not which way its top points; when a roll shows it points aside, `RollBlock` goes round the cube to
+its bottom. All this is checked in the emulator, not yet on a robot as written. Knocking a stack over is not done:
+recorded on a robot, Anki's own behavior gave it up.
 
 `pycozmo.quick_tap` plays Quick Tap, the cube game of the Cozmo application: both cubes light up, and on the same
 colour the first to tap their cube wins the point, on different colours whoever taps loses it. The robot sits at its
@@ -370,9 +376,10 @@ an hour on, and the bored animations keep half their score for 9 seconds, which 
 two bored sequences in a row.
 
 What actually runs today is what needs no face: `DriveOffCharger`, the hiking intro, the `NothingToDo` idle and bored
-animations, `PounceOnMotion`, and with cubes the workout, stacking, putting a carried cube down and asking for a game. An activity that wants the robot but can offer nothing is passed over rather
-than entered, since entering it would leave the robot still for as long as its duration - 25 s for `PlayAlone`, a
-minute for `Hiking`.
+animations, `PounceOnMotion`, and with cubes the workout, stacking, rolling a cube back upright, popping wheelies,
+putting a carried cube down and asking for a game. An activity that wants the robot but can offer nothing is passed
+over rather than entered, since entering it would leave the robot still for as long as its duration - 25 s for
+`PlayAlone`, a minute for `Hiking`.
 
 
 Documentation
@@ -430,11 +437,13 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     three nurture needs fall and drive the requests and activities that read them, see
     [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
-    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 31 of the 76 behavior classes are implemented, and what
+    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 33 of the 76 behavior classes are implemented, and what
     the others need is in [docs/offboard_functions.md](docs/offboard_functions.md)
-- [ ] Cube handling - going to a cube, docking with it, picking it up, putting it down and stacking it are done, not
-    yet tried on a robot; rolling it and popping a wheelie are not
-- [x] Games - Quick Tap, Memory Match and Keep Away are played, and asked for in freeplay; not yet tried on a robot
+- [ ] Cube handling - going to a cube, docking with it, picking it up, putting it down, stacking it, rolling it and
+    popping a wheelie against it are done as Anki's engine was recorded doing them, not yet tried on a robot as
+    written; knocking a stack over is not
+- [x] Games - Quick Tap, Memory Match and Keep Away are played, and asked for in freeplay; their moves are measured on
+    a robot, the games not yet played through on one
 - [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection - the cubes are placed by their markers, see

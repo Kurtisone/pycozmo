@@ -11,17 +11,26 @@ Fork
 Unreleased
 ----------
 
-Checked against the cozmo-emu emulator, not yet against a robot.
+Checked against the cozmo-emu emulator, and in part on a robot, with the Cozmo application's own engine recorded
+through the SDK beside it: how cubes connect, the animation stream, the cube lights, and the moves of the games and
+of Anki's cube handling. The cube handling as written from those recordings, and the games played through, are not
+yet tried on a robot.
 
 New features:
-- Handling the cubes. pycozmo.cube_handling finds a cube, looking round for it if need be, goes to face the side it
-    saw, has a last look from there and docks, driving the last centimetres blind at Anki's 60 mm/s; then it picks
-    the cube up, puts it down, or sets it on another. A cube an animation sets down is followed where the fork
-    pushes it. Where the fork holds a cube - 58 mm ahead of the robot's origin, by its 3D model - is not measured.
-- Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, and CubeLiftWorkout, which
-    reads Anki's four workouts, lifts as many times as the robot is confident, and has its energy choose the
-    workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A behavior goes for a
-    cube connected, seen, the right way up, with nothing on top and not in the lift.
+- Handling the cubes. pycozmo.cube_handling does it as Anki's engine was recorded doing it on a robot: it finds a
+    cube, looking round for it if need be, goes to stand some 15 cm from the side it saw and has a look, then docks
+    with its head down, looking at the marker again on the way. It picks the cube up, the lift rising as the robot
+    creeps on; puts it down; sets it on another, letting go at 76 mm; rolls it, the fork hooking the top edge at
+    74 mm and coming down as the robot backs off; and pops a wheelie, the lift slamming down on the cube as the robot
+    drives on at 150 mm/s. The distances are Anki's, 2.5 mm longer, as PyCozmo places cubes. A cube an animation sets
+    down is followed where the fork pushes it.
+- Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
+    CubeLiftWorkout, which reads Anki's four workouts, lifts as many times as the robot is confident, and has its
+    energy choose the workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A
+    behavior goes for a cube connected, seen, the right way up, with nothing on top and not in the lift; RollBlock
+    for one lying on its side, which it rolls back upright. A cube says which side is up, not which way its top
+    points, and when a roll shows it points aside, the robot goes round the cube to its bottom.
+- Cubes.factory_ids chooses which cube of a kind the robot connects when it hears several.
 - Unlocks. A behavior needing an unlock runs only if the robot has it; pycozmo.unlocks reads those of a new robot
     and those the needs levels reward. Nothing keeps a progression, so the brain takes the robot to have them all.
 - Quick Tap. pycozmo.quick_tap plays the game of the Cozmo application, by PyCozmo's reading of its rules: the
@@ -40,12 +49,20 @@ New features:
     activity is evaluated: the robot asks now and then, the player takes the game up by tapping a cube, and a no
     makes it wait 120 s, 1.3 times as long for each no in a row. EvtGameRequestAnswered carries the answer.
 - The top and bottom of a cube, whose symbol has no bar, are recognized as well as its sides.
+- A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- Only one cube stayed connected at a time. ObjectConnect's second field, taken for a "connect" flag, is the slot
+    the robot puts the cube in, 0 to 4, and every cube went into the same one, pushing the last out. Each kind of
+    cube has a slot of its own.
+- The robot's animation buffer overflowed, now and then, during animations that drive the wheels: the robot's count
+    of the frames it has played runs ahead of the frames it has taken from the buffer, by some twenty over a session.
+    What it has played is told by its count of bytes, which is exact: no overflow in 24 animations on a robot.
 - A camera image whose last chunk held a single byte, or none, was lost with an error: such byte arrays were read
     as lists.
-- The brain reacted to cubes the robot moved itself - lifting one, docking with it, tapping it - and the reaction
-    cut short the behavior that had moved it. Cubes in use are left alone, and so is the one in the lift.
+- The brain reacted to cubes the robot moved itself - lifting one, docking with it, tapping it, knocking one while
+    handling another - and the reaction cut short the behavior that had moved it. Cubes in use are left alone, and
+    so is the one in the lift, and any cube while the robot handles one or plays a game.
 - A cube moved by someone else is no longer taken to be where it was last seen.
 
 
