@@ -194,7 +194,7 @@ class TestFrames(unittest.TestCase):
         controller._played_time = time.perf_counter()
         controller._frames_sent = 1
         controller._bytes_sent = controller._unplayed_bytes = controller.MAX_BYTES_AHEAD - 12
-        controller._unplayed.append((0, 1, controller._unplayed_bytes))
+        controller._unplayed.append((0, 1, controller._unplayed_bytes, controller._bytes_sent))
         controller._unplayed_messages = 1
         controller.play_anim_frame(self.audio, None, (pycozmo.protocol_encoder.StartAnimation(anim_id=1),))
         self.assertEqual(self.frame(), [])
@@ -216,9 +216,9 @@ class FakeRobot:
     The robot's animation buffer, as measured on a robot: 8 KB, each message taking its length and 3 bytes,
     played a frame at a time 29.906 times a second. Everything travels with a delay each way.
 
-    What it plays counts as played, each message its length and 1 - but the samples of a sound only once the
-    frame after it starts, and those of the last sound before a silence never. They are taken here to stay in
-    the buffer until it is cleared, which is what a robot playing animations looked like.
+    What it plays counts as played, each message its length and 1 - the samples of a sound only once the frame
+    after it starts. Its count of frames runs ahead of what it takes from its buffer, though: by one, here,
+    every so many frames, as it drifted by 19 over a session on a robot.
 
     When a message does not fit, the robot clears its buffer and counts what it drops as played.
     """
@@ -226,17 +226,18 @@ class FakeRobot:
     CAPACITY = 8192
     FRAME_TIME = 1 / 29.906
 
-    def __init__(self, latency: float) -> None:
+    def __init__(self, latency: float, drift_every: int = 0) -> None:
         self.latency = latency
+        # How often the count of frames gains one it did not play; never, by default.
+        self.drift_every = drift_every
         self.in_transit: Deque[Tuple[float, pycozmo.protocol_base.Packet]] = deque()
         self.buffer: Deque[List[pycozmo.protocol_base.Packet]] = deque()
         self.buffered = 0
         self.frames_received = 0
         self.frames_played = 0
         self.bytes_played = 0
-        # The samples of the sound last played, and of the sounds that ended, still in the buffer.
+        # The samples of the sound last played, not counted yet.
         self.sound = 0
-        self.held = 0
         self.next_play: Optional[float] = None
         self.reports: Deque[Tuple[float, int, int]] = deque()
         self.overflows = 0
@@ -257,9 +258,9 @@ class FakeRobot:
             if self.buffered + len(pkt) + 3 > self.CAPACITY:
                 self.overflows += 1
                 self.frames_played += len(self.buffer)
-                self.bytes_played += sum(len(p) + 1 for frame in self.buffer for p in frame) + self.sound + self.held
+                self.bytes_played += sum(len(p) + 1 for frame in self.buffer for p in frame) + self.sound
                 self.buffer.clear()
-                self.buffered = self.sound = self.held = 0
+                self.buffered = self.sound = 0
                 continue
             if isinstance(pkt, (pycozmo.protocol_encoder.OutputAudio, pycozmo.protocol_encoder.OutputSilence)):
                 self.buffer.append([])
@@ -273,15 +274,15 @@ class FakeRobot:
             if self.buffer:
                 frame = self.buffer.popleft()
                 audio = isinstance(frame[0], pycozmo.protocol_encoder.OutputAudio)
-                if audio:
-                    self.buffered -= self.sound
-                    self.bytes_played += self.sound
-                else:
-                    self.held += self.sound
+                # The samples of the sound before count now that another frame starts.
+                self.buffered -= self.sound
+                self.bytes_played += self.sound
                 self.sound = len(frame[0]) if audio else 0
                 self.buffered -= sum(len(p) + 3 for p in frame) - self.sound
                 self.bytes_played += sum(len(p) + 1 for p in frame) - self.sound
                 self.frames_played += 1
+                if self.drift_every and self.frames_played % self.drift_every == 0:
+                    self.frames_played += 1
                 if audio:
                     self.audio.append(self.next_play)
             elif self.sound:
@@ -379,19 +380,18 @@ class TestFlowControl(unittest.TestCase):
             self.run_for(4)
 
     def test_sounds_one_after_another_fit(self):
-        # A robot playing animations ran out of room in those that followed a sound: the last samples of a
-        # sound never count as played.
-        self.play_sounds(4)
-        self.assertEqual(self.robot.overflows, 0)
-        self.assertEqual(len(self.robot.audio), 4 * 60)
-
-    def test_a_buffer_full_of_the_ends_of_sounds_is_let_clear(self):
-        # Ten of them fill it. Waiting for room that never comes held the frames up until the robot was given
-        # up on, five seconds.
         self.play_sounds(15)
-        self.assertEqual(self.robot.overflows, 1)
+        self.assertEqual(self.robot.overflows, 0)
+        self.assertEqual(len(self.robot.audio), 15 * 60)
+
+    def test_a_robot_whose_count_of_frames_runs_ahead_is_not_overfilled(self):
+        # A robot playing animations with sound ran out of room every few seconds: frames it counted and had not
+        # played were taken to have made room.
+        self.robot = FakeRobot(latency=0.03, drift_every=50)
+        self.play_sounds(15)
+        self.assertEqual(self.robot.overflows, 0)
         audio = self.robot.audio
-        self.assertGreaterEqual(len(audio), 15 * 60 - 3)
+        self.assertEqual(len(audio), 15 * 60)
         self.assertLess(max(b - a for a, b in zip(audio, audio[1:]) if b - a < 2.0), 0.1)
 
     def test_a_robot_that_does_not_report_gets_a_frame_a_tick(self):
