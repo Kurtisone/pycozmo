@@ -12,7 +12,7 @@ from typing import Any
 from unittest import mock
 
 import pycozmo
-from pycozmo import event, game_behaviors, quick_tap
+from pycozmo import event, game_behaviors, memory_match, quick_tap
 from pycozmo.protocol_encoder import ObjectType
 
 from .test_brain import cozmo_assets_available
@@ -48,7 +48,7 @@ class GameClient(ScriptClient):
         self.cubes.place(self.cubes[CUBE1], 200.0, 0.0, math.pi)
         self.animation_groups.update({name: None for name in (
             "RequestGameSpeedTapInitial1", "RequestGameSpeedTapRequest1", "RequestGameSpeedTapIdle1",
-            "RequestGameSpeedTapDeny1", "RequestGameSpeedTapAccept1")})
+            "RequestGameSpeedTapDeny1", "RequestGameSpeedTapAccept1", "MemoryMatchCozmoGetOut")})
 
 
 class TestRequestGame(unittest.TestCase):
@@ -90,6 +90,24 @@ class TestRequestGame(unittest.TestCase):
                 mock.patch.object(game_behaviors.BehaviorRequestGameSimple, "play_quick_tap"):
             self.run_script(self.make())
         self.assertEqual(self.answers(), [True])
+
+    def test_memory_match_wants_the_three_cubes(self):
+        script = self.make(requiredUnlockId="MemoryMatchGame")
+        self.assertFalse(script.wants_to_run())
+        self.cli.cubes[ObjectType.Block_LIGHTCUBE3].connected = True
+        self.assertTrue(script.wants_to_run())
+
+    def test_memory_match_is_played(self):
+        self.cli.cubes[ObjectType.Block_LIGHTCUBE3].connected = True
+        timer = threading.Timer(0.1, self.cli.dispatch, (event.EvtCubeTapped, self.cli, self.cli.cubes[CUBE2], 1))
+        timer.start()
+        self.addCleanup(timer.cancel)
+        with mock.patch.object(memory_match, "face_cubes") as face_cubes, \
+                mock.patch.object(memory_match.MemoryMatch, "play", return_value=memory_match.PLAYER):
+            self.run_script(self.make(requiredUnlockId="MemoryMatchGame"))
+        self.assertEqual(len(face_cubes.call_args.args[1]), 3)
+        self.needs.apply_action.assert_called_once_with("MemoryMatchLose")
+        self.assertEqual(self.cli.played[-1], "MemoryMatchCozmoGetOut")
 
     def test_no_tap_is_a_no(self):
         self.run_script(self.make())
