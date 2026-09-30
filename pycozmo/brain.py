@@ -279,6 +279,9 @@ class Brain:
     def on_robot_orientation_change(self, cli: client.Client, orientation: robot.RobotOrientation) -> None:
         if orientation == robot.RobotOrientation.ON_THREADS:
             self.on_treads_time = time.perf_counter()
+        if isinstance(self.behavior, cube_behaviors.BehaviorPopAWheelie):
+            # On its back of its own doing: nothing to react to.
+            return
         action = self.ORIENTATION_NEED_ACTIONS.get(orientation)
         if action:
             self.apply_need_action(action)

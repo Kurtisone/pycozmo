@@ -411,6 +411,13 @@ class TestCubes(unittest.TestCase):
             self.move()
         self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
 
+    def test_on_its_back_of_its_own_doing(self):
+        # Popping a wheelie puts the robot on its back: no reaction to cut it short.
+        script = pycozmo.cube_behaviors.BehaviorPopAWheelie(self.brain.cli, {"behaviorID": "PopAWheelie"})
+        with mock.patch.object(self.brain, "behavior", script):
+            self.brain.on_robot_orientation_change(self.brain.cli, pycozmo.robot.RobotOrientation.ON_BACK)
+        self.assertNotIn("RobotOnBack", self.reactions())
+
     def test_nor_one_the_robot_handles(self):
         # Lifting a cube moves it, and so does tapping it in a game: neither is to cut the behavior short.
         self.see()

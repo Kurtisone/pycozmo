@@ -188,26 +188,30 @@ def find_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = Non
     return False
 
 
-def dock_pose(cube: LightCube, distance: float) -> util.Pose:
+def dock_pose(cube: LightCube, distance: float, side: int = 0) -> util.Pose:
     """
     Where the robot's origin stands to face the side of the cube it last saw, squarely, with the cube's centre
-    that far ahead.
+    that far ahead. Or another side: so many quarter turns round the cube from that one, anticlockwise seen from
+    above.
     """
     if cube.pose is None:
         raise ValueError("Cube {} has not been seen.".format(cube.object_type.name))
-    angle = cube.pose.angle
+    angle = cube.pose.angle + side * math.pi / 2
     return util.Pose(cube.pose.x + distance * math.cos(angle), cube.pose.y + distance * math.sin(angle), 0.0,
                      angle_z=util.Angle(radians=angle + math.pi))
 
 
 def go_to_cube(cli: Any, cube: LightCube, gap: float = PREDOCK_GAP,
-               cancel: Optional[threading.Event] = None) -> bool:
-    """ Drive to face the side of the cube last seen, that far short of docking, and say whether it got there. """
+               cancel: Optional[threading.Event] = None, side: int = 0) -> bool:
+    """
+    Drive to face the side of the cube last seen, or another: see dock_pose(); that far short of docking. Say
+    whether it got there.
+    """
     _check(cancel)
     if cube.pose is None:
         return False
     with in_use(cube):
-        return bool(cli.go_to_pose(dock_pose(cube, DOCK_DISTANCE + gap)))
+        return bool(cli.go_to_pose(dock_pose(cube, DOCK_DISTANCE + gap, side)))
 
 
 def dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None,
@@ -399,15 +403,16 @@ def place_on_cube(cli: Any, target: LightCube, cancel: Optional[threading.Event]
         return backed
 
 
-def roll_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None) -> bool:
+def roll_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = None, side: int = 0) -> bool:
     """
     Roll a cube over onto its side towards the robot, and say whether it did - whether the cube says its up axis
-    changed. The robot stops at cliffs again afterwards; it cannot while the roll tips it up.
+    changed. The robot comes from the side of the cube it last saw, or another: see dock_pose(). It stops at
+    cliffs again afterwards; it cannot while the roll tips it up.
     """
     with in_use(cube):
         axis = cube.up_axis
         cli.set_lift_height(CARRY_HEIGHT)
-        if not (go_to_cube(cli, cube, cancel=cancel) and
+        if not (go_to_cube(cli, cube, cancel=cancel, side=side) and
                 dock_with_cube(cli, cube, cancel=cancel, distance=ROLL_DISTANCE)):
             return False
         cli.enable_stop_on_cliff(False)

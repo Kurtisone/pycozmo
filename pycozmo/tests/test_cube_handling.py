@@ -37,6 +37,16 @@ class TestDockPose(unittest.TestCase):
         self.assertAlmostEqual(pose.position.y, 100.0)
         self.assertAlmostEqual(math.sin(pose.rotation.angle_z.radians), -1.0)
 
+    def test_a_quarter_turn_round(self):
+        # Seen by its side facing -x; the next side anticlockwise faces -y, the one before +y.
+        self.cubes.place(self.cube, 300.0, 100.0, math.pi)
+        pose = cube_handling.dock_pose(self.cube, 100.0, side=1)
+        self.assertAlmostEqual(pose.position.x, 300.0)
+        self.assertAlmostEqual(pose.position.y, 0.0)
+        self.assertAlmostEqual(math.sin(pose.rotation.angle_z.radians), 1.0)
+        pose = cube_handling.dock_pose(self.cube, 100.0, side=-1)
+        self.assertAlmostEqual(pose.position.y, 200.0)
+
     def test_a_cube_never_seen_has_none(self):
         with self.assertRaises(ValueError):
             cube_handling.dock_pose(self.cube, 100.0)

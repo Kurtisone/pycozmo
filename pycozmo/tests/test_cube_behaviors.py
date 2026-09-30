@@ -290,5 +290,119 @@ class TestRegistered(unittest.TestCase):
                           ("PickUpCube", cube_behaviors.BehaviorPickUpCube),
                           ("PickUpAndPutDownCube", cube_behaviors.BehaviorPickUpAndPutDownCube),
                           ("CubeLiftWorkout", cube_behaviors.BehaviorCubeLiftWorkout),
-                          ("StackBlocks", cube_behaviors.BehaviorStackBlocks)):
+                          ("StackBlocks", cube_behaviors.BehaviorStackBlocks),
+                          ("RollBlock", cube_behaviors.BehaviorRollBlock),
+                          ("PopAWheelie", cube_behaviors.BehaviorPopAWheelie)):
             self.assertIs(behavior.get_behavior_class_from_dict({"behaviorClass": name}), cls)
+
+
+class TestRollBlock(ScriptTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.cube = mock.Mock(up_axis=UpAxis.XNegative)
+        patcher = mock.patch.object(cube_behaviors, "cubes_on_their_side", return_value=[self.cube])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.find_cube = self.patch("find_cube")
+        self.cli.animation_groups.update({name: None for name in (
+            "RollBlockInitial", "RollBlockSuccess", "RollBlockRetry")})
+        self.faces: List[Any] = []
+        self.sides: List[int] = []
+
+    def roll_to(self, *faces: Any) -> None:
+        """ Each roll leaves the cube on the next face given. """
+        self.faces = list(faces)
+
+        def roll(cli: Any, cube: Any, cancel: Any = None, side: int = 0) -> bool:
+            self.steps.append(("roll_cube", cube))
+            self.sides.append(side)
+            cube.up_axis = self.faces.pop(0)
+            return True
+
+        patcher = mock.patch.object(cube_behaviors.cube_handling, "roll_cube", side_effect=roll)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_rolled_until_upright(self):
+        # Its top pointed at the robot: down, then away, then up.
+        self.roll_to(UpAxis.ZNegative, UpAxis.XPositive, UpAxis.ZPositive)
+        script = self.make(cube_behaviors.BehaviorRollBlock, needsActionID="RollACube")
+        self.assertTrue(script.wants_to_run())
+        self.run_script(script)
+        self.assertEqual([step[0] for step in self.steps],
+                         ["roll_cube", "find_cube", "roll_cube", "find_cube", "roll_cube"])
+        self.assertEqual(self.sides, [0, 0, 0])
+        self.assertEqual(self.cli.played, ["RollBlockInitial", "RollBlockRetry", "RollBlockRetry", "RollBlockSuccess"])
+        self.assertEqual(self.needs.actions, ["RollACube"])
+
+    def test_round_to_its_bottom_when_its_top_points_aside(self):
+        # From one side to another: it rolled round its top, which points right of the robot.
+        self.roll_to(UpAxis.YPositive, UpAxis.ZPositive)
+        self.run_script(self.make(cube_behaviors.BehaviorRollBlock, needsActionID="RollACube"))
+        self.assertEqual(self.sides, [0, -1])
+        self.assertEqual(self.needs.actions, ["RollACube"])
+
+    def test_four_rolls_at_most(self):
+        self.roll_to(UpAxis.ZNegative, UpAxis.XPositive, UpAxis.ZNegative, UpAxis.XNegative)
+        self.run_script(self.make(cube_behaviors.BehaviorRollBlock, needsActionID="RollACube"))
+        self.assertEqual([step[0] for step in self.steps].count("roll_cube"), 4)
+        self.assertEqual(self.needs.actions, [])
+
+    def test_once_when_the_way_it_lies_does_not_matter(self):
+        self.roll_to(UpAxis.YPositive)
+        self.run_script(self.make(cube_behaviors.BehaviorRollBlock, isBlockRotationImportant=False,
+                                  needsActionID="RollACube_Sparked"))
+        self.assertEqual(self.needs.actions, ["RollACube_Sparked"])
+
+
+class TestPopAWheelie(ScriptTestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.cli.animation_groups.update({name: None for name in (
+            "PopAWheelieInitial", "SuccessfulWheelie", "PopAWheelieRetry")})
+
+    def test_up_and_down_again(self):
+        self.patch("pop_a_wheelie")
+        self.run_script(self.make(cube_behaviors.BehaviorPopAWheelie, needsActionID="PopAWheelie"))
+        self.assertEqual(self.steps, [("pop_a_wheelie", mock.sentinel.near)])
+        self.assertEqual(self.cli.played, ["PopAWheelieInitial", "SuccessfulWheelie"])
+        self.assertEqual(self.needs.actions, ["PopAWheelie"])
+
+    def test_still_on_its_treads(self):
+        wheelie = self.patch("pop_a_wheelie")
+        wheelie.side_effect = self.step("pop_a_wheelie", False)
+        self.run_script(self.make(cube_behaviors.BehaviorPopAWheelie, needsActionID="PopAWheelie"))
+        self.assertEqual(self.cli.played, ["PopAWheelieInitial", "PopAWheelieRetry"])
+        self.assertEqual(self.needs.actions, [])
+
+
+class TestSideBelowTop(unittest.TestCase):
+
+    def test_through_the_top_or_the_bottom(self):
+        self.assertEqual(cube_behaviors.side_below_top(UpAxis.XNegative, UpAxis.ZNegative), 0)
+        self.assertEqual(cube_behaviors.side_below_top(UpAxis.ZNegative, UpAxis.YPositive), 0)
+        self.assertEqual(cube_behaviors.side_below_top(None, UpAxis.YPositive), 0)
+
+    def test_round_the_top(self):
+        # X up, then Y: X faces the robot, Y faced away, and X crossed with Y, the top, points left.
+        self.assertEqual(cube_behaviors.side_below_top(UpAxis.XPositive, UpAxis.YPositive), 1)
+        self.assertEqual(cube_behaviors.side_below_top(UpAxis.YPositive, UpAxis.XPositive), -1)
+        self.assertEqual(cube_behaviors.side_below_top(UpAxis.XNegative, UpAxis.YPositive), -1)
+        self.assertEqual(cube_behaviors.side_below_top(UpAxis.XNegative, UpAxis.YNegative), 1)
+
+
+class TestOnTheirSide(unittest.TestCase):
+
+    def test_the_cubes_to_roll_back(self):
+        cli = pycozmo.client.Client()
+        for cube in cli.cubes:
+            cube.connected = True
+        cubes = cli.cubes
+        cubes.place(cubes[CUBE1], 200.0, 0.0, 0.0)
+        cubes[CUBE1].up_axis = UpAxis.XNegative
+        cubes.place(cubes[CUBE2], 300.0, 0.0, 0.0)
+        cubes[CUBE2].up_axis = UpAxis.ZPositive
+        self.assertEqual(cube_behaviors.cubes_on_their_side(cli), [cubes[CUBE1]])
+        self.assertEqual(cube_behaviors.usable_cubes(cli), [cubes[CUBE2]])

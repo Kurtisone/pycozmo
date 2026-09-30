@@ -977,6 +977,8 @@ def get_behavior_class_from_dict(data):
         "PickUpAndPutDownCube": cube_behaviors.BehaviorPickUpAndPutDownCube,
         "CubeLiftWorkout": cube_behaviors.BehaviorCubeLiftWorkout,
         "StackBlocks": cube_behaviors.BehaviorStackBlocks,
+        "RollBlock": cube_behaviors.BehaviorRollBlock,
+        "PopAWheelie": cube_behaviors.BehaviorPopAWheelie,
     })
     cls = class_map.get(data["behaviorClass"], Behavior)
     return cls

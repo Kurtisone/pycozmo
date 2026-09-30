@@ -15,7 +15,7 @@ script between steps and stops the motors.
 import os
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import activity
 from . import behavior
@@ -37,9 +37,13 @@ __all__ = [
     "BehaviorPickUpAndPutDownCube",
     "BehaviorCubeLiftWorkout",
     "BehaviorStackBlocks",
+    "BehaviorRollBlock",
+    "BehaviorPopAWheelie",
     "Workout",
 
     "usable_cubes",
+    "cubes_on_their_side",
+    "side_below_top",
     "load_workouts",
     "play_and_wait",
 ]
@@ -55,6 +59,16 @@ def usable_cubes(cli: Any) -> List[LightCube]:
              if cube.connected and cube.pose is not None and cube is not cli.cubes.carried
              and cube.up_axis in (None, UpAxis.ZPositive) and abs(cube.pose.z - CUBE_SIDE / 2) < CUBE_SIDE / 4
              and not _covered(cli, cube)]
+    return sorted(cubes, key=lambda cube: (cube.pose.x - x) ** 2 + (cube.pose.y - y) ** 2)
+
+
+def cubes_on_their_side(cli: Any) -> List[LightCube]:
+    """ The cubes a behavior can roll back upright: connected, seen since they last moved, on the ground, lying on a
+    side. Nearest first. """
+    x, y = cli.pose.position.x, cli.pose.position.y
+    cubes = [cube for cube in cli.cubes
+             if cube.connected and cube.pose is not None and cube is not cli.cubes.carried
+             and cube.up_axis not in (None, UpAxis.ZPositive) and abs(cube.pose.z - CUBE_SIDE / 2) < CUBE_SIDE / 4]
     return sorted(cubes, key=lambda cube: (cube.pose.x - x) ** 2 + (cube.pose.y - y) ** 2)
 
 
@@ -279,3 +293,99 @@ class BehaviorStackBlocks(BehaviorScript):
             self.need_action()
         else:
             cube_handling.put_down_cube(self.cli, cancel=cancel)
+
+
+class BehaviorRollBlock(BehaviorScript):
+    """
+    RollBlock - roll a cube lying on its side back onto its bottom, or, when the configuration says the way it
+    lies does not matter, roll any cube once.
+
+    A roll tips the cube towards the robot: the side that was up turns to face it, and the one that faced away
+    comes up. The robot rolls it again until it stands upright, from where it stands - unless the cube's top
+    points to one side, as it does when a roll takes it from one side to another: it rolls then round its own
+    top and bottom, and never comes upright that way. The two sides that were up tell which way the top points,
+    and the robot goes round to the cube's bottom. Anki's engine came to that side in the first place: it told a
+    cube's sides apart by their markers, which PyCozmo does not.
+    """
+
+    #: Rolls at most, getting a cube back upright: one to find which way its top points, and three from there
+    #: if it pointed at the robot.
+    MAX_ROLLS = 4
+
+    def upright_matters(self) -> bool:
+        return bool(self.conf.get("isBlockRotationImportant", True))
+
+    def candidates(self) -> List[LightCube]:
+        if self.cli.cubes.carried is not None:
+            return []
+        on_side = cubes_on_their_side(self.cli)
+        return on_side if self.upright_matters() else on_side + usable_cubes(self.cli)
+
+    def wants_to_run(self) -> bool:
+        return bool(self.candidates())
+
+    def script(self, cancel: threading.Event) -> None:
+        cubes = self.candidates()
+        if not cubes:
+            return
+        cube = cubes[0]
+        self.play("RollBlockInitial", cancel)
+        side = 0
+        for attempt in range(self.MAX_ROLLS if self.upright_matters() else 1):
+            if attempt and not cube_handling.find_cube(self.cli, cube, cancel=cancel):
+                return
+            before = cube.up_axis
+            rolled = cube_handling.roll_cube(self.cli, cube, cancel=cancel, side=side)
+            if rolled and (not self.upright_matters() or cube.up_axis == UpAxis.ZPositive):
+                self.play("RollBlockSuccess", cancel)
+                self.need_action()
+                return
+            side = side_below_top(before, cube.up_axis) if rolled else 0
+            self.play("RollBlockRetry", cancel)
+
+
+#: Each up axis, as a vector in the cube's frame.
+_AXES: Dict[Optional[UpAxis], Tuple[int, int, int]] = {
+    UpAxis.XNegative: (-1, 0, 0),
+    UpAxis.XPositive: (1, 0, 0),
+    UpAxis.YNegative: (0, -1, 0),
+    UpAxis.YPositive: (0, 1, 0),
+    UpAxis.ZNegative: (0, 0, -1),
+    UpAxis.ZPositive: (0, 0, 1),
+}
+
+
+def side_below_top(before: Optional[UpAxis], after: Optional[UpAxis]) -> int:
+    """
+    After a roll that took a cube from one side to another, the side of it the robot rolls it upright from, for
+    roll_cube(): a quarter turn round it from the side it faced, anticlockwise or not, to the cube's bottom. 0 when
+    the roll went through its top or bottom, and the robot can go on from where it stands.
+
+    The side that was up now faces the robot, and the one that is up faced away: the one's axis crossed with the
+    other's points to the robot's left.
+    """
+    a, b = _AXES.get(before), _AXES.get(after)
+    if a is None or b is None or a[2] or b[2]:
+        return 0
+    left = a[0] * b[1] - a[1] * b[0]
+    # The top to the left, the robot goes round to the right: anticlockwise from the side it faced.
+    return 1 if left > 0 else -1
+
+
+class BehaviorPopAWheelie(BehaviorScript):
+    """ PopAWheelie - pop a wheelie against a cube, and come down again with Anki's animation for it. """
+
+    def wants_to_run(self) -> bool:
+        return self.cli.cubes.carried is None and bool(usable_cubes(self.cli) or cubes_on_their_side(self.cli))
+
+    def script(self, cancel: threading.Event) -> None:
+        cubes = usable_cubes(self.cli) or cubes_on_their_side(self.cli)
+        if not cubes:
+            return
+        self.play("PopAWheelieInitial", cancel)
+        if cube_handling.pop_a_wheelie(self.cli, cubes[0], cancel=cancel):
+            # It raises the lift, which brings the robot down onto its treads.
+            self.play("SuccessfulWheelie", cancel)
+            self.need_action()
+        else:
+            self.play("PopAWheelieRetry", cancel)
