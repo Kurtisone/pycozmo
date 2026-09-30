@@ -85,7 +85,7 @@ round the cube or not, in steps with durations. `pycozmo.cube_lights` loads them
 shows them. The brain lights connected cubes as the application did: `Connected`, a dim cyan breath every five
 seconds, and `Visible`, a steady cyan while the robot sees the cube. Quick Tap shows its own colours, and
 `speedTapWin` and `speedTapLose` after each hand; the others serve games and tricks that are not implemented yet. How
-long a light frame lasts is not measured; 30 ms fits Anki's periods.
+long a light frame lasts was measured on a robot: 33.3 ms, 30 frames a second.
 
 
 Emotions and needs

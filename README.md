@@ -314,8 +314,7 @@ cyan while the robot sees it. It looks for markers five times a second while the
 cube it sees in the robot's world frame, in `cli.cubes`. A cube seen for the first time, or where it was moved to, is
 acknowledged (`ObjectPositionUpdated`), and one moved while the robot sees it is reacted to (`CubeMoved`) - unless
 the robot moved it itself, lifting it, docking with it or tapping it in a game. Taps and moves come as `EvtCubeTapped`
-and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. How long a light frame lasts is not measured yet: 30 ms
-fits Anki's periods.
+and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. A light frame lasts 33.3 ms, measured on a robot.
 
 `pycozmo.cube_handling` goes to a cube, docks with it by its marker, and picks it up, puts it down or sets it on
 another; the brain's behaviors build on it. `PlayAlone` picks a cube up and works out with it (`CubeLiftWorkout`, as

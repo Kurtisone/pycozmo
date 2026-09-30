@@ -230,5 +230,5 @@ class TestLightAnimations(unittest.TestCase):
         # A dim cyan breath: on 10 ms, off 5 s, a second's fade either way.
         self.assertEqual(lights.Color.from_int16(state.on_color).int_color, 0x007b7bff)
         self.assertEqual((state.on_frames, state.off_frames, state.transition_on_frames,
-                          state.transition_off_frames), (1, 167, 33, 33))
+                          state.transition_off_frames), (1, 150, 30, 30))
         self.assertEqual(connected[0].duration, 0.0)
