@@ -337,6 +337,9 @@ class Brain:
         if not moving or cube.in_use or cube is cli.cubes.carried:
             # The robot's own doing, or a game's, is no news.
             return
+        if isinstance(self.behavior, cube_behaviors.BehaviorScript):
+            # Nor is a cube the robot knocked, handling another: the reaction would cut the handling short.
+            return
         # Where it is now is news again.
         self.acknowledged_cubes.discard(cube.object_type)
         if cube.seen_within(self.CUBE_IN_VIEW_TIME) and not cli.robot_picked_up:

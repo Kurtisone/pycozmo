@@ -404,6 +404,13 @@ class TestCubes(unittest.TestCase):
         self.move()
         self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
 
+    def test_nor_one_moved_while_the_robot_handles_another(self):
+        self.see()
+        script = pycozmo.cube_behaviors.BehaviorStackBlocks(self.brain.cli, {"behaviorID": "StackBlocks"})
+        with mock.patch.object(self.brain, "behavior", script):
+            self.move()
+        self.assertEqual(self.reactions(), ["ObjectPositionUpdated"])
+
     def test_nor_one_the_robot_handles(self):
         # Lifting a cube moves it, and so does tapping it in a game: neither is to cut the behavior short.
         self.see()
