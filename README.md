@@ -485,6 +485,7 @@ Advanced:
 - [video.py](examples/video.py) - demonstrates visualizing video captured from the camera back on display
 - [cube_lights.py](examples/cube_lights.py) - demonstrates cube connection and LED control
 - [cube_light_animation.py](examples/cube_light_animation.py) - demonstrates cube LED animation control
+- [quick_tap.py](examples/quick_tap.py) - plays Quick Tap, the cube game of Anki's app, with Cozmo
 - [charger_lights.py](examples/charger_lights.py) - demonstrates Cozmo charging platform LED control
 - [audio.py](examples/audio.py) - demonstrates 22 kHz, 16-bit, mono WAVE file playback through Cozmo's speaker 
 - [nvram.py](examples/nvram.py) - demonstrates reading data from Cozmo's NVRAM (non-volatile memory)

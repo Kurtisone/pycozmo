@@ -19,6 +19,7 @@ from . import emotions
 from . import needs
 from . import behavior
 from . import cube_behaviors
+from . import game_behaviors
 from . import activity
 from . import motion_detection
 from . import marker_detection
@@ -113,6 +114,9 @@ class Brain:
         for script in self.behaviors.values():
             if isinstance(script, cube_behaviors.BehaviorScript):
                 script.get_mood = self.get_mood
+        for candidate in self.activities.values():
+            if candidate.strategy.type == "PlayWithHumans":
+                candidate.strategy.can_request_game = self.can_request_game
         self.reaction_trigger_behavior_map = behavior.load_reaction_trigger_behavior_map(resource_dir)
         self.emotion_types = emotions.load_emotion_types(resource_dir)
         self.emotion_events = emotions.load_emotion_events(resource_dir)
@@ -139,6 +143,7 @@ class Brain:
         self.listen(event.EvtNewRawCameraImage, self.on_camera_image)
         self.listen(event.EvtCubeMovingChange, self.on_cube_moving_change)
         self.listen(event.EvtCubeObserved, self.on_cube_observed)
+        self.listen(event.EvtGameRequestAnswered, self.on_game_request_answered)
         # TODO: ...
 
         # When the camera images were last searched for cube markers. See on_camera_image() .
@@ -342,6 +347,18 @@ class Brain:
         if cube.object_type not in self.acknowledged_cubes:
             self.acknowledged_cubes.add(cube.object_type)
             self.post_reaction("ObjectPositionUpdated")
+
+    def can_request_game(self) -> bool:
+        """ Whether the robot could ask the player for a game now: PlayWithHumans waits for it. """
+        now = time.perf_counter()
+        return any(isinstance(candidate, game_behaviors.BehaviorRequestGameSimple) and
+                   self.can_run_behavior(behavior_id, now, now) for behavior_id, candidate in self.behaviors.items())
+
+    def on_game_request_answered(self, cli: client.Client, accepted: bool) -> None:
+        # The more often the player says no, the longer the robot waits to ask again.
+        for candidate in self.activities.values():
+            if candidate.strategy.type == "PlayWithHumans":
+                candidate.strategy.answered(accepted)
 
     def post_reaction(self, reaction_trigger: str) -> None:
         """ Post a reaction trigger to the reaction trigger queue. """

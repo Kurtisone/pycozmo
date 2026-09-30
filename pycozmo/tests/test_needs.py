@@ -274,9 +274,9 @@ class TestNeedsStrategies(unittest.TestCase):
         return pycozmo.activity.ActivityStrategy.from_json(data)
 
     def test_the_needs_strategies_are_evaluated(self):
-        for name in ("Simple", "Needs", "SevereNeedTransition", "NeedBasedCooldown"):
+        for name in ("Simple", "Needs", "SevereNeedTransition", "NeedBasedCooldown", "PlayWithHumans"):
             self.assertTrue(self.strategy({"type": name}).is_supported, name)
-        for name in ("Spark", "Pyramid", "PlayWithHumans"):
+        for name in ("Spark", "Pyramid"):
             self.assertFalse(self.strategy({"type": name}).is_supported, name)
 
     def test_a_strategy_with_no_condition_is_never_held_back_by_the_needs(self):

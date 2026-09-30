@@ -968,9 +968,10 @@ def get_behavior_class_from_dict(data):
         # Not implemented, for lack of an animation in AnimationTriggerMap.json:
         # ReactToMotorCalibration, ReactToPlacedOnSlope, ReactToReturnedToTreads.
     }
-    # The cube handling behaviors build on this module, so they join the map here.
-    from . import cube_behaviors
+    # The cube handling and game behaviors build on this module, so they join the map here.
+    from . import cube_behaviors, game_behaviors
     class_map.update({
+        "RequestGameSimple": game_behaviors.BehaviorRequestGameSimple,
         "PutDownBlock": cube_behaviors.BehaviorPutDownBlock,
         "PickUpCube": cube_behaviors.BehaviorPickUpCube,
         "PickUpAndPutDownCube": cube_behaviors.BehaviorPickUpAndPutDownCube,

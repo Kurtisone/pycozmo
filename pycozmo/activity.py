@@ -254,19 +254,21 @@ class ActivityStrategy:
     """
     When an activity wants to run, how long it runs, and how long it rests afterwards.
 
-    Four of the seven strategy types are evaluated. "Simple" asks nothing of the world. "Needs" and
+    Five of the seven strategy types are evaluated. "Simple" asks nothing of the world. "Needs" and
     "SevereNeedTransition" read the nurture needs, through a condition the strategy states, and are
     what puts a robot in trouble into an activity of its own. "NeedBasedCooldown" runs whenever it
     likes but rests for a stretch read off a graph at a need's level, so the lower the need the
-    sooner it comes round again.
+    sooner it comes round again. "PlayWithHumans" runs when the robot can ask the player for a game
+    - which the brain tells it through can_request_game - and rests the longer the more often the
+    player has said no: 120 s, then 1.3 times as long each time.
 
-    The other three gate on what this library does not have: a spark sent from the application, a
-    pyramid of cubes, or a player asking for a game. An activity carrying one of them never wants to
-    run, which is also what the robot does while nothing has sparked it.
+    The other two gate on what this library does not have: a spark sent from the application, or a
+    pyramid of cubes. An activity carrying one of them never wants to run, which is also what the
+    robot does while nothing has sparked it.
     """
 
     #: Strategy types this implementation can evaluate.
-    SUPPORTED_TYPES = ("Simple", "Needs", "SevereNeedTransition", "NeedBasedCooldown")
+    SUPPORTED_TYPES = ("Simple", "Needs", "SevereNeedTransition", "NeedBasedCooldown", "PlayWithHumans")
 
     __slots__ = [
         "type",
@@ -285,6 +287,11 @@ class ActivityStrategy:
         "need_id",
         "need_cooldown_graph",
         "need_cooldown_randomness_graph",
+        "cooldown_rejection_base",
+        "cooldown_rejection_exponent",
+        "rejections",
+        "answered_since_start",
+        "can_request_game",
     ]
 
     def __init__(self,
@@ -303,7 +310,9 @@ class ActivityStrategy:
                  higher_priority_config: Optional[NeedsStrategyConfig] = None,
                  need_id: Optional[str] = None,
                  need_cooldown_graph: Optional[DecayGraph] = None,
-                 need_cooldown_randomness_graph: Optional[DecayGraph] = None) -> None:
+                 need_cooldown_randomness_graph: Optional[DecayGraph] = None,
+                 cooldown_rejection_base: Optional[float] = None,
+                 cooldown_rejection_exponent: float = 1.0) -> None:
         self.type = str(strategy_type)
         #: How long before the activity may end, and how long before it should. A negative
         #: should-end duration means never, which is how the severe-needs activities hold on until
@@ -332,6 +341,16 @@ class ActivityStrategy:
         self.need_id = str(need_id) if need_id is not None else None
         self.need_cooldown_graph = need_cooldown_graph
         self.need_cooldown_randomness_graph = need_cooldown_randomness_graph
+        # How long PlayWithHumans rests once the player has said no, how much longer each time, and how many times
+        # in a row they have.
+        self.cooldown_rejection_base = \
+            float(cooldown_rejection_base) if cooldown_rejection_base is not None else None
+        self.cooldown_rejection_exponent = float(cooldown_rejection_exponent)
+        self.rejections = 0
+        # Whether the player has answered since the activity started: that ends it.
+        self.answered_since_start = False
+        #: Whether the robot can ask for a game now, for PlayWithHumans. The brain says; nothing else can.
+        self.can_request_game: Callable[[], bool] = lambda: False
 
     @staticmethod
     def read_graph(data: Dict, key: str) -> Optional[DecayGraph]:
@@ -358,7 +377,9 @@ class ActivityStrategy:
             if 'higherPriorityStrategyConfig' in data else None,
             need_id=data.get('needId'),
             need_cooldown_graph=cls.read_graph(data, 'needCooldownGraph'),
-            need_cooldown_randomness_graph=cls.read_graph(data, 'needCooldownRandomnessGraph'))
+            need_cooldown_randomness_graph=cls.read_graph(data, 'needCooldownRandomnessGraph'),
+            cooldown_rejection_base=data.get('cooldownRejectionBaseSecs'),
+            cooldown_rejection_exponent=data.get('cooldownRejectionExponent', 1.0))
 
     @property
     def is_supported(self) -> bool:
@@ -374,6 +395,8 @@ class ActivityStrategy:
         more. The flat figures stand in while nothing tracks the needs.
         """
         base, randomness = self.cooldown_base, self.cooldown_randomness
+        if self.rejections and self.cooldown_rejection_base is not None:
+            base = self.cooldown_rejection_base * self.cooldown_rejection_exponent ** (self.rejections - 1)
         if self.type == "NeedBasedCooldown" and robot_needs is not None and self.need_id:
             level = robot_needs.level(self.need_id)
             if self.need_cooldown_graph is not None:
@@ -396,8 +419,14 @@ class ActivityStrategy:
             return False
         return self.wants_to_run_config.holds(robot_needs)
 
+    def answered(self, accepted: bool) -> None:
+        """ Note the player's answer to a game the robot asked for, which ends the activity. """
+        self.rejections = 0 if accepted else self.rejections + 1
+        self.answered_since_start = True
+
     def started(self, robot_needs: Any) -> None:
         """ Note the activity starting, so that a transition is announced only once. """
+        self.answered_since_start = False
         if self.wants_to_run_config is not None:
             self.wants_to_run_config.expressed(robot_needs)
 
@@ -516,6 +545,8 @@ class Activity:
             return False
         if now < self.cooldown_end_time:
             return False
+        if self.strategy.type == "PlayWithHumans" and not self.strategy.can_request_game():
+            return False
         if not self.strategy.needs_allow(robot_needs):
             return False
         if not self.strategy.mood_allows(mood or {}):
@@ -529,6 +560,9 @@ class Activity:
     def should_end(self, now: Optional[float] = None) -> bool:
         """ Whether the activity has run long enough to give way to another. """
         now = time.perf_counter() if now is None else now
+        if self.start_time is not None and self.strategy.answered_since_start:
+            # The robot asked the player for a game, and had an answer: yes, and they played, or no.
+            return True
         duration = self.strategy.should_end_duration
         if self.start_time is None or duration is None or duration < 0.0:
             return False

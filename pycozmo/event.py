@@ -49,6 +49,7 @@ __all__ = [
     "EvtCubeMovingChange",
     "EvtCubeTapped",
     "EvtCubeObserved",
+    "EvtGameRequestAnswered",
 
     "STATUS_EVENTS",
 
@@ -226,6 +227,10 @@ class EvtCubeTapped(Event):
 
 class EvtCubeObserved(Event):
     """ Triggered with a cubes.LightCube each time the camera sees it; its pose is where. """
+
+
+class EvtGameRequestAnswered(Event):
+    """ Triggered with whether the player took up the game the robot asked to play. """
 
 
 class Dispatcher(object):

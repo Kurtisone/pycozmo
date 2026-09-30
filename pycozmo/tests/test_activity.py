@@ -188,6 +188,28 @@ class TestActivity(unittest.TestCase):
     def test_an_unsupported_strategy_never_wants_to_run(self):
         self.assertFalse(self.make({"type": "Spark"}).wants_to_run(now=0.0))
 
+    def test_playing_with_humans_waits_for_a_game_to_ask_for(self):
+        activity = self.make({"type": "PlayWithHumans", "cooldownBaseSecs": 30.0, "cooldownRejectionBaseSecs": 120.0,
+                              "cooldownRejectionExponent": 2.0})
+        self.assertFalse(activity.wants_to_run(now=0.0))
+        activity.strategy.can_request_game = lambda: True
+        self.assertTrue(activity.wants_to_run(now=0.0))
+        cooldowns = []
+        for accepted in (False, False, True):
+            activity.strategy.answered(accepted)
+            cooldowns.append(activity.strategy.get_cooldown())
+        self.assertEqual(cooldowns, [120.0, 240.0, 30.0])
+
+    def test_an_answer_ends_playing_with_humans(self):
+        activity = self.make({"type": "PlayWithHumans"})
+        activity.started(now=0.0)
+        self.assertFalse(activity.should_end(now=1000.0))
+        activity.strategy.answered(False)
+        self.assertTrue(activity.should_end(now=1000.0))
+        activity.ended(now=1000.0)
+        activity.started(now=2000.0)
+        self.assertFalse(activity.should_end(now=2000.0))
+
     def test_the_mood_can_hold_it_back(self):
         activity = self.make({
             "requiredMinStartMoodScore": 0.5,
@@ -234,12 +256,17 @@ class TestAgainstCozmoAssets(unittest.TestCase):
         cls.activities = pycozmo.activity.load_activities(str(pycozmo.util.get_cozmo_asset_dir()))
 
     def test_the_strategies_that_are_not_evaluated(self):
-        # The three left gate on what this library does not have: a spark from the application, a
-        # pyramid of cubes, or a player asking for a game. The needs strategies used to be here too;
-        # see test_needs.py .
+        # The two left gate on what this library does not have: a spark from the application, or a
+        # pyramid of cubes. The needs strategies used to be here too, see test_needs.py, and so did
+        # PlayWithHumans.
         unsupported = {activity.strategy.type
                        for activity in self.activities.values() if not activity.strategy.is_supported}
-        self.assertEqual(unsupported, {"Spark", "PlayWithHumans", "Pyramid"})
+        self.assertEqual(unsupported, {"Spark", "Pyramid"})
+
+    def test_playing_with_humans_rests_longer_each_time_the_player_says_no(self):
+        strategy = self.activities["PlayWithHumans"].strategy
+        self.assertEqual((strategy.cooldown_base, strategy.cooldown_rejection_base,
+                          strategy.cooldown_rejection_exponent), (30.0, 120.0, 1.3))
 
     def test_every_sub_activity_is_known(self):
         for activity in self.activities.values():
