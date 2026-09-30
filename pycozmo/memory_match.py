@@ -9,8 +9,8 @@ Cozmo does; whoever gets it wrong is out, and the other wins. If both do in the 
 with a new pattern as long. Played solo, the player goes on until a mistake, and scores the longest pattern repeated.
 
 Cozmo points at a cube by turning to it with Anki's animations for the game - a nod straight ahead, a small turn or a
-big one - chosen by where the cube is from where the robot faces. It remembers four cubes without fail, and is less
-and less sure beyond.
+big one - chosen by where the cube is from where the robot faces, again before each cube. It remembers four cubes
+without fail, and is less and less sure beyond.
 
 Everything here blocks until done, so it must not run on the thread that dispatches the client's events.
 
@@ -68,10 +68,10 @@ COLORS = (
 WRONG_COLOR = lights.red
 #: The name the game's lights are shown under: see Cubes.show_lights().
 LIGHTS_NAME = "MemoryMatch"
-#: How far off the robot's heading a cube is pointed at straight ahead, or with a small turn, in radians. Anki's small
-#: turn is some 32 degrees, and its big one 56, the robot turning 300 degrees a second at most.
-CENTER_ANGLE = math.radians(16.0)
-SMALL_TURN_ANGLE = math.radians(44.0)
+#: How far off the robot's heading a cube is pointed at straight ahead, or with a small turn, in radians: half way
+#: between Anki's turns, which on a robot were 20 to 27 degrees small, and 46 big.
+CENTER_ANGLE = math.radians(12.0)
+SMALL_TURN_ANGLE = math.radians(35.0)
 #: From how long a pattern Cozmo points the quick way.
 FAST_LENGTH = 6
 
