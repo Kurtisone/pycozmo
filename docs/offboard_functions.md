@@ -200,7 +200,12 @@ game. `pycozmo.memory_match` plays Memory Match: the cubes light up in a pattern
 player repeats it by tapping them and Cozmo by turning to point at each, and whoever gets it wrong first loses;
 `examples/memory_match.py`. In freeplay the robot asks for either, through `PlayWithHumans`; the player answers on a
 cube rather than on a phone - a tap takes the game up - and the robot asks from where it is, without looking for a
-face or bringing a cube over. Keep Away is not implemented: the player moves a cube about and Cozmo pounces on it.
+face or bringing a cube over. `pycozmo.keep_away` plays Keep Away: Cozmo moves to where its pounce reaches the
+player's cube, raises its lift and pounces, or pretends to; the cube tells what happened - a tap when the lift comes
+down on it, a move when it is pulled away - and a cube moved while Cozmo only waited or pretended is a flinch, and
+Cozmo's point. Its pounces reach 30 to 46 mm further than the fork in the emulator; this is not measured on a
+robot.
+`examples/keep_away.py`.
 
 
 Compared with the Cozmo SDK
@@ -246,8 +251,7 @@ Compared with the Cozmo application
 | Needs, and asking to be played with | Yes |
 | Feeding, repairing | Taken as actions; no minigame |
 | Sparks: tricks on request | No way to ask for one |
-| Games: Quick Tap, Memory Match | Yes, asked for in freeplay and answered on a cube; not yet tried on a robot |
-| Games: Keep Away | No |
+| Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; not yet tried on a robot |
 | Meeting people: enrolling faces, saying names | No |
 | Songs | No |
 | Explorer mode: driving by hand, with the camera | `examples/rc.py` drives it with an Xbox 360 controller, without the camera |

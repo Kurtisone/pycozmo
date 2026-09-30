@@ -328,9 +328,11 @@ colour the first to tap their cube wins the point, on different colours whoever 
 cube, the lift raised over it, and taps it with Anki's animations. The game's rules were the application's code; these
 are PyCozmo's reading of them. `pycozmo.memory_match` plays Memory Match: the three cubes light up one after
 another, the player repeats the pattern by tapping them, and so does Cozmo, turning to point at each with Anki's
-animations; the pattern grows by one each round, and whoever gets it wrong first loses. `PlayWithHumans` has the
-robot ask for either game now and then: the player takes it up by tapping a cube - for Quick Tap, the cube becomes
-theirs - and turning it down, letting the request time out, makes the robot wait longer before asking again.
+animations; the pattern grows by one each round, and whoever gets it wrong first loses. `pycozmo.keep_away` plays
+Keep Away: Cozmo raises its lift and pounces on the player's cube, or pretends to; pulled away in time, the point is
+the player's, caught or flinched, Cozmo's. `PlayWithHumans` has the robot ask for a game now and then: the player
+takes it up by tapping a cube - for Quick Tap and Keep Away, the cube becomes theirs - and turning it down, letting
+the request time out, makes the robot wait longer before asking again.
 
 That is what `PounceOnMotion` plays with. Once motion has been seen on the ground, Socialize and Hiking give it the
 robot: it puts its head down to watch, turns towards what moves, creeps up on it, and pounces with the lift. A lift
@@ -359,8 +361,8 @@ robot:
   and asks for 0.5, which the graph gives while `Social` is at or below 0.3. This is the only place in Anki's resources
   where the mood decides an activity.
 - `Singing` and `BuildPyramid`, whose strategies need a need level or a pyramid of cubes.
-- `PlayWithHumans`, when the robot can ask for a game: Quick Tap with two cubes connected and one of them seen,
-  Memory Match with the three connected and one seen.
+- `PlayWithHumans`, when the robot can ask for a game: Keep Away with a cube seen, Quick Tap with two cubes
+  connected and one of them seen, Memory Match with the three connected and one seen.
 - `PlayAlone`, `Hiking` and `NothingToDo`.
 
 Within an activity, behaviors are drawn in a random order weighted by their score. A behavior that has just run loses
@@ -433,7 +435,7 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     the others need is in [docs/offboard_functions.md](docs/offboard_functions.md)
 - [ ] Cube handling - going to a cube, docking with it, picking it up, putting it down and stacking it are done, not
     yet tried on a robot; rolling it and popping a wheelie are not
-- [ ] Games - Quick Tap and Memory Match are played, and asked for in freeplay; Keep Away is not
+- [x] Games - Quick Tap, Memory Match and Keep Away are played, and asked for in freeplay; not yet tried on a robot
 - [x] Motion detection - in the image, with Anki's peripheral regions, and on the ground, see
     [What the robot sees](#what-the-robot-sees)
 - [ ] Object (cube and platform) detection - the cubes are placed by their markers, see
@@ -505,7 +507,8 @@ Advanced:
 - [cube_lights.py](examples/cube_lights.py) - demonstrates cube connection and LED control
 - [cube_light_animation.py](examples/cube_light_animation.py) - demonstrates cube LED animation control
 - [quick_tap.py](examples/quick_tap.py) - plays Quick Tap, the cube game of Anki's app, with Cozmo
-- [memory_match.py](examples/memory_match.py) - plays Memory Match, the other cube game of Anki's app, with Cozmo
+- [memory_match.py](examples/memory_match.py) - plays Memory Match, another cube game of Anki's app, with Cozmo
+- [keep_away.py](examples/keep_away.py) - plays Keep Away, the third cube game of Anki's app, with Cozmo
 - [charger_lights.py](examples/charger_lights.py) - demonstrates Cozmo charging platform LED control
 - [audio.py](examples/audio.py) - demonstrates 22 kHz, 16-bit, mono WAVE file playback through Cozmo's speaker 
 - [nvram.py](examples/nvram.py) - demonstrates reading data from Cozmo's NVRAM (non-volatile memory)

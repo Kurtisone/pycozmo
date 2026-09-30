@@ -26,14 +26,19 @@ New features:
     and those the needs levels reward. Nothing keeps a progression, so the brain takes the robot to have them all.
 - Quick Tap. pycozmo.quick_tap plays the game of the Cozmo application, by PyCozmo's reading of its rules: the
     cubes light up, the same colour and the first to tap wins the point, different colours and whoever taps loses
-    it. The robot taps its cube with Anki's animations, the lift raised over it. examples/quick_tap.py plays a game.
+    it. The robot taps its cube with Anki's animations, the lift raised over it, and goes back to its place before
+    each hand, which those animations turn it off a few degrees at a time. examples/quick_tap.py plays a game.
 - Memory Match. pycozmo.memory_match plays the other cube game of the application: the three cubes light up in a
     pattern one longer each round, the player repeats it by tapping them, and so does Cozmo, turning to point at
     each with Anki's animations - straight ahead, a small turn or a big one, by where the cube is. Whoever gets it
     wrong first loses; alone, the player scores the longest pattern repeated. examples/memory_match.py plays a game.
-- Asking for a game. RequestGameSimple asks for Quick Tap or Memory Match, and the PlayWithHumans activity is
-    evaluated: the robot asks now and then, the player takes the game up by tapping a cube, and a no makes it wait
-    120 s, 1.3 times as long for each no in a row. EvtGameRequestAnswered carries the answer.
+- Keep Away. pycozmo.keep_away plays the third cube game of the application: Cozmo moves to where its pounce
+    reaches the player's cube, raises its lift, and pounces with Anki's animations, or pretends to. The cube tells
+    what happened: a tap, the lift came down on it, Cozmo's point; a move, the player pulled it away, theirs; a move
+    while Cozmo only waited or pretended, a flinch, Cozmo's. examples/keep_away.py plays a game.
+- Asking for a game. RequestGameSimple asks for Quick Tap, Memory Match or Keep Away, and the PlayWithHumans
+    activity is evaluated: the robot asks now and then, the player takes the game up by tapping a cube, and a no
+    makes it wait 120 s, 1.3 times as long for each no in a row. EvtGameRequestAnswered carries the answer.
 - The top and bottom of a cube, whose symbol has no bar, are recognized as well as its sides.
 
 Bug fixes:

@@ -12,7 +12,7 @@ from typing import Any
 from unittest import mock
 
 import pycozmo
-from pycozmo import event, game_behaviors, memory_match, quick_tap
+from pycozmo import event, game_behaviors, keep_away, memory_match, quick_tap
 from pycozmo.protocol_encoder import ObjectType
 
 from .test_brain import cozmo_assets_available
@@ -108,6 +108,18 @@ class TestRequestGame(unittest.TestCase):
         self.assertEqual(len(face_cubes.call_args.args[1]), 3)
         self.needs.apply_action.assert_called_once_with("MemoryMatchLose")
         self.assertEqual(self.cli.played[-1], "MemoryMatchCozmoGetOut")
+
+    def test_keep_away_is_played_with_the_cube_tapped(self):
+        timer = threading.Timer(0.1, self.cli.dispatch, (event.EvtCubeTapped, self.cli, self.cli.cubes[CUBE2], 1))
+        timer.start()
+        self.addCleanup(timer.cancel)
+        script = self.make(requiredUnlockId="KeepawayGame")
+        self.assertTrue(script.wants_to_run())
+        with mock.patch.object(keep_away, "KeepAway") as game:
+            game.return_value.play.return_value = keep_away.COZMO
+            self.run_script(script)
+        self.assertIs(game.call_args.args[1], self.cli.cubes[CUBE2])
+        self.needs.apply_action.assert_called_once_with("KeepAwayWin")
 
     def test_no_tap_is_a_no(self):
         self.run_script(self.make())

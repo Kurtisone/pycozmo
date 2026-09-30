@@ -7,7 +7,7 @@ answered on the phone. Here the player answers on a cube: a tap takes the game u
 before the request times out turns it down. The robot does not look for the player's face first, nor carry a cube
 over to them as the app's robot did: it asks from where it is.
 
-Quick Tap and Memory Match are played; the requests for the others never want to run.
+Quick Tap, Memory Match and Keep Away are played; the requests for the others never want to run.
 
 """
 
@@ -17,6 +17,7 @@ from typing import Any, List, Optional
 
 from . import cube_handling
 from . import event
+from . import keep_away
 from . import memory_match
 from . import quick_tap
 from .cube_behaviors import BehaviorScript, play_and_wait, usable_cubes
@@ -34,7 +35,7 @@ __all__ = [
 REQUEST_TIMEOUT = 15.0
 
 #: The games played, by the unlock their request needs.
-GAMES = ("QuickTapGame", "MemoryMatchGame")
+GAMES = ("QuickTapGame", "MemoryMatchGame", "KeepawayGame")
 
 
 class BehaviorRequestGameSimple(BehaviorScript):
@@ -57,6 +58,9 @@ class BehaviorRequestGameSimple(BehaviorScript):
         if game == "QuickTapGame":
             # A cube for each, and the robot's where it knows.
             return len(connected) >= 2 and bool(usable_cubes(self.cli))
+        if game == "KeepawayGame":
+            # The player's cube, which the robot looks for before each hand.
+            return any(cube.pose is not None for cube in connected)
         # The three cubes, one of them seen at least, to face them.
         return len(connected) == len(memory_match.COLORS) and any(cube.pose is not None for cube in connected)
 
@@ -92,6 +96,8 @@ class BehaviorRequestGameSimple(BehaviorScript):
         self.play(self.animation("initial").replace("Initial", "Accept"), cancel)
         if self.game() == "QuickTapGame":
             self.play_quick_tap(player_cube, cancel)
+        elif self.game() == "KeepawayGame":
+            self.play_keep_away(player_cube, cancel)
         else:
             self.play_memory_match(cancel)
 
@@ -133,3 +139,8 @@ class BehaviorRequestGameSimple(BehaviorScript):
         if winner is not None and self.needs is not None:
             self.needs.apply_action("MemoryMatchWin" if winner == memory_match.COZMO else "MemoryMatchLose")
         play_and_wait(self.cli, "MemoryMatchCozmoGetOut", cancel)
+
+    def play_keep_away(self, player_cube: LightCube, cancel: threading.Event) -> None:
+        winner = keep_away.KeepAway(self.cli, player_cube).play(cancel)
+        if winner is not None and self.needs is not None:
+            self.needs.apply_action("KeepAwayWin" if winner == keep_away.COZMO else "KeepAwayLose")
