@@ -359,10 +359,13 @@ Bluetooth LE
 periodically. The `ObjectAvailable` message contains the object type (e.g. light cube 1, 2, 3 or charging pad) and
 the object factory ID which identifies it uniquely.
 
-The `ObjectConnect` message is used to initiate or terminate a connection to objects, using their factory ID.
+The `ObjectConnect` message assigns an object, by its factory ID, to one of 5 connection slots, 0 to 4; a factory ID of
+0 empties the slot. The robot remembers the assignment and connects the object whenever it can, until the slot is
+emptied, and an object assigned to a slot takes the place of the one in it: each object needs a slot of its own. The
+second field was long taken for a "connect" flag, which put every object in slot 1, one at a time.
 
-Connection establishment and termination is announced with the `ObjectConnectionState` message. It contains a temporary
-"object ID" that is used to identify the object for the duration of the connection with it.
+Connection establishment and termination is announced with the `ObjectConnectionState` message. Its "object ID",
+which identifies the object in the other messages, is its slot.
 
 
 Cube LEDs

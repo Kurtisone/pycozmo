@@ -19,7 +19,7 @@ with pycozmo.connect() as cli:
 
     print("Connecting to charger...")
     pkt: pycozmo.protocol_base.Packet = \
-        pycozmo.protocol_encoder.ObjectConnect(factory_id=charger_factory_id, connect=True)
+        pycozmo.protocol_encoder.ObjectConnect(factory_id=charger_factory_id, slot=0)
     cli.conn.send(pkt)
     cli.conn.wait_for(pycozmo.protocol_encoder.ObjectConnectionState)
     charger_id = list(cli.connected_objects.keys())[0]

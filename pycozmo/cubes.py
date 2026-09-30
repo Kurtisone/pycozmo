@@ -106,7 +106,17 @@ class LightCube:
 
 
 class Cubes:
-    """ The robot's three Light Cubes. """
+    """
+    The robot's three Light Cubes.
+
+    The robot keeps a connection slot for each object, 0 to 4, and an object's ID is its slot. ObjectConnect assigns a
+    cube to a slot, and a factory ID of 0 empties it; the robot remembers the assignment, and connects the cube
+    whenever it can until the slot is emptied - a cube asked for in a slot takes the place of the one in it. Each
+    kind of cube has a slot of its own here, the first three.
+    """
+
+    #: The connection slot of each kind of cube.
+    SLOTS = {object_type: slot for slot, object_type in enumerate(CUBE_TYPES)}
 
     #: How long a cube is taken for visible after it was last seen, in seconds.
     VISIBLE_TIME = 1.0
@@ -123,6 +133,9 @@ class Cubes:
             object_type: LightCube(object_type) for object_type in CUBE_TYPES}
         #: Whether a cube of each kind is connected as soon as one is heard.
         self.auto_connect = False
+        #: Which cube of each kind to connect, by factory ID, when there are more than one about - another robot's,
+        #: say. Unset, the first heard.
+        self.factory_ids: Dict[protocol_encoder.ObjectType, int] = {}
         #: Cube light animations by trigger. See cube_lights.load_cube_light_animations().
         self.light_animations: Dict[str, List[CubeLightPattern]] = {}
         #: The cube in the lift, as far as cube_handling knows.
@@ -146,6 +159,8 @@ class Cubes:
         with self.lock:
             cube = self.cubes.get(protocol_encoder.ObjectType(pkt.object_type))
             if cube is None or cube.connected:
+                return
+            if self.factory_ids.get(cube.object_type, pkt.factory_id) != pkt.factory_id:
                 return
             if cube.factory_id != pkt.factory_id and cube.connecting_since is not None:
                 # Another cube of the same kind: the one asked for may answer yet.
@@ -222,11 +237,13 @@ class Cubes:
         if cube.factory_id is None:
             raise ValueError("Cube {} has not been heard.".format(cube.object_type.name))
         cube.connecting_since = time.perf_counter() if now is None else now
-        self.cli.conn.send(protocol_encoder.ObjectConnect(factory_id=cube.factory_id, connect=True))
+        self.cli.conn.send(protocol_encoder.ObjectConnect(factory_id=cube.factory_id,
+                                                          slot=self.SLOTS[cube.object_type]))
 
     def disconnect(self, cube: LightCube) -> None:
-        if cube.factory_id is not None:
-            self.cli.conn.send(protocol_encoder.ObjectConnect(factory_id=cube.factory_id, connect=False))
+        """ Ask the robot to drop a cube, and not to connect it again. """
+        cube.connecting_since = None
+        self.cli.conn.send(protocol_encoder.ObjectConnect(factory_id=0, slot=self.SLOTS[cube.object_type]))
 
     def set_lights(self, cube: LightCube, states: Sequence[protocol_encoder.LightState],
                    rotation_period_frames: int = 0) -> None:

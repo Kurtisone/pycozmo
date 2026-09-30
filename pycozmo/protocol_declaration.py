@@ -262,7 +262,9 @@ PROTOCOL = Protocol(
         ]),
         Command(0x05, "ObjectConnect", group="objects", arguments=[
             UInt32Argument("factory_id"),
-            BoolArgument("connect"),
+            # The connection slot the object is assigned to, 0 to 4, and its object ID once connected; a factory ID of
+            # 0 empties it. Measured on a robot: a second cube asked for in the same slot takes the first one's place.
+            UInt8Argument("slot"),
         ]),
         Command(0x08, "StreamObjectAccel", group="objects", arguments=[
             UInt32Argument("object_id"),

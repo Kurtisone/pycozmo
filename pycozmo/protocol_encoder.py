@@ -777,15 +777,15 @@ class ObjectConnect(Packet):
 
     __slots__ = (
         "_factory_id",  # uint32
-        "_connect",  # bool
+        "_slot",  # uint8
     )
 
     def __init__(self,
                  factory_id=0,
-                 connect=False):
+                 slot=0):
         super().__init__(PacketType.COMMAND, packet_id=0x05)
         self.factory_id = factory_id
-        self.connect = connect
+        self.slot = slot
 
     @property
     def factory_id(self):
@@ -796,12 +796,12 @@ class ObjectConnect(Packet):
         self._factory_id = validate_integer("factory_id", value, 0, 4294967295)
 
     @property
-    def connect(self):
-        return self._connect
+    def slot(self):
+        return self._slot
 
-    @connect.setter
-    def connect(self, value):
-        self._connect = validate_bool("connect", value)
+    @slot.setter
+    def slot(self, value):
+        self._slot = validate_integer("slot", value, 0, 255)
 
     def __len__(self):
         return \
@@ -811,10 +811,10 @@ class ObjectConnect(Packet):
     def __repr__(self):
         return "{type}(" \
                "factory_id={factory_id}, " \
-               "connect={connect})".format(
+               "slot={slot})".format(
                 type=type(self).__name__,
                 factory_id=self._factory_id,
-                connect=self._connect)
+                slot=self._slot)
 
     def to_bytes(self):
         writer = BinaryWriter()
@@ -823,7 +823,7 @@ class ObjectConnect(Packet):
 
     def to_writer(self, writer):
         writer.write(self._factory_id, "L")
-        writer.write(int(self._connect), "b")
+        writer.write(self._slot, "B")
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -834,10 +834,10 @@ class ObjectConnect(Packet):
     @classmethod
     def from_reader(cls, reader):
         factory_id = reader.read("L")
-        connect = bool(reader.read("b"))
+        slot = reader.read("B")
         return cls(
             factory_id=factory_id,
-            connect=connect)
+            slot=slot)
 
 
 class StreamObjectAccel(Packet):

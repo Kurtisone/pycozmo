@@ -72,7 +72,31 @@ class TestConnection(CubesTestCase):
         self.hear()
         self.hear()
         connects = self.sent(pycozmo.protocol_encoder.ObjectConnect)
-        self.assertEqual([(pkt.factory_id, pkt.connect) for pkt in connects], [(0x1234, True)])
+        self.assertEqual([(pkt.factory_id, pkt.slot) for pkt in connects], [(0x1234, 0)])
+
+    def test_each_kind_has_a_slot_of_its_own(self):
+        # A cube asked for in the slot of another takes its place: the robot kept one cube at a time.
+        self.cubes.auto_connect = True
+        for object_type, factory_id in ((CUBE1, 0x1), (ObjectType.Block_LIGHTCUBE2, 0x2),
+                                        (ObjectType.Block_LIGHTCUBE3, 0x3)):
+            self.hear(object_type, factory_id)
+        connects = self.sent(pycozmo.protocol_encoder.ObjectConnect)
+        self.assertEqual([(pkt.factory_id, pkt.slot) for pkt in connects], [(0x1, 0), (0x2, 1), (0x3, 2)])
+
+    def test_the_cube_asked_for_among_several(self):
+        # Two robots' cubes about: this one's are asked for by their factory IDs.
+        self.cubes.auto_connect = True
+        self.cubes.factory_ids[CUBE1] = 0x5678
+        self.hear(factory_id=0x1234)
+        self.assertEqual(self.sent(pycozmo.protocol_encoder.ObjectConnect), [])
+        self.hear(factory_id=0x5678)
+        self.assertEqual([pkt.factory_id for pkt in self.sent(pycozmo.protocol_encoder.ObjectConnect)], [0x5678])
+
+    def test_dropping_a_cube_empties_its_slot(self):
+        cube = self.connected()
+        self.cubes.disconnect(cube)
+        pkt = self.sent(pycozmo.protocol_encoder.ObjectConnect)[-1]
+        self.assertEqual((pkt.factory_id, pkt.slot), (0, 0))
 
     def test_a_connection_that_does_not_come_is_asked_for_again(self):
         self.cubes.auto_connect = True
