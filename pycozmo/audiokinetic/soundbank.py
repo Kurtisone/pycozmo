@@ -3,7 +3,7 @@
 AudioKinetic WWise SoundBank representation and reading.
 
 References:
-    - http://wiki.xentax.com/index.php/Wwise_SoundBank_(*.bnk)
+    - https://github.com/bnnm/wwiser - its parser documents the layout of each object, version by version
     - https://github.com/rickvg/Wwise-BNKExtract
 
 """

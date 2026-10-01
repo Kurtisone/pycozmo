@@ -30,7 +30,7 @@ Prerequisites
 -------------
 
 - [Cozmo robot](https://www.digitaldreamlabs.com/pages/cozmo)
-- Mobile device with the [Cozmo app](https://play.google.com/store/apps/details?id=com.anki.cozmo)
+- Mobile device with the Cozmo app, which is no longer on Google Play
 - (Ubuntu) Linux machine with 2 Wi-Fi interfaces (e.g. a Raspberry Pi)
 - The following tools installed:
     - [wireless-tools](https://en.wikipedia.org/wiki/Wireless_tools_for_Linux)

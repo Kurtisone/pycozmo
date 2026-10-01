@@ -109,7 +109,7 @@ class Client(event.Dispatcher):
         self.connected_objects: Dict[int, Dict[str, Any]] = dict()
         #: The Light Cubes: connections, lights, and where they were seen.
         self.cubes = cubes.Cubes(self)
-        #: The faces the robot sees and knows: see pycozmo.faces. Found only with OpenCV, pycozmo[faces].
+        #: The faces the robot sees and knows: see pycozmo.faces. Found only with OpenCV: see pycozmo.face_detection.
         self.faces = faces.Faces(self)
         # Filters
         self.packet_type_filter = filter.Filter()

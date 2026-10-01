@@ -5,9 +5,14 @@ pycozmo package
     :nosignatures:
     :toctree: generated
 
+    pycozmo.audiokinetic.bits
+    pycozmo.audiokinetic.codebooks
     pycozmo.audiokinetic.exception
+    pycozmo.audiokinetic.nodes
+    pycozmo.audiokinetic.ogg
     pycozmo.audiokinetic.soundbank
     pycozmo.audiokinetic.soundbanksinfo
+    pycozmo.audiokinetic.vorbis
     pycozmo.audiokinetic.wem
     pycozmo.expressions.expressions
     pycozmo.activity
@@ -15,19 +20,33 @@ pycozmo package
     pycozmo.anim_controller
     pycozmo.anim_encoder
     pycozmo.audio
+    pycozmo.audiolib
     pycozmo.behavior
     pycozmo.brain
     pycozmo.camera
     pycozmo.client
     pycozmo.conn
+    pycozmo.cube_behaviors
+    pycozmo.cube_handling
+    pycozmo.cube_lights
+    pycozmo.cubes
     pycozmo.emotions
     pycozmo.event
     pycozmo.exception
+    pycozmo.face_detection
+    pycozmo.faces
     pycozmo.filter
     pycozmo.frame
+    pycozmo.game_behaviors
     pycozmo.image_encoder
+    pycozmo.json_loader
+    pycozmo.keep_away
     pycozmo.lights
-    pycozmo.logging
+    pycozmo.logger
+    pycozmo.marker_detection
+    pycozmo.memory_match
+    pycozmo.motion_detection
+    pycozmo.needs
     pycozmo.object
     pycozmo.procedural_face
     pycozmo.protocol_ast
@@ -36,8 +55,12 @@ pycozmo package
     pycozmo.protocol_encoder
     pycozmo.protocol_generator
     pycozmo.protocol_utils
+    pycozmo.quick_tap
     pycozmo.robot
     pycozmo.robot_debug
     pycozmo.run
+    pycozmo.song_behaviors
+    pycozmo.songs
+    pycozmo.unlocks
     pycozmo.util
     pycozmo.window

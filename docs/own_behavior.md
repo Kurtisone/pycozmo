@@ -26,11 +26,11 @@ and `ReturnedToTreads` - have no animation anywhere in the resources, under thei
 any name close to either, so they log a warning and end.
 
 Of those 21 triggers, eleven are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
-`Hiccup`, the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
-`ReturnedToTreads`, and for the cubes `ObjectPositionUpdated` and `CubeMoved` - see [cubes.md](cubes.md); a twelfth,
-`FacePositionUpdated`, once faces are found. The rest wait on parts that are not implemented: the other vision
-triggers need pet detection, and the others come from game and engine states the activity engine does not reach
-yet. None of them needs motion detection - `UnexpectedMovement`, despite its name, is not something the camera sees.
+`Hiccup`, the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and `ReturnedToTreads`,
+and for the cubes `ObjectPositionUpdated` and `CubeMoved` - see [cubes_and_games.md](cubes_and_games.md); a twelfth,
+`FacePositionUpdated`, once faces are found. The rest wait on parts that are not implemented: the other vision triggers
+need pet detection, and the others come from game and engine states the activity engine does not reach yet. None of them
+needs motion detection - `UnexpectedMovement`, despite its name, is not something the camera sees.
 
 Two details matter for the result to look right rather than merely work:
 

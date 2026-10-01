@@ -3,8 +3,8 @@
 
 Face manager: the models that find faces, and the people Cozmo knows by name.
 
-Finding faces needs OpenCV (pip install pycozmo[faces]) and two small models, which this fetches. The people Cozmo
-knows are kept as features - 128 numbers a face - not pictures, in the user's own PyCozmo directory.
+Finding faces needs OpenCV (pip install opencv-python-headless) and two small models, which this fetches. The people
+Cozmo knows are kept as features - 128 numbers a face - not pictures, in the user's own PyCozmo directory.
 
 """
 
@@ -19,7 +19,7 @@ from pycozmo import face_detection
 def do_status() -> None:
     """ Show what is needed to find faces, and who is known. """
     directory = pycozmo.util.get_face_model_dir()
-    opencv = "found" if face_detection.opencv_available() else "NOT found - pip install pycozmo[faces]"
+    opencv = "found" if face_detection.opencv_available() else "NOT found - pip install opencv-python-headless"
     print("OpenCV:  {}".format(opencv))
     print("Models:  {} in {}".format("found" if face_detection.models_present() else "NOT found", directory))
     names = pycozmo.faces.FaceGallery().names()

@@ -3,7 +3,7 @@ What the robot sees
 
 The robot streams its camera, and PyCozmo looks in it, as Anki's engine did, for motion, for the markers on the Light
 Cubes and, with OpenCV, for faces. The brain does all three while the robot keeps still; what it does with cubes is in
-[cubes.md](cubes.md).
+[cubes_and_games.md](cubes_and_games.md).
 
 
 Motion
@@ -84,7 +84,7 @@ whose detector was native code that is no resource, so what is found and told ap
 not a dependency of the library; it is an extra, with the models fetched once:
 
 ```
-pip install pycozmo[faces]
+pip install opencv-python-headless        # or, from a source tree: pip install ".[faces]"
 pycozmo_faces.py download
 ```
 

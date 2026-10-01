@@ -87,7 +87,14 @@ Documentation:
     lists them. What the README said wrongly is corrected: the requirements (Pillow was 6.0.0 and NumPy was missing),
     the tools and examples it did not list, the severe-need activities it said never run, and ideas and bug reports,
     which it sent upstream. Links that no longer lead anywhere are gone - the DDL Discord invite, Anki's website, an
-    ArUco example - and CONTRIBUTING.md now says what the README does.
+    ArUco example, the Google Play page of the app, a wiki page on the sound bank format - and CONTRIBUTING.md now says
+    what the README does. The README says who the project is for.
+- The Sphinx documentation builds without a warning. Its overview is the README, made from it when the documentation
+    is built, instead of a copy of an old one; its API lists the 25 modules it lacked, including all the fork added, and
+    no longer one that does not exist; it links Python 3's documentation, not 3.6's. The documents' names no longer
+    clash with those of modules, which Sphinx could not tell apart.
+- Faces were said to install with pip install pycozmo[faces], which gives upstream's version from PyPI, where there is
+    no such extra: the messages and documents say pip install opencv-python-headless, or the extra of a source install.
 
 
 v0.9.21 (Sep 28, 2026)

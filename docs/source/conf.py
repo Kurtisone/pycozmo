@@ -12,7 +12,7 @@
 
 import os
 import glob
-from shutil import copyfile
+import re
 import sys
 sys.path.insert(0, os.path.abspath('../..'))    # noqa
 
@@ -71,18 +71,38 @@ autodoc_default_flags = [
     'inherited-members',
 ]
 intersphinx_mapping = {
-    'python': ('https://docs.python.org/3.6', None),
-    'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
     'PIL': ('https://pillow.readthedocs.io/en/latest/', None),
 }
 
 
-# Create external/ subdirectory and copy markdown files from docs/
+# Create external/ subdirectory and copy markdown files from docs/, and the README as the overview, so that it cannot
+# drift from the one on the repository's front page. A link to the README, or to a file the documentation does not
+# carry, points to where it is instead.
+REPOSITORY = 'https://github.com/Kurtisone/pycozmo/blob/master/'
 cur_dir = os.path.dirname(__file__)
 external_dir = os.path.join(cur_dir, 'external')
 if not os.path.exists(external_dir):
     os.mkdir(external_dir)
+
+
+def write_external(text, name):
+    with open(os.path.join(external_dir, name), 'w') as f:
+        f.write(text)
+
+
 doc_spec = os.path.join(cur_dir, '..', '*.md')
 for src in glob.glob(doc_spec):
-    dst = os.path.join(external_dir, os.path.basename(src))
-    copyfile(src, dst)
+    with open(src) as f:
+        text = f.read()
+    text = text.replace('](../README.md', '](overview.md')
+    text = re.sub(r'\]\(\.\./((?:tools|examples)/[^)\s]+|CHANGES\.md|CONTRIBUTING\.md)\)',
+                  r'](' + REPOSITORY + r'\1)', text)
+    write_external(text, os.path.basename(src))
+with open(os.path.join(cur_dir, '..', '..', 'README.md')) as f:
+    readme = f.read()
+readme = readme.replace('[docs/](docs/)', '`docs/`').replace('](docs/', '](')
+readme = re.sub(r'\]\(((?:tools|examples)/[^)\s]+|CHANGES\.md|CONTRIBUTING\.md|requirements\.txt)\)',
+                r'](' + REPOSITORY + r'\1)', readme)
+write_external(readme, 'overview.md')

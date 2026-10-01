@@ -3,8 +3,8 @@
 Show the faces Cozmo sees, and who they are. Given a name, Cozmo first gets to know the face in front of it: look
 straight at its camera, a little way off, until it says it has.
 
-Needs OpenCV and the models: pip install pycozmo[faces], then pycozmo_faces.py download. The people Cozmo knows are kept
-as features, not pictures, in your PyCozmo directory; pycozmo_faces.py lists, renames and forgets them.
+Needs OpenCV and the models: pip install opencv-python-headless, then pycozmo_faces.py download. The people Cozmo knows
+are kept as features, not pictures, in your PyCozmo directory; pycozmo_faces.py lists, renames and forgets them.
 """
 
 import sys
@@ -18,7 +18,7 @@ name = sys.argv[1] if len(sys.argv) > 1 else None
 with pycozmo.connect() as cli:
 
     if not cli.faces.available():
-        sys.exit("Faces need OpenCV and the models: pip install pycozmo[faces]; pycozmo_faces.py download")
+        sys.exit("Faces need OpenCV and the models: pip install opencv-python-headless; pycozmo_faces.py download")
 
     calibration = cli.read_camera_calibration()
     cli.set_lift_height(pycozmo.robot.MIN_LIFT_HEIGHT.mm)

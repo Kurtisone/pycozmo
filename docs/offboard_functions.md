@@ -9,7 +9,7 @@ from the application's resources, which the engine read as data.
 
 This document describes those resources, and for each off-board function what the application did, what PyCozmo does
 and what is missing. [own_behavior.md](own_behavior.md) tells how the robot behaves with what is there, and
-[sound.md](sound.md), [vision.md](vision.md) and [cubes.md](cubes.md) give the details of the rest.
+[sound.md](sound.md), [vision.md](vision.md) and [cubes_and_games.md](cubes_and_games.md) give the details of the rest.
 
 
 Resources
@@ -155,9 +155,10 @@ Open:
   too found nothing more in the images of both robots.
 
 - **Faces**: `pycozmo.face_detection` finds them with OpenCV's YuNet and tells them apart with SFace; OpenCV is the
-  `pycozmo[faces]` extra, and `pycozmo_faces.py download` fetches the two models. `pycozmo.faces` keeps track of the
-  faces seen, places them in the world from the distance between their eyes, and knows people by name once they are
-  enrolled, from features kept in the user's own directory. Not yet tried on a robot, nor on faces of people.
+  `faces` extra of a source install, or `opencv-python-headless`, and `pycozmo_faces.py download` fetches the two
+  models. `pycozmo.faces` keeps track of the faces seen, places them in the world from the distance between their eyes,
+  and knows people by name once they are enrolled, from features kept in the user's own directory. Not yet tried on a
+  robot, nor on faces of people.
 
 Missing:
 - **Facial expressions**, and gaze, smile and blink: Anki's engine measured them, and no model here does.

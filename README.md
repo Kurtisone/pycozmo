@@ -12,6 +12,12 @@ The library is loosely based on the [Anki Cozmo Python SDK](https://github.com/a
 This project is a tool for exploring the hardware and software of the Digital Dream Labs (originally Anki) Cozmo robot.
 It is unstable and heavily under development.
 
+It is for people who program robots, or who want to understand one: developers who would rather write Python on their
+own computer than in a phone app, hobbyists, teachers and students, and anyone studying how Cozmo works - its protocol,
+its firmware, and the way the Cozmo app drove it. It is a library and a set of tools, not an app: you work in Python or
+on the command line, and you connect the computer to the robot's Wi-Fi network yourself. Cozmo's block-based
+programming, Code Lab, is not reproduced.
+
 
 About This Fork
 ---------------
@@ -54,8 +60,9 @@ pycozmo_resources.py download
 `pycozmo_resources.py download` fetches Anki's resources - the animations, sound banks and configuration - which the
 animations, the sounds and the brain need. Controlling the robot does not.
 
-Finding faces needs OpenCV, which is an extra rather than a dependency: install `".[faces]"` instead of `.`, and
-fetch the face models with `pycozmo_faces.py download`.
+Finding faces needs OpenCV, which is an extra rather than a dependency: install `".[faces]"` instead of `.` - or add
+OpenCV to an install you have, with `pip install opencv-python-headless` - and fetch the face models with
+`pycozmo_faces.py download`.
 
 For development, install it editable, with the tools the checks use:
 
@@ -170,7 +177,7 @@ What the Cozmo app did off-board is reproduced as far as the resources and recor
 |---|---|---|
 | Animations and sound | Anki's animations from FlatBuffers `.bin` files and procedural faces; the sound of 98% of them once converted; Cozmo's 39 songs | [sound.md](docs/sound.md) |
 | Personality | The mood engine, the three nurture needs, the 21 reaction triggers (12 raised), and the activity engine that keeps a robot busy; 35 of the 76 behavior classes | [own_behavior.md](docs/own_behavior.md) |
-| Cubes and games | Connecting the cubes, their lights, and where they are; picking up, putting down, stacking, rolling, popping a wheelie; Quick Tap, Memory Match and Keep Away | [cubes.md](docs/cubes.md) |
+| Cubes and games | Connecting the cubes, their lights, and where they are; picking up, putting down, stacking, rolling, popping a wheelie; Quick Tap, Memory Match and Keep Away | [cubes_and_games.md](docs/cubes_and_games.md) |
 | Vision | Motion, in the image and on the ground; the cubes' markers; faces, with OpenCV, found, followed and known by name | [vision.md](docs/vision.md) |
 
 Not done: facial expressions, gaze and pets; a map of the surroundings; text-to-speech, since the resources' voices are
@@ -276,7 +283,7 @@ In [docs/](docs/):
 
 - [offboard_functions.md](docs/offboard_functions.md) - what the Cozmo app did off-board, and what PyCozmo does of it,
     compared with the Cozmo SDK and the app; with [own_behavior.md](docs/own_behavior.md), [sound.md](docs/sound.md),
-    [vision.md](docs/vision.md) and [cubes.md](docs/cubes.md), which give the details
+    [vision.md](docs/vision.md) and [cubes_and_games.md](docs/cubes_and_games.md), which give the details
 - [functions.md](docs/functions.md) - what the robot does by itself
 - [architecture.md](docs/architecture.md), [protocol.md](docs/protocol.md) and [capturing.md](docs/capturing.md) - how
     the library is built, the protocol it speaks, and how to capture it

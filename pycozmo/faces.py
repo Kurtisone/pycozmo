@@ -332,7 +332,7 @@ class Faces:
                     logger.warning("Failed to load the face models. %s", e)
                     self._unavailable = True
             else:
-                logger.info("Faces are not looked for: they need OpenCV, pycozmo[faces], and the models, "
+                logger.info("Faces are not looked for: they need OpenCV, opencv-python-headless, and the models, "
                             "tools/pycozmo_faces.py download.")
                 self._unavailable = True
         return self._detector

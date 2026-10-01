@@ -6,7 +6,7 @@ PyCozmo
    :maxdepth: 2
    :caption: Documentation
 
-   overview.md
+   external/overview.md
    external/architecture.md
    external/protocol.md
    external/capturing.md
@@ -15,7 +15,7 @@ PyCozmo
    external/own_behavior.md
    external/sound.md
    external/vision.md
-   external/cubes.md
+   external/cubes_and_games.md
    external/versions.md
    external/hardware_versions.md
    external/esp8266.md

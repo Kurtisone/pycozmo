@@ -9,10 +9,11 @@ playlist out of it, which plays a segment, which plays a MIDI track. The notes o
 a container whose sounds are sung notes, each kept for a range of MIDI keys. Wwise did the rest at run time: the
 objects below are what PyCozmo needs to do it too.
 
-The layouts are those of Cozmo's bank, version 120 - WWise 2016.2. A node's parameters start the same way whatever
-the object, and that start - effects, parent, properties - is all that is read of most; the modulators acting on
-a node come further on, after sections whose layout varies, and are found by their identifiers instead. Other
-versions are not read.
+The layouts are those of Cozmo's bank, version 120 - WWise 2016.2 - as bnnm's wwiser, https://github.com/bnnm/wwiser,
+documents them in its parser. A node's parameters start the same way whatever the object, and that start - effects,
+parent, properties - is all that is read of most; the modulators acting on a node come further on, after sections whose
+layout varies, and are found by their identifiers instead. Other versions are not read.
+
 
 """
 

@@ -8,8 +8,10 @@ the eyes, the nose and the corners of the mouth - and SFace, which turns an alig
 close for the same person and far for another. Neither is Anki's: its engine used another detector, native code that
 is no resource, so what is seen and what is told apart differs from what Cozmo's app did.
 
-OpenCV is not a dependency of PyCozmo: install it with `pip install pycozmo[faces]`, and fetch the models with
-tools/pycozmo_faces.py download. Without either, nothing here finds a face, and the rest of PyCozmo goes on as before.
+OpenCV is not a dependency of PyCozmo: install it with `pip install opencv-python-headless`, or with the faces extra of
+a source install, `pip install ".[faces]"`, and fetch the models with tools/pycozmo_faces.py download. Without either,
+nothing here finds a face, and the rest of PyCozmo goes on as before.
+
 
 On the robot's camera, 320 by 240 in grayscale, YuNet found a face of 40 pixels across, a metre or so away, and not
 one of 28; it takes 4.6 ms an image on a Steam Deck, and SFace 14.6 ms a face. Over 4092 images of cubes and rooms it
@@ -156,7 +158,7 @@ class FaceDetector:
 
     def __init__(self, directory: Optional[pathlib.Path] = None, score_threshold: float = SCORE_THRESHOLD) -> None:
         if not opencv_available():
-            raise exception.InvalidOperation("Faces need OpenCV: pip install pycozmo[faces].")
+            raise exception.InvalidOperation("Faces need OpenCV: pip install opencv-python-headless.")
         directory = directory or util.get_face_model_dir()
         if not models_present(directory):
             raise exception.InvalidOperation(
