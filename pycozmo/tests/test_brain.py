@@ -454,7 +454,8 @@ class TestActivityEngine(unittest.TestCase):
         self.brain.drive_off_charger_time = None
         for activity in self.brain.activities.values():
             activity.start_time = None
-            activity.cooldown_end_time = 0.0
+            # As freeplay starts: Singing waits its turn.
+            activity.cooldown_end_time = float("inf") if activity.strategy.start_in_cooldown else 0.0
             for chooser in (activity.behavior_chooser, activity.interlude_chooser):
                 if chooser is not None:
                     chooser.reset()
@@ -529,6 +530,15 @@ class TestActivityEngine(unittest.TestCase):
         self.assertEqual(self.current_activity(), "NothingToDo")
         self.assertIn(self.current_behavior(), ("NothingToDo_Idle", "NothingToDo_BoredAnim"))
 
+    def test_cozmo_sings_once_its_singing_has_rested(self):
+        if not any(behavior.wants_to_run() for behavior_id, behavior in self.brain.behaviors.items()
+                   if behavior_id.startswith("Singing_")):
+            self.skipTest("Cozmo's sung notes are not converted.")
+        self.brain.activities["Singing"].cooldown_end_time = 0.0
+        activity, behavior_id = self.choose(1000.0)
+        self.assertEqual(activity, "Singing")
+        self.assertTrue(behavior_id.startswith("Singing_"))
+
     def test_hiking_goes_on_cooldown_when_it_is_passed_over(self):
         self.brain.update_activity(1000.0)
         self.brain.behavior = None
@@ -601,7 +611,8 @@ class TestSevereNeeds(unittest.TestCase):
         self.brain.next_choice_time = 0.0
         for activity in self.brain.activities.values():
             activity.start_time = None
-            activity.cooldown_end_time = 0.0
+            # As freeplay starts: Singing waits its turn.
+            activity.cooldown_end_time = float("inf") if activity.strategy.start_in_cooldown else 0.0
             if activity.strategy.wants_to_run_config is not None:
                 activity.strategy.wants_to_run_config.expressed_bracket = None
             for chooser in (activity.behavior_chooser, activity.interlude_chooser):

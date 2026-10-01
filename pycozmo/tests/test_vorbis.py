@@ -348,7 +348,7 @@ class TestAgainstCozmoAssets(unittest.TestCase):
         # A file PyCozmo cannot decode on its own plays once it has been converted.
         file_id = next(iter(library.converted))
         self.assertTrue(library.is_playable(file_id))
-        samples, channels, rate = library._get_pcm(file_id)
+        samples, channels, rate = library.get_pcm(file_id)
         self.assertGreater(len(samples), 0)
         self.assertEqual(1, channels)
         self.assertEqual(pycozmo.audiolib.SAMPLE_RATE, rate)

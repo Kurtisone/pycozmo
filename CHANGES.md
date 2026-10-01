@@ -49,6 +49,12 @@ New features:
     activity is evaluated: the robot asks now and then, the player takes the game up by tapping a cube, and a no
     makes it wait 120 s, 1.3 times as long for each no in a row. EvtGameRequestAnswered carries the answer.
 - The top and bottom of a cube, whose symbol has no bar, are recognized as well as its sides.
+- Songs. pycozmo.songs sings Cozmo's songs: the singing animations' event plays a song a WWise switch picks, a MIDI
+    track of Cozmo's sound bank, and PyCozmo renders it as the application's sound engine did, with the instrument of
+    sung notes the bank holds, then cuts it short where the animation stops it. Client.set_audio_switch() picks the
+    song. The Singing behavior sings each of the 39 its configuration names, and the Singing activity has Cozmo sing
+    now and then in freeplay. The notes are Vorbis: Cozmo sings once they are converted. How a held note ends, and
+    the instrument's vibrato, are PyCozmo's reading of the bank: see the module. The Dance behavior plays its moves.
 - Cube markers are found close to as well, where the cube's black corners touch the frame and the dark pixels no
     longer outline it: from the hole inside them. Over 4092 images of two robots, 130 more of the cubes Anki's
     engine saw are found, and they are placed as well as the others, within a few mm.

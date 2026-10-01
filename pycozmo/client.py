@@ -6,7 +6,7 @@ Cozmo protocol client and high-level API.
 
 from collections import defaultdict
 from threading import Event
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import json
 import math
 import os
@@ -117,6 +117,8 @@ class Client(event.Dispatcher):
         self._clip_metadata: Dict[str, anim_encoder.ClipMetadata] = {}
         self._clips: Dict[str, anim_encoder.AnimClip] = {}
         self._ppclips: Dict[str, anim.PreprocessedClip] = {}
+        # The clips whose sound is a song, which a switch picks: kept only until it changes.
+        self._singing_clips: Set[str] = set()
         self._next_anim_id = 1
         # The last path's event ID. See execute_path() .
         self._path_event_id = 0
@@ -712,12 +714,26 @@ class Client(event.Dispatcher):
             clip = self._clips[name]
             self._ppclips[name] = anim.PreprocessedClip.from_anim_clip(clip, self.audio_library,
                                                                        self.face_animation_dir)
+            if any(isinstance(keyframe, anim_encoder.AnimRobotAudio) and
+                   any(self.audio_library.is_song(e) for e in keyframe.audio_event_ids)
+                   for keyframe in clip.keyframes):
+                self._singing_clips.add(name)
 
         ppclip = self._ppclips[name]
         self.play_anim_ppclip(ppclip)
 
     def cancel_anim(self) -> None:
         self.anim_controller.cancel_anim()
+
+    def set_audio_switch(self, group: str, value: str) -> None:
+        """
+        Set a WWise switch group to a value: which song the singing animations sing, for one - the group
+        Cozmo_Sings_100Bpm to Cozmo_Sings_Pop_Goes_The_Weasel, say. See AudioLibrary.set_switch().
+        """
+        self.audio_library.set_switch(group, value)
+        for name in self._singing_clips:
+            self._ppclips.pop(name, None)
+        self._singing_clips.clear()
 
     def play_anim_group(self, anim_group_name: str) -> None:
         logger_animation.info("Playing animation group {}".format(anim_group_name))

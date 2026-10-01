@@ -13,6 +13,7 @@ import struct
 from ._chunk import Chunk
 
 from . import exception
+from . import nodes
 from . import soundbanksinfo
 
 
@@ -170,6 +171,8 @@ class SoundBank:
         "version",
         "data_offset",
         "objs",
+        "nodes",
+        "media",
     ]
 
     def __init__(self) -> None:
@@ -185,6 +188,11 @@ class SoundBank:
         self.data_offset = -1
         # Object dictionary (ID -> File/SFX/EventAction/Event).
         self.objs: Dict[int, Any] = {}
+        # The hierarchy MIDI playback needs, by object ID: see nodes.read_node(). Read for version
+        # nodes.VERSION only.
+        self.nodes: Dict[int, Any] = {}
+        # The media held in the bank that music tracks play - MIDI files, by file ID.
+        self.media: Dict[int, bytes] = {}
 
 
 class SoundBankReader:
@@ -249,6 +257,10 @@ class SoundBankReader:
             assert object_len
             object_len -= 4
             obj_data = chunk.read(object_len)
+            if self._soundbank.version == nodes.VERSION:
+                node = nodes.read_node(object_type, object_id, obj_data)
+                if node is not None:
+                    self._soundbank.nodes[object_id] = node
             if object_type == 2:
                 # Sound effect/voice
                 try:
@@ -349,6 +361,7 @@ class SoundBankReader:
             raise exception.AudioKineticIOError("Failed to read SoundBank file header.") from e
 
         # Read subsequent chunks.
+        data = b""
         while True:
             try:
                 chunk = Chunk(f, bigendian=False, align=False)
@@ -357,6 +370,8 @@ class SoundBankReader:
                     self._read_data_index(chunk)
                 elif chunkname == b"DATA":
                     self._soundbank.data_offset = f.tell()
+                    # Kept until the music tracks say which of it they play: they come after.
+                    data = chunk.read()
                 elif chunkname == b"HIRC":
                     self._read_hirc(chunk)
                 else:
@@ -372,6 +387,13 @@ class SoundBankReader:
         soundbank = self._soundbank
         assert soundbank is not None
         self._soundbank = None
+
+        for node in soundbank.nodes.values():
+            if isinstance(node, nodes.MusicTrack):
+                for plugin_id, source_id in node.sources:
+                    entry = soundbank.objs.get(source_id)
+                    if plugin_id == nodes.MIDI_PLUGIN and isinstance(entry, File):
+                        soundbank.media[source_id] = data[entry.offset:entry.offset + entry.length]
 
         return soundbank
 

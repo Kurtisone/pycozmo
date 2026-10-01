@@ -70,9 +70,14 @@ events to sounds and decodes the PCM and ADPCM ones; the Vorbis ones need the co
 `tools/pycozmo_convert_audio.py` uses to convert them. Two thirds of what the animations trigger plays as downloaded,
 98% once converted: see the README's [Sound](../README.md#sound) section.
 
+**Songs**: the 39 `Singing` behaviors name a Wwise switch - `Cozmo_Sings_80Bpm` / `Cozmo_Sings_Danny_Boy` - rather
+than an event; the singing animation's event plays a music switch, which plays the song the switch picks: a MIDI
+track, whose notes go to an instrument of sung notes. `pycozmo.songs` reads all of that out of Cozmo's sound bank and
+renders the song, and the song stops where the animation's stop event says, as Wwise stopped it. What Wwise worked
+out at run time is PyCozmo's reading of the bank: the held note is taken to fall silent as it is released, and the
+vibrato the instrument has is left out - see the module. The sung notes are Vorbis, so they play once converted.
+
 Missing:
-- **Songs.** The 39 `Singing` behaviors name a Wwise switch - `Cozmo_Sings_80Bpm` / `Cozmo_Sings_Danny_Boy` - rather
-  than an event, and nothing plays switches yet.
 - **Text-to-speech.** The `tts/Voices` voices are Acapela's, and the engine that speaks with them is native code in
   the application, not a resource. Cozmo saying names, and the SDK's `say_text()`, need another speech engine.
 
@@ -106,13 +111,13 @@ Behaviors are small programs over the robot's API, configured in `behaviors/`. T
 robot does when nothing has happened, in priority order: 14 sparks, which the application asked for, 3 severe-need
 activities, and the freeplay ones.
 
-PyCozmo implements 33 classes, 82 behaviors: the animation players, the reactions to being picked up, shaken, put on
+PyCozmo implements 35 classes, 122 behaviors: the animation players, the reactions to being picked up, shaken, put on
 its side or on the charger, cliffs, cube moves, driving off the charger, pouncing on motion, expressing needs,
 waiting, picking cubes up, putting them down, stacking them, working out with one, rolling one back upright, popping
-wheelies, and asking for a game. Eleven of the reaction triggers are raised. The activity engine runs freeplay as
-Anki's configuration says, with its scores, cooldowns and mood gates, and honours the unlock a behavior needs:
-`pycozmo.unlocks` reads those of a new robot and those the needs levels reward; nothing keeps a progression, so the
-robot is taken to have them all.
+wheelies, singing, dancing, and asking for a game. Eleven of the reaction triggers are raised. The activity engine
+runs freeplay as Anki's configuration says, with its scores, cooldowns and mood gates, and honours the unlock a
+behavior needs: `pycozmo.unlocks` reads those of a new robot and those the needs levels reward; nothing keeps a
+progression, so the robot is taken to have them all.
 
 Missing classes, by what they need:
 
@@ -122,8 +127,7 @@ Missing classes, by what they need:
 | More handling of cubes | `RespondPossiblyRoll`, `CheckForStackAtInterval`, `CantHandleTallStack`, `ReactToStackOfCubes`, `BuildPyramid`, `BuildPyramidBase`, `ReactToPyramid`, `PyramidThankYou`, `BringCubeToBeacon`, `ThinkAboutBeacons`, `GuardDog`, `Bouncer`, `FeedingSearchForCube`, `FeedingEat`, `OnboardingShowCube` |
 | Faces | `FindFaces`, `SearchForFace`, `DriveToFace`, `InteractWithFaces`, `PeekABoo`, `PlayAnimWithFace`, `LookForFaceAndCube`, `EnrollFace`, `RespondToRenameFace` |
 | A map of the surroundings | `ExploreLookAroundInPlace`, `ExploreVisitPossibleMarker`, `VisitInterestingEdge`, `LookInPlaceMemoryMap` |
-| Sound | `Singing`, `Dance`, `FireTruckAlarm` |
-| The application | `EarnedSparks`, `OnConfigSeen` |
+| The application, whose code some tricks were: their moves are not in the resources | `EarnedSparks`, `OnConfigSeen`, `FireTruckAlarm` |
 | A laser pointer | `TrackLaser` |
 | An animation the resources lack | `ReactToMotorCalibration`, `ReactToPlacedOnSlope`, `ReactToReturnedToTreads` |
 
@@ -279,6 +283,6 @@ Compared with the Cozmo application
 | Sparks: tricks on request | No way to ask for one |
 | Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; their moves measured on a robot, the games not yet played through on one |
 | Meeting people: enrolling faces, saying names | No |
-| Songs | No |
+| Songs | Yes, all 39, in freeplay now and then; the vibrato is left out |
 | Explorer mode: driving by hand, with the camera | `examples/rc.py` drives it with an Xbox 360 controller, without the camera |
 | Code Lab | No |

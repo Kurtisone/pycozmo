@@ -17,6 +17,10 @@ the samples to the robot's speaker. Going from the identifier to samples takes t
 - The samples are resampled to the rate the robot's speaker runs at and U-law encoded into the
   744 sample frames OutputAudio carries, one per animation frame.
 
+One kind of event plays no media file of its own: the singing animations' events play a song, a MIDI track,
+chosen by a switch the singing behavior sets. pycozmo.songs renders it, from the music objects and the
+instrument of sung notes this keeps of the banks; see set_switch().
+
 """
 
 import os
@@ -25,15 +29,16 @@ import random
 import time
 import wave
 import zipfile
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
 from .logger import logger
 from . import audio
 from . import protocol_encoder
+from . import songs
 from . import util
-from .audiokinetic import soundbank, soundbanksinfo, wem
+from .audiokinetic import nodes, soundbank, soundbanksinfo, wem
 
 
 __all__ = [
@@ -53,6 +58,10 @@ FRAME_SAMPLES = 744
 #: Bank that is only present inside AudioAssets.zip, and the archive member holding it.
 PACKED_BANK = "Cozmo.bnk"
 
+#: Event action types: playing an object, and stopping it.
+PLAY_ACTION = 4
+STOP_ACTION = 1
+
 #: How many encoded frames to keep. Cozmo's sounds run to 97 minutes once the converted Vorbis is
 #: counted, which is too much to hold all of; the oldest go when the count is reached.
 FRAME_CACHE_SIZE = 40000
@@ -68,6 +77,10 @@ class AudioLibrary:
         "sounds",
         "files",
         "converted",
+        "nodes",
+        "media",
+        "children",
+        "switches",
         "_playable",
         "_frames",
     ]
@@ -83,6 +96,13 @@ class AudioLibrary:
         self.converted: Dict[int, str] = {}
         # Whether a media file can be played at all, which costs a header read to answer.
         self._playable: Dict[int, bool] = {}
+        # The hierarchy and the music objects MIDI playback needs, by object identifier; the MIDI files
+        # the banks hold, by media identifier; and each node's children.
+        self.nodes: Dict[int, Any] = {}
+        self.media: Dict[int, bytes] = {}
+        self.children: Dict[int, List[int]] = {}
+        # The value of each switch group, both as WWise hashes their names: see set_switch().
+        self.switches: Dict[int, int] = {}
         # Encoded frames by media file and volume. Decoding and U-law encoding are both slow enough
         # to be worth keeping, and this is what playback actually asks for.
         self._frames: Dict[Tuple[int, int], List[protocol_encoder.OutputAudio]] = {}
@@ -98,6 +118,67 @@ class AudioLibrary:
                 self.containers[obj.id] = obj
             elif isinstance(obj, soundbank.SFX):
                 self.sounds[obj.id] = obj
+        self.nodes.update(bank.nodes)
+        self.media.update(bank.media)
+        for node in bank.nodes.values():
+            if isinstance(node, nodes.Node) and node.parent_id:
+                self.children.setdefault(node.parent_id, []).append(node.id)
+
+    def set_switch(self, group: Union[str, int], value: Union[str, int]) -> None:
+        """
+        Set a switch group to a value, by their names or their WWise hashes: which song a singing animation's
+        event plays, for one.
+        """
+        group_id = nodes.fnv_hash(group) if isinstance(group, str) else group
+        self.switches[group_id] = nodes.fnv_hash(value) if isinstance(value, str) else value
+
+    def has_song(self, group: str, value: str) -> bool:
+        """
+        Whether a music switch plays a song for a value of a switch group, and its notes can be sung: they are
+        WWise Vorbis, which plays once converted - see add_converted_sound().
+        """
+        group_id, value_id = nodes.fnv_hash(group), nodes.fnv_hash(value)
+        for node in self.nodes.values():
+            if not isinstance(node, nodes.MusicSwitch) or node.group_id != group_id:
+                continue
+            song = songs.find_song(self, node.id, value_id)
+            if song is None:
+                continue
+            notes = songs.read_midi(song[0])
+            if notes and any(self.is_playable(voice.source_id)
+                             for voice in songs.voices(self, song[1], notes[0].key, random.Random(0))):
+                return True
+        return False
+
+    def is_song(self, event_id: int) -> bool:
+        """ Whether an event plays a song, whichever a switch picks. """
+        return self.song_switch(event_id) is not None
+
+    def song_switch(self, event_id: int) -> Optional[int]:
+        """ The music switch an event plays, if it plays one. """
+        switches = self._music_switches(event_id, PLAY_ACTION)
+        return switches[0] if switches else None
+
+    def song_stops(self, event_id: int) -> List[int]:
+        """ The music switches an event stops: a song they play ends there. """
+        return self._music_switches(event_id, STOP_ACTION)
+
+    def _music_switches(self, event_id: int, action_type: int) -> List[int]:
+        event = self.events.get(event_id)
+        if event is None:
+            return []
+        out = []
+        for action_id in event.action_ids:
+            action = self.actions.get(action_id)
+            if action is not None and action.type == action_type and \
+                    isinstance(self.nodes.get(action.reference_id), nodes.MusicSwitch):
+                out.append(action.reference_id)
+        return out
+
+    def get_song(self, event_id: int) -> Optional[Tuple[bytes, int]]:
+        """ The song an event plays as the switches stand - see songs.find_song() - or None if it plays none. """
+        switch_id = self.song_switch(event_id)
+        return songs.find_song(self, switch_id) if switch_id is not None else None
 
     def get_takes(self, event_id: int) -> List[int]:
         """
@@ -139,6 +220,9 @@ class AudioLibrary:
         A take is drawn at random, the way a WWise random container behaves. The takes of one event
         are variants of the same sound, so which one plays is not meant to be predictable.
         """
+        song = self.get_song(event_id)
+        if song is not None:
+            return self._song_frames(song, volume)
         playable = [f for f in self.get_takes(event_id) if self.is_playable(f)]
         if not playable:
             return []
@@ -148,7 +232,7 @@ class AudioLibrary:
         key = (file_id, int(round(min(max(volume, 0.0), 1.0) * 100)))
         cached = self._frames.get(key)
         if cached is None:
-            samples, channels, sample_rate = self._get_pcm(file_id)
+            samples, channels, sample_rate = self.get_pcm(file_id)
             cached = self.encode(samples, channels, sample_rate, key[1] / 100.0)
             self._remember(key, cached)
         return cached
@@ -174,6 +258,17 @@ class AudioLibrary:
         self._playable[file_id] = answer
         return answer
 
+    def _song_frames(self, song: Tuple[bytes, int], volume: float) -> List[protocol_encoder.OutputAudio]:
+        """ A song, rendered once for each volume it is asked at, under a key of its own: its MIDI track's hash. """
+        data, target = song
+        key = (-(hash(data) & 0x7FFFFFFF) - 1, int(round(min(max(volume, 0.0), 1.0) * 100)))
+        cached = self._frames.get(key)
+        if cached is None:
+            samples = songs.render(self, songs.read_midi(data), target, SAMPLE_RATE)
+            cached = self.encode(samples, 1, SAMPLE_RATE, key[1] / 100.0)
+            self._remember(key, cached)
+        return cached
+
     def _remember(self, key: Tuple[int, int], frames: List[protocol_encoder.OutputAudio]) -> None:
         """ Keep an encoding, dropping the oldest once there are too many frames. """
         self._frames[key] = frames
@@ -182,7 +277,7 @@ class AudioLibrary:
             oldest = next(iter(self._frames))
             held -= len(self._frames.pop(oldest))
 
-    def _get_pcm(self, file_id: int) -> Tuple[np.ndarray, int, int]:
+    def get_pcm(self, file_id: int) -> Tuple[np.ndarray, int, int]:
         """
         Decode a media file to samples. Empty if it cannot be decoded.
 

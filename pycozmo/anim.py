@@ -149,6 +149,8 @@ class PreprocessedClip(object):
         lift_moves: List[Move] = []
         body_motions: List[anim_encoder.AnimBodyMotion] = []
         face_animations: List[anim_encoder.AnimFaceAnimation] = []
+        # The songs the clip sings, by music switch, and where their frames went, for a stop to cut them short.
+        singing: Dict[int, List[Tuple[int, protocol_encoder.OutputAudio]]] = {}
         pkt: protocol_base.Packet
         for keyframe in clip.keyframes:
             if isinstance(keyframe, anim_encoder.AnimHeadAngle):
@@ -190,7 +192,7 @@ class PreprocessedClip(object):
                 keyframes[keyframe.trigger_time_ms].append(pkt)
             elif isinstance(keyframe, anim_encoder.AnimRobotAudio):
                 if audio_library is not None:
-                    cls._add_audio(keyframes, keyframe, audio_library)
+                    cls._add_audio(keyframes, keyframe, audio_library, singing)
             elif isinstance(keyframe, anim_encoder.AnimEvent):
                 # TODO
                 pass
@@ -244,9 +246,13 @@ class PreprocessedClip(object):
 
     @classmethod
     def _add_audio(cls, keyframes: Dict[int, List[protocol_encoder.Packet]],
-                   keyframe: anim_encoder.AnimRobotAudio, audio_library: Any) -> None:
+                   keyframe: anim_encoder.AnimRobotAudio, audio_library: Any,
+                   singing: Optional[Dict[int, List[Tuple[int, protocol_encoder.OutputAudio]]]] = None) -> None:
         """
         Lay a keyframe's sound out over the animation frames that follow its trigger.
+
+        A song goes on past the end of its animation - William Tell runs to five minutes - until an event of the
+        clip stops it, which cuts it short there: singing, when given, keeps track of the songs laid out.
 
         A keyframe can name several events, which play together on a real robot; the robot has one
         speaker and OutputAudio carries one frame, so the last one placed on a frame is the one
@@ -255,11 +261,22 @@ class PreprocessedClip(object):
         it plays it and a long one ends a little behind its animation.
         """
         for event_id in keyframe.audio_event_ids:
+            if singing is not None:
+                for switch_id in audio_library.song_stops(event_id):
+                    for time_ms, pkt in singing.pop(switch_id, []):
+                        if time_ms >= keyframe.trigger_time_ms:
+                            keyframes[time_ms] = [other for other in keyframes[time_ms] if other is not pkt]
             frames = audio_library.get_frames(event_id, keyframe.volume)
             if not frames:
                 continue
+            placed = []
             for i, pkt in enumerate(frames):
-                keyframes[keyframe.trigger_time_ms + i * robot.FRAME_MS].append(pkt)
+                time_ms = keyframe.trigger_time_ms + i * robot.FRAME_MS
+                keyframes[time_ms].append(pkt)
+                placed.append((time_ms, pkt))
+            switch_id = audio_library.song_switch(event_id)
+            if singing is not None and switch_id is not None:
+                singing[switch_id] = placed
 
 
 def load_face_animation(directory: str) -> List[protocol_encoder.DisplayImage]:

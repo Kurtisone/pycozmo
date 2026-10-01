@@ -248,6 +248,26 @@ from the application is copied: the codebooks are read while converting and neve
 done by `ffmpeg`, which is why this happens once, in a tool, rather than in the library - PyCozmo gains no dependency
 from it.
 
+#### Songs
+
+Cozmo sings 46 tunes, 39 of them in its singing behaviors, from Pop Goes the Weasel to the Toccata - and none of them is
+a recording. Each is a MIDI track in Cozmo's sound bank, which the application's sound engine played with an instrument
+of Cozmo's sung notes: a recording of each key from C2 to C3, three takes of each, plus a softer one for the end of a
+note and short syllables for its start. The behavior picks the song as a WWise switch, and the singing animation's
+event plays whichever the switch picks. `pycozmo.songs` does all of that from the bank: it reads the music objects that
+lead from the event to the track, the track's notes, the instrument's key ranges, volumes and tunings, and sings the
+notes into sound for the speaker, cut short where the animation stops the song.
+
+```python
+cli.set_audio_switch("Cozmo_Sings_100Bpm", "Cozmo_Sings_Pop_Goes_The_Weasel")
+cli.play_anim_group("Singing_100bpm")
+```
+
+Two things WWise worked out at run time are PyCozmo's reading of the bank, not known: a held note, which is a vowel
+sung for six seconds, is taken to fall silent as its key is released, as the tune would otherwise turn into a cluster
+of notes; and a vibrato the instrument has is left out, since read as the bank has it, it would take each note up most
+of a fourth. The notes are WWise Vorbis, so Cozmo sings once they are converted.
+
 ### What the robot sees
 
 The brain turns the camera on, in grayscale, and compares each image with the one before it. What moved is announced
@@ -368,7 +388,8 @@ robot:
 - `Socialize`, when the robot has not been social lately: its configuration scores the `Social` emotion through a graph
   and asks for 0.5, which the graph gives while `Social` is at or below 0.3. This is the only place in Anki's resources
   where the mood decides an activity.
-- `Singing` and `BuildPyramid`, whose strategies need a need level or a pyramid of cubes.
+- `Singing`, which has Cozmo sing one of its 39 songs every 10 to 40 minutes, the sooner the better its Play need is
+  met; and `BuildPyramid`, which needs a pyramid of cubes.
 - `PlayWithHumans`, when the robot can ask for a game: Keep Away with a cube seen, Quick Tap with two cubes
   connected and one of them seen, Memory Match with the three connected and one seen.
 - `PlayAlone`, `Hiking` and `NothingToDo`.
@@ -440,7 +461,7 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     three nurture needs fall and drive the requests and activities that read them, see
     [What the robot needs](#what-the-robot-needs)
 - [ ] Cozmo behaviors - reactions play Cozmo's own animations and the activity engine keeps the robot busy between
-    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 33 of the 76 behavior classes are implemented, and what
+    them, see [Cozmo's Own Behavior](#cozmos-own-behavior); 35 of the 76 behavior classes are implemented, and what
     the others need is in [docs/offboard_functions.md](docs/offboard_functions.md)
 - [ ] Cube handling - going to a cube, docking with it, picking it up, putting it down, stacking it, rolling it and
     popping a wheelie against it are done as Anki's engine was recorded doing them, not yet tried on a robot as
@@ -460,7 +481,8 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
 - [ ] Camera calibration - the robot's factory calibration is read and used; calibrating anew is not done
 - [ ] Navigation map building
 - [ ] Text-to-speech - the resources' voices are Acapela's, whose engine is not among them
-- [ ] Songs - the singing behaviors name Wwise switches, which nothing plays yet
+- [x] Songs - Cozmo sings its 39 songs, rendered from the MIDI tracks of its sound bank with its sung notes, see
+    [Songs](#songs)
 - [x] Animation audio - two thirds of what the animations trigger plays from the robot's own
     resources, and 98% once the WWise Vorbis files have been converted with the codebooks from the
     Cozmo application, see [Sound](#sound)
@@ -520,6 +542,7 @@ Advanced:
 - [quick_tap.py](examples/quick_tap.py) - plays Quick Tap, the cube game of Anki's app, with Cozmo
 - [memory_match.py](examples/memory_match.py) - plays Memory Match, another cube game of Anki's app, with Cozmo
 - [keep_away.py](examples/keep_away.py) - plays Keep Away, the third cube game of Anki's app, with Cozmo
+- [sing.py](examples/sing.py) - has Cozmo sing one of its 39 songs
 - [charger_lights.py](examples/charger_lights.py) - demonstrates Cozmo charging platform LED control
 - [audio.py](examples/audio.py) - demonstrates 22 kHz, 16-bit, mono WAVE file playback through Cozmo's speaker 
 - [nvram.py](examples/nvram.py) - demonstrates reading data from Cozmo's NVRAM (non-volatile memory)
