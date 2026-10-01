@@ -11,10 +11,10 @@ Fork
 Unreleased
 ----------
 
-Checked against the cozmo-emu emulator, and in part on a robot, with the Cozmo application's own engine recorded
-through the SDK beside it: how cubes connect, the animation stream, the cube lights, and the moves of the games and
-of Anki's cube handling. The cube handling as written from those recordings, and the games played through, are not
-yet tried on a robot.
+Checked against an emulator of the robot, which is not part of this repository, and in part on a robot, with the Cozmo
+application's own engine recorded through the SDK beside it: how cubes connect, the animation stream, the cube lights,
+and the moves of the games and of Anki's cube handling. The cube handling as written from those recordings, and the
+games played through, are not yet tried on a robot.
 
 New features:
 - Handling the cubes. pycozmo.cube_handling does it as Anki's engine was recorded doing it on a robot: it finds a
@@ -559,8 +559,9 @@ Bug fixes:
     protocol library, an ordinary thing to do - never completed, and whatever waited on it waited
     for good. The robot acknowledges every animation it starts, whoever started it, so its answer is
     now what the end is matched against. The identifier the client records is kept alongside, so an
-    animation still completes on a robot that does not acknowledge a start. Caught by the cozmo-emu
-    integration suite, which exercises the whole stack and had not been run before v0.9.9 went out.
+    animation still completes on a robot that does not acknowledge a start. Caught by an integration
+    suite run against an emulator of the robot, which exercises the whole stack and had not been run before v0.9.9
+    went out.
 
 v0.9.9 (Sep 19, 2026)
 ---------------------

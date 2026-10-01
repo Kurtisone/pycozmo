@@ -252,7 +252,7 @@ class TestFinding(unittest.TestCase):
         self.assertEqual(marker_detection.find_frames(image, CALIBRATION), [])
 
     def test_nor_seen_nearly_edge_on(self):
-        # Too narrow to be placed well: in the emulator, such a side put a cube some 100 mm nearer than it was.
+        # Too narrow to be placed well: in an emulator, such a side put a cube some 100 mm nearer than it was.
         cube = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1
         image = render(turn(1.15), (0.0, 0.0, 130.0), picture=sticker(cube), touching=6.0)
         self.assertEqual(marker_detection.find_frames(image, CALIBRATION), [])

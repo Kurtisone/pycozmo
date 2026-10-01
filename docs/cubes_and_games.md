@@ -29,8 +29,8 @@ robot drives on at 150 mm/s. The brain's behaviors build on it. `PlayAlone` pick
 (`CubeLiftWorkout`, as many lifts as the robot is confident, in a workout its energy chooses), stacks one on another
 (`StackBlocks`), rolls one lying on its side back upright (`RollBlock`) and pops wheelies (`PopAWheelie`). A cube says
 which side is up, not which way its top points; when a roll shows it points aside, `RollBlock` goes round the cube to
-its bottom. All this is checked in the emulator, not yet on a robot as written. Knocking a stack over is not done:
-recorded on a robot, Anki's own behavior gave it up.
+its bottom. All this is checked against an emulator of the robot, which is not part of this repository, and not yet on a
+robot as written. Knocking a stack over is not done: recorded on a robot, Anki's own behavior gave it up.
 
 
 Games

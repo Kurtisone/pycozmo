@@ -185,8 +185,9 @@ Acapela's and their engine is not among them; the SDK's custom objects; Vector's
 commands. [docs/offboard_functions.md](docs/offboard_functions.md) is the full account, function by function, and
 compares it with the Cozmo SDK and the Cozmo app.
 
-Much of the cube handling, the games, the songs and the faces is checked against an emulator of the robot, and against
-recordings of Anki's own engine through the SDK, and not yet tried on a robot as written; the details say which.
+Much of the cube handling, the games, the songs and the faces is checked against an emulator of the robot, which is not
+part of this repository, and against recordings of Anki's own engine through the SDK, and not yet tried on a robot as
+written; the details say which.
 
 
 Tools
