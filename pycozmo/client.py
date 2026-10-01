@@ -32,6 +32,7 @@ from . import lights
 from . import image_encoder
 from . import anim
 from . import cubes
+from . import faces
 from . import anim_encoder
 from . import audio
 from . import audiolib
@@ -108,6 +109,8 @@ class Client(event.Dispatcher):
         self.connected_objects: Dict[int, Dict[str, Any]] = dict()
         #: The Light Cubes: connections, lights, and where they were seen.
         self.cubes = cubes.Cubes(self)
+        #: The faces the robot sees and knows: see pycozmo.faces. Found only with OpenCV, pycozmo[faces].
+        self.faces = faces.Faces(self)
         # Filters
         self.packet_type_filter = filter.Filter()
         self.packet_type_filter.deny_ids({protocol_declaration.PacketType.PING.value})

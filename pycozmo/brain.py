@@ -73,6 +73,9 @@ class Brain:
     #: How often the camera images are searched for cube markers, at most, in seconds: it takes about 20 ms an
     #: image, where motion detection takes 2.4.
     MARKER_INTERVAL = 0.2
+    #: How often they are searched for faces, at most, in seconds: 4.6 ms an image, and 15 ms more for each face
+    #: told afresh. Nothing is found without OpenCV: see pycozmo.faces.
+    FACE_INTERVAL = 0.2
     #: How recently a cube must have been seen for its moving to be something the robot saw.
     CUBE_IN_VIEW_TIME = 2.0
 
@@ -143,11 +146,13 @@ class Brain:
         self.listen(event.EvtNewRawCameraImage, self.on_camera_image)
         self.listen(event.EvtCubeMovingChange, self.on_cube_moving_change)
         self.listen(event.EvtCubeObserved, self.on_cube_observed)
+        self.listen(event.EvtFaceAppeared, self.on_face_appeared)
         self.listen(event.EvtGameRequestAnswered, self.on_game_request_answered)
         # TODO: ...
 
-        # When the camera images were last searched for cube markers. See on_camera_image() .
+        # When the camera images were last searched for cube markers, and for faces. See on_camera_image() .
         self.markers_time = 0.0
+        self.faces_time = 0.0
         # The cubes seen since they last moved: seeing any other is news. See on_cube_observed() .
         self.acknowledged_cubes: Set[protocol_encoder.ObjectType] = set()
 
@@ -323,9 +328,12 @@ class Brain:
                                                            cli.head_angle.radians, cli.pose_pitch.radians):
                 if marker.cube is not None:
                     cli.cubes.observe(marker.cube, marker.position, marker.normal, now)
+        # Faces too, for the same reason.
+        if not moving and now - self.faces_time >= self.FACE_INTERVAL:
+            self.faces_time = now
+            cli.faces.process(new_im, self.motion_detector.calibration, cli.head_angle.radians,
+                              cli.pose_pitch.radians, now)
         # TODO: See cozmo_resources/config/engine/vision_config.json
-        # TODO: face detection
-        # self.process_reaction_trigger("FacePositionUpdate")?
         # TODO: pet detection
         # self.process_reaction_trigger("PetInitialDetection")
         # TODO: laser detection
@@ -353,6 +361,13 @@ class Brain:
         if cube.object_type not in self.acknowledged_cubes:
             self.acknowledged_cubes.add(cube.object_type)
             self.post_reaction("ObjectPositionUpdated")
+
+    def on_face_appeared(self, cli: client.Client, face: Any) -> None:
+        # A face seen where there was none is acknowledged, as Anki's engine did, unless the robot is at a game or
+        # handling a cube: the reaction would cut it short.
+        if isinstance(self.behavior, cube_behaviors.BehaviorScript) or cli.robot_picked_up:
+            return
+        self.post_reaction("FacePositionUpdated")
 
     def can_request_game(self) -> bool:
         """ Whether the robot could ask the player for a game now: PlayWithHumans waits for it. """

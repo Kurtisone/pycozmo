@@ -6,3 +6,4 @@ flake8==7.3.0
 mypy==2.3.1
 Sphinx==9.1.0
 recommonmark==0.7.1
+opencv-python-headless==5.0.0.93

@@ -132,9 +132,10 @@ any name close to either, so they log a warning and end.
 
 Of those 21 triggers, eleven are raised today: `CliffDetected`, `RobotPickedUp`, `RobotFalling`, `PlacedOnCharger`,
 `Hiccup`, the four the robot's attitude produces, `RobotOnBack`, `RobotOnFace`, `RobotOnSide` and
-`ReturnedToTreads`, and for the cubes `ObjectPositionUpdated` and `CubeMoved` - see below. The rest wait on parts
-that are not implemented: the other vision triggers need face and pet detection, and the others come from game and
-engine states the activity engine does not reach yet. None of them needs
+`ReturnedToTreads`, and for the cubes `ObjectPositionUpdated` and `CubeMoved` - see below; a twelfth,
+`FacePositionUpdated`, once faces are found. The rest wait on parts that are not implemented: the other vision
+triggers need pet detection, and the others come from game and engine states the activity engine does not reach
+yet. None of them needs
 motion detection - `UnexpectedMovement`, despite its name, is not something the camera sees.
 
 Two details matter for the result to look right rather than merely work:
@@ -362,6 +363,39 @@ the player's, caught or flinched, Cozmo's. `PlayWithHumans` has the robot ask fo
 takes it up by tapping a cube - for Quick Tap and Keep Away, the cube becomes theirs - and turning it down, letting
 the request time out, makes the robot wait longer before asking again.
 
+#### Faces
+
+PyCozmo finds faces with OpenCV's two small face models: YuNet, which gives a face's box and five landmarks, and
+SFace, which turns a face into 128 numbers that are close for the same person and far for another. Neither is Anki's,
+whose detector was native code that is no resource, so what is found and told apart differs from Cozmo's own. OpenCV is
+not a dependency of the library; it is an extra, with the models fetched once:
+
+```
+pip install pycozmo[faces]
+pycozmo_faces.py download
+```
+
+The brain looks for faces five times a second while the robot keeps still, as it does for markers, and keeps track of
+them in `cli.faces`: a face seen where one was a moment ago is that face, one that left and is back is told by its
+features, and where each is follows from the distance between its eyes, 63 mm on average, which is good to some 15%.
+A face that appears is acknowledged (`FacePositionUpdated`, Anki's `AcknowledgeFace`) unless the robot is at a game or
+handling a cube. The events are `EvtFaceAppeared`, `EvtFaceObserved`, `EvtFaceIdentified` and `EvtFaceDisappeared`.
+
+```python
+cli.faces.enroll("Eileen")          # looks at the nearest face for a few seconds
+cli.faces.by_name("Eileen")         # where she was last seen
+```
+
+The people Cozmo knows are kept as features, not pictures, in `~/.pycozmo/faces/gallery.json`: nothing leaves the
+machine, and it is no part of a repository. `pycozmo_faces.py` lists, renames and forgets them, and
+[faces.py](examples/faces.py) shows what Cozmo sees live.
+
+On a robot's camera - 320 by 240, in grayscale - a face 40 pixels across, a metre or so away, is found, and one of 28
+is not; a blurred small one is still told from another person. Finding one takes 4.6 ms an image on a Steam Deck, and
+telling it 14.6 ms, once a second a face. Over 4092 images of cubes and rooms, from two robots, the detector found
+nothing at its threshold of 0.9, and four blurred cubes at 0.6. Not tried on a robot, nor on faces of people: the
+numbers above come from one public domain photograph, shrunk and blurred to the camera's quality.
+
 That is what `PounceOnMotion` plays with. Once motion has been seen on the ground, Socialize and Hiking give it the
 robot: it puts its head down to watch, turns towards what moves, creeps up on it, and pounces with the lift. A lift
 that stays up after a pounce is taken to have come down on something - a finger, say - and gets `PounceSuccess`; one
@@ -474,8 +508,9 @@ Off-board functions (see [docs/offboard_functions.md](docs/offboard_functions.md
     [What the robot sees](#what-the-robot-sees); the platform is not
 - [x] Cube marker recognition - the markers are found, placed in space and told apart, and the brain looks for them,
     see [What the robot sees](#what-the-robot-sees)
-- [ ] Face detection
-- [ ] Face recognition
+- [x] Face detection - with OpenCV, pycozmo[faces]; see [What the robot sees](#what-the-robot-sees). Not yet tried
+    on a robot
+- [x] Face recognition - people enrolled by name, kept as features; the same
 - [ ] Facial expression estimation
 - [ ] Pet detection
 - [ ] Camera calibration - the robot's factory calibration is read and used; calibrating anew is not done
@@ -543,6 +578,7 @@ Advanced:
 - [memory_match.py](examples/memory_match.py) - plays Memory Match, another cube game of Anki's app, with Cozmo
 - [keep_away.py](examples/keep_away.py) - plays Keep Away, the third cube game of Anki's app, with Cozmo
 - [sing.py](examples/sing.py) - has Cozmo sing one of its 39 songs
+- [faces.py](examples/faces.py) - shows the faces Cozmo sees and who they are, and enrolls a name given
 - [charger_lights.py](examples/charger_lights.py) - demonstrates Cozmo charging platform LED control
 - [audio.py](examples/audio.py) - demonstrates 22 kHz, 16-bit, mono WAVE file playback through Cozmo's speaker 
 - [nvram.py](examples/nvram.py) - demonstrates reading data from Cozmo's NVRAM (non-volatile memory)

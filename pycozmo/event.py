@@ -49,6 +49,10 @@ __all__ = [
     "EvtCubeMovingChange",
     "EvtCubeTapped",
     "EvtCubeObserved",
+    "EvtFaceAppeared",
+    "EvtFaceObserved",
+    "EvtFaceIdentified",
+    "EvtFaceDisappeared",
     "EvtGameRequestAnswered",
 
     "STATUS_EVENTS",
@@ -227,6 +231,23 @@ class EvtCubeTapped(Event):
 
 class EvtCubeObserved(Event):
     """ Triggered with a cubes.LightCube each time the camera sees it; its pose is where. """
+
+
+class EvtFaceAppeared(Event):
+    """ Triggered with a faces.Face when the camera sees a face it was not seeing, or one it had lost. """
+
+
+class EvtFaceObserved(Event):
+    """ Triggered with a faces.Face each time the camera sees it, at most as often as faces are looked for; its pose
+    is where. """
+
+
+class EvtFaceIdentified(Event):
+    """ Triggered with a faces.Face when it is told to be somebody the robot knows by name: its name is who. """
+
+
+class EvtFaceDisappeared(Event):
+    """ Triggered with a faces.Face when the camera has not seen it for a while. """
 
 
 class EvtGameRequestAnswered(Event):

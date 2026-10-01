@@ -30,6 +30,8 @@ __all__ = [
     'get_pycozmo_dir',
     'get_cozmo_asset_dir',
     'get_converted_sound_dir',
+    'get_face_model_dir',
+    'get_face_gallery_path',
     'check_assets',
     'get_cozmo_anim_dir',
 ]
@@ -814,6 +816,19 @@ def get_converted_sound_dir() -> pathlib.Path:
     """
     path = get_pycozmo_dir() / "converted_sound"
     return path
+
+
+def get_face_model_dir() -> pathlib.Path:
+    """ Get the directory holding the face detection and recognition models: see pycozmo.face_detection. """
+    return get_pycozmo_dir() / "face_models"
+
+
+def get_face_gallery_path() -> pathlib.Path:
+    """
+    Get the file holding the faces Cozmo knows by name: features, not pictures, but a person's all the same. It
+    sits in the user's own directory and is never part of a repository.
+    """
+    return get_pycozmo_dir() / "faces" / "gallery.json"
 
 
 def check_assets() -> None:

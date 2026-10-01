@@ -114,10 +114,10 @@ activities, and the freeplay ones.
 PyCozmo implements 35 classes, 122 behaviors: the animation players, the reactions to being picked up, shaken, put on
 its side or on the charger, cliffs, cube moves, driving off the charger, pouncing on motion, expressing needs,
 waiting, picking cubes up, putting them down, stacking them, working out with one, rolling one back upright, popping
-wheelies, singing, dancing, and asking for a game. Eleven of the reaction triggers are raised. The activity engine
-runs freeplay as Anki's configuration says, with its scores, cooldowns and mood gates, and honours the unlock a
-behavior needs: `pycozmo.unlocks` reads those of a new robot and those the needs levels reward; nothing keeps a
-progression, so the robot is taken to have them all.
+wheelies, singing, dancing, and asking for a game. Eleven of the reaction triggers are raised, a twelfth once faces
+are found. The activity engine runs freeplay as Anki's configuration says, with its scores, cooldowns and mood gates,
+and honours the unlock a behavior needs: `pycozmo.unlocks` reads those of a new robot and those the needs levels
+reward; nothing keeps a progression, so the robot is taken to have them all.
 
 Missing classes, by what they need:
 
@@ -154,9 +154,13 @@ Open:
   margin inside it is lost in the blur, and the frame and the symbol make one dark patch. Taking such patches in
   too found nothing more in the images of both robots.
 
+- **Faces**: `pycozmo.face_detection` finds them with OpenCV's YuNet and tells them apart with SFace; OpenCV is the
+  `pycozmo[faces]` extra, and `pycozmo_faces.py download` fetches the two models. `pycozmo.faces` keeps track of the
+  faces seen, places them in the world from the distance between their eyes, and knows people by name once they are
+  enrolled, from features kept in the user's own directory. Not yet tried on a robot, nor on faces of people.
+
 Missing:
-- **Faces**: detection, recognition by name, expressions. This needs a face detector, which would be a new
-  dependency.
+- **Facial expressions**, and gaze, smile and blink: Anki's engine measured them, and no model here does.
 - **Pets.**
 - **The charger**, which carries a marker of its own; and the SDK's custom markers.
 - **The laser dot** that `TrackLaser` follows.
@@ -261,7 +265,8 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | Light cubes: connection, lights, taps, moves | Yes: `Client.cubes` |
 | Light cubes: pose | Yes, from their markers |
 | Charger pose, custom objects | No |
-| Faces, facial expressions, pets | No |
+| Faces: seeing, naming, where they are | Yes, with OpenCV: `Client.faces` |
+| Facial expressions, pets | No |
 | Navigation memory map | No |
 | `start_behavior`: `FindFaces`, `KnockOverCubes`, `LookAroundInPlace`, `PounceOnMotion`, `RollBlock`, `StackBlocks` | `PounceOnMotion`, `RollBlock` and `StackBlocks` |
 | Freeplay | Yes: `pycozmo.brain` |
@@ -277,12 +282,12 @@ Compared with the Cozmo application
 | Freeplay with cubes: seeing them, lighting them, reacting to them | Yes |
 | Freeplay with cubes: lifting, working out, stacking, rolling, popping wheelies | Yes, as Anki's engine was recorded doing them; not yet tried on a robot as written |
 | Freeplay with cubes: knocking over, pyramids | No |
-| Freeplay with faces: greeting, peek-a-boo, fist bumps | The fist bump behavior is there, and nothing asks for it; the others need faces |
+| Freeplay with faces: greeting, peek-a-boo, fist bumps | A face that appears is acknowledged; the fist bump behavior is there, and nothing asks for it; the others, which look for faces and drive to them, are not |
 | Needs, and asking to be played with | Yes |
 | Feeding, repairing | Taken as actions; no minigame |
 | Sparks: tricks on request | No way to ask for one |
 | Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; their moves measured on a robot, the games not yet played through on one |
-| Meeting people: enrolling faces, saying names | No |
+| Meeting people: enrolling faces, saying names | Enrolling yes, by `Faces.enroll()`; no asking, and no saying names: that is text to speech |
 | Songs | Yes, all 39, in freeplay now and then; the vibrato is left out |
 | Explorer mode: driving by hand, with the camera | `examples/rc.py` drives it with an Xbox 360 controller, without the camera |
 | Code Lab | No |

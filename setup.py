@@ -47,6 +47,9 @@ setuptools.setup(
         "Pillow>=10.0,<13",
         "flatbuffers>=24.3.25,<26",
     ],
+    # Faces: finding them takes OpenCV, which the library does without otherwise. Tested with OpenCV 5.0; see
+    # pycozmo.face_detection.
+    extras_require={"faces": ["opencv-python-headless>=4.8,<6"]},
     keywords=["ddl", "anki", "cozmo", "robot", "robotics"],
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -67,5 +70,6 @@ setuptools.setup(
         "tools/pycozmo_resources.py",
         "tools/pycozmo_app.py",
         "tools/pycozmo_convert_audio.py",
+        "tools/pycozmo_faces.py",
     ],
 )

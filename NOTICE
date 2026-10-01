@@ -21,6 +21,16 @@ The Anki cozmoclad library (https://pypi.org/project/cozmoclad/).
 
 
 =========================================================================
+==  The face detection and recognition models                          ==
+=========================================================================
+PyCozmo does not ship them: pycozmo_faces.py downloads them from OpenCV's
+model zoo (https://github.com/opencv/opencv_zoo) - YuNet, MIT licensed,
+Copyright (c) 2020 Shiqi Yu, and SFace, Apache License 2.0 - for use with
+OpenCV (https://opencv.org), Apache License 2.0, which the pycozmo[faces]
+extra installs.
+
+
+=========================================================================
 ==  The drawings of the Light Cube markers                             ==
 =========================================================================
 The drawings in pycozmo/cube_markers/ - the Paperclip, the Anglepoise Lamp

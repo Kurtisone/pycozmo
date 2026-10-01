@@ -49,6 +49,13 @@ New features:
     activity is evaluated: the robot asks now and then, the player takes the game up by tapping a cube, and a no
     makes it wait 120 s, 1.3 times as long for each no in a row. EvtGameRequestAnswered carries the answer.
 - The top and bottom of a cube, whose symbol has no bar, are recognized as well as its sides.
+- Faces. pycozmo.face_detection finds faces in the camera images with OpenCV's YuNet, and tells them apart with
+    SFace; OpenCV is the pycozmo[faces] extra, not a dependency, and pycozmo_faces.py fetches the two models.
+    Client.faces keeps track of the faces seen - where each is, from the distance between its eyes; which is which,
+    from their features - and knows people by name: Faces.enroll() takes a few views of the face in front of the
+    camera, and keeps the features, not the pictures, in the user's own directory. EvtFaceAppeared, EvtFaceObserved,
+    EvtFaceIdentified and EvtFaceDisappeared; a face that appears raises Anki's FacePositionUpdated, which has
+    Cozmo acknowledge it. Not yet tried on a robot. examples/faces.py shows what Cozmo sees.
 - Songs. pycozmo.songs sings Cozmo's songs: the singing animations' event plays a song a WWise switch picks, a MIDI
     track of Cozmo's sound bank, and PyCozmo renders it as the application's sound engine did, with the instrument of
     sung notes the bank holds, then cuts it short where the animation stops it. Client.set_audio_switch() picks the
