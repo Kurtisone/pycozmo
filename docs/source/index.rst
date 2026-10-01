@@ -12,6 +12,10 @@ PyCozmo
    external/capturing.md
    external/functions.md
    external/offboard_functions.md
+   external/own_behavior.md
+   external/sound.md
+   external/vision.md
+   external/cubes.md
    external/versions.md
    external/hardware_versions.md
    external/esp8266.md

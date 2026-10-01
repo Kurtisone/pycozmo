@@ -8,8 +8,8 @@ things are, speaking - ran in the Cozmo application, on the phone, in Anki's eng
 from the application's resources, which the engine read as data.
 
 This document describes those resources, and for each off-board function what the application did, what PyCozmo does
-and what is missing. The README's [Cozmo's Own Behavior](../README.md#cozmos-own-behavior) section tells how the
-robot behaves with what is there.
+and what is missing. [own_behavior.md](own_behavior.md) tells how the robot behaves with what is there, and
+[sound.md](sound.md), [vision.md](vision.md) and [cubes.md](cubes.md) give the details of the rest.
 
 
 Resources
@@ -68,7 +68,7 @@ Audio
 Sounds are Wwise sound banks and `.wem` files; animations and behaviors name Wwise events and switches. PyCozmo maps
 events to sounds and decodes the PCM and ADPCM ones; the Vorbis ones need the codebooks from the application, which
 `tools/pycozmo_convert_audio.py` uses to convert them. Two thirds of what the animations trigger plays as downloaded,
-98% once converted: see the README's [Sound](../README.md#sound) section.
+98% once converted: see [sound.md](sound.md).
 
 **Songs**: the 39 `Singing` behaviors name a Wwise switch - `Cozmo_Sings_80Bpm` / `Cozmo_Sings_Danny_Boy` - rather
 than an event; the singing animation's event plays a music switch, which plays the song the switch picks: a MIDI
@@ -98,7 +98,7 @@ Emotions and needs
 
 The mood engine keeps seven emotions, each decaying on its own schedule and moved by emotion events. The nurture
 needs - Energy, Repair, Play - fall over hours and drive the requests and activities that read them. Both work: see
-[What the robot needs](../README.md#what-the-robot-needs). What raised the needs back was the application: feeding
+[What the robot needs](own_behavior.md#what-the-robot-needs). What raised the needs back was the application: feeding
 with a shaken cube, a repair minigame, playing. `Brain.apply_need_action()` takes those actions; nothing performs
 them yet.
 
