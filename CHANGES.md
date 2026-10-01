@@ -49,6 +49,9 @@ New features:
     activity is evaluated: the robot asks now and then, the player takes the game up by tapping a cube, and a no
     makes it wait 120 s, 1.3 times as long for each no in a row. EvtGameRequestAnswered carries the answer.
 - The top and bottom of a cube, whose symbol has no bar, are recognized as well as its sides.
+- Cube markers are found close to as well, where the cube's black corners touch the frame and the dark pixels no
+    longer outline it: from the hole inside them. Over 4092 images of two robots, 130 more of the cubes Anki's
+    engine saw are found, and they are placed as well as the others, within a few mm.
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:

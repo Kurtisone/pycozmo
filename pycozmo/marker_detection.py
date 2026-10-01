@@ -15,6 +15,14 @@ the corners are where the lines meet. That puts them at the corners of the squar
 edges make, to a fraction of a pixel. The square is then straightened out, and only kept if it looks like
 a marker: a dark ring along its edge and a light margin just inside.
 
+Close to, a cube's black corners touch the frames on its sides, and the dark pixels no longer outline one.
+The hole inside them still does: it is the inside of the frame, whose sides are fitted the same way, from the
+inside, and the frame is that plus its thickness, 0.11 of its side on the stickers. It is kept if it holds a
+cube's symbol, and is not seen too nearly edge on. Over 4092 images filmed on two robots, with Anki's engine
+beside it through its SDK, this found 130 more of the cubes Anki saw, 2690 in all, and missed 519 instead of 629.
+The 92 frames it found in the images of one of them placed their cubes 1.7 mm further than Anki did, give or take
+3.3 mm, where the frames outlined were 2.5 mm further, give or take 2.2.
+
 Where a frame is follows from its corners, the camera's calibration and its size, MARKER_SIZE, 25 mm on the
 stickers. Anki's own engine, through its SDK, placed two cubes filmed from head angles of -19 to 0 degrees at
 the distances pycozmo gives them with 24.5 mm: within 2%. A cube filmed from four head angles stayed where it
@@ -90,6 +98,9 @@ _MARGIN = (0.12, 0.18)
 # middle of the cube's side, and the bevelled top edge, darker, comes close.
 _AROUND = (0.03, 0.09)
 _MIN_CONTRAST = 15.0
+# How thick the frame is, as a fraction of its side, from its inner edge to its outer one: measured on 1371
+# frames filmed on a robot, 0.105 of frames 30 to 45 pixels wide, 0.111 of wider ones.
+_FRAME = 0.11
 
 # The side the square is straightened to for telling the symbol, in pixels; the part of it compared, as
 # fractions of the side, away from the margin and the bar under the symbol; how much it and the drawings are
@@ -147,7 +158,6 @@ def find_frames(image: np.ndarray, calibration: Optional[camera.CameraCalibratio
     straight sides, is taken out before they are fitted.
     """
     gray = np.asarray(image, dtype=np.float64)
-    height, width = gray.shape
     mean = _box_mean(gray, _DARK_RADIUS)
     dark = gray < mean - np.maximum(_DARK_MIN, _DARK_FRACTION * mean)
     frames = []
@@ -156,31 +166,114 @@ def find_frames(image: np.ndarray, calibration: Optional[camera.CameraCalibratio
         top, bottom = min(rows), max(rows)
         left = min(start for _, start, _ in runs)
         right = max(end for _, _, end in runs)
-        box_width, box_height = right - left + 1, bottom - top + 1
-        if box_width < min_size or box_height < min_size or box_width > 0.9 * width or box_height > 0.9 * height:
+        if right - left + 1 < min_size or bottom - top + 1 < min_size:
             continue
-        # A frame cut off by the edge of the image does not show its corners.
-        if top == 0 or left == 0 or bottom == height - 1 or right == width - 1:
+        frame = _frame_around(gray, runs, (left, top, right, bottom), min_size, calibration)
+        if frame is not None:
+            frames.append(frame)
+        elif _may_enclose(runs, 0.7 * min_size):
+            frames += _frames_within(gray, runs, (left, top, right, bottom), min_size, calibration)
+    return frames
+
+
+def _frame_around(gray: np.ndarray, runs: List["Run"], box: Tuple[int, int, int, int], min_size: int,
+                  calibration: Optional[camera.CameraCalibration]) -> Optional[np.ndarray]:
+    """ The frame a ring of dark pixels makes, from its outline, if it looks like a marker's. """
+    height, width = gray.shape
+    left, top, right, bottom = box
+    box_width, box_height = right - left + 1, bottom - top + 1
+    if box_width > 0.9 * width or box_height > 0.9 * height:
+        return None
+    # A frame cut off by the edge of the image does not show its corners.
+    if top == 0 or left == 0 or bottom == height - 1 or right == width - 1:
+        return None
+    if not 0.4 < box_width / box_height < 2.5:
+        return None
+    # A ring fills part of its box, and not its middle.
+    fill = sum(end - start + 1 for _, start, end in runs) / (box_width * box_height)
+    if not 0.15 < fill < 0.8:
+        return None
+    middle_row, middle_column = (top + bottom) // 2, (left + right) // 2
+    if any(row == middle_row and start <= middle_column <= end for row, start, end in runs):
+        return None
+    ends = [(start, row) for row, start, _ in runs] + [(end, row) for row, _, end in runs]
+    outline = _quadrilateral(_convex_hull(ends))
+    if outline is None:
+        return None
+    corners = _fit_sides(outline, _outer_boundary(runs, left, top, box_width, box_height))
+    if corners is None:
+        return None
+    corners = _clockwise(corners)
+    if not _looks_like_a_marker(gray, corners):
+        return None
+    return _refine_sides(gray, corners, calibration)
+
+
+def _may_enclose(runs: List["Run"], size: float) -> bool:
+    """ Whether enough rows of a component have a wide enough gap between two of its runs to make a hole. """
+    rows = 0
+    previous_row, previous_end = -1, 0
+    for row, start, end in runs:
+        if row == previous_row and start - previous_end - 1 >= size:
+            rows += 1
+            if rows >= size:
+                return True
+            # One gap a row.
+            previous_row = -1
             continue
-        if not 0.4 < box_width / box_height < 2.5:
+        previous_row, previous_end = row, end
+    return False
+
+
+def _frames_within(gray: np.ndarray, runs: List["Run"], box: Tuple[int, int, int, int], min_size: int,
+                   calibration: Optional[camera.CameraCalibration]) -> List[np.ndarray]:
+    """
+    The frames a component of dark pixels holds whole, found from inside: each hole in it that makes a
+    quadrilateral is the inside of a frame, which is that much thicker. Only frames that hold a cube's symbol
+    count: what is around them is not looked at.
+    """
+    height, width = gray.shape
+    left, top, right, bottom = box
+    inside = np.zeros((bottom - top + 1, right - left + 1), dtype=bool)
+    for row, start, end in runs:
+        inside[row - top, start - left:end - left + 1] = True
+    frames = []
+    for hole in _components(~inside):
+        rows = [row for row, _, _ in hole]
+        first, last = min(start for _, start, _ in hole), max(end for _, _, end in hole)
+        # What touches the edge of the box is around the component, not in it.
+        if min(rows) == 0 or max(rows) == inside.shape[0] - 1 or first == 0 or last == inside.shape[1] - 1:
             continue
-        # A ring fills part of its box, and not its middle.
-        fill = sum(end - start + 1 for _, start, end in runs) / (box_width * box_height)
-        if not 0.15 < fill < 0.8:
+        if last - first + 1 < 0.7 * min_size or max(rows) - min(rows) + 1 < 0.7 * min_size:
             continue
-        middle_row, middle_column = (top + bottom) // 2, (left + right) // 2
-        if any(row == middle_row and start <= middle_column <= end for row, start, end in runs):
-            continue
-        ends = [(start, row) for row, start, _ in runs] + [(end, row) for row, _, end in runs]
+        mask = np.zeros_like(inside)
+        for row, start, end in hole:
+            mask[row, start:end + 1] = True
+        ys, xs = np.nonzero(mask & _neighbours(inside))
+        edge = np.stack([xs + left, ys + top], axis=1).astype(np.float64)
+        ends = [(start + left, row + top) for row, start, _ in hole] + \
+            [(end + left, row + top) for row, _, end in hole]
         outline = _quadrilateral(_convex_hull(ends))
         if outline is None:
             continue
-        corners = _fit_sides(outline, _outer_boundary(runs, left, top, box_width, box_height))
-        if corners is None:
+        # The hole's light pixels along its edge: _fit_sides puts the edge half a pixel outwards of them.
+        inner = _fit_sides(outline, edge)
+        if inner is None:
             continue
-        corners = _clockwise(corners)
-        if not _looks_like_a_marker(gray, corners):
+        inner = _refine_sides(gray, _clockwise(inner), inwards=True)
+        t = _FRAME
+        h = _homography(((t, t), (1.0 - t, t), (1.0 - t, 1.0 - t), (t, 1.0 - t)), inner)
+        p = h @ np.array([[0.0, 1.0, 1.0, 0.0], [0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]])
+        corners = (p[:2] / p[2]).T
+        if corners.min() < 0.0 or (corners[:, 0] > width - 1).any() or (corners[:, 1] > height - 1).any():
             continue
+        # Seen too nearly edge on, a frame is no longer placed well: as for the outline of a ring.
+        extent = corners.max(axis=0) - corners.min(axis=0)
+        if not 0.4 < extent[0] / extent[1] < 2.5:
+            continue
+        if not _looks_like_a_marker(gray, corners, around=False) or identify(gray, corners) is None:
+            continue
+        # Where the outer edge has light around it, it is found as well there.
         frames.append(_refine_sides(gray, corners, calibration))
     return frames
 
@@ -353,11 +446,10 @@ def _components(mask: np.ndarray) -> List[List[Run]]:
     padded = np.zeros((mask.shape[0], mask.shape[1] + 2), dtype=np.int8)
     padded[:, 1:-1] = mask
     steps = np.diff(padded, axis=1)
-    runs: List[Run] = []
-    for row in range(mask.shape[0]):
-        starts = np.flatnonzero(steps[row] == 1)
-        ends = np.flatnonzero(steps[row] == -1) - 1
-        runs += [(row, int(start), int(end)) for start, end in zip(starts, ends)]
+    # Row by row, left to right: each start has its end next.
+    rows, starts = np.nonzero(steps == 1)
+    _, ends = np.nonzero(steps == -1)
+    runs: List[Run] = list(zip(rows.tolist(), starts.tolist(), (ends - 1).tolist()))
 
     parent = list(range(len(runs)))
 
@@ -514,10 +606,11 @@ def _fit_line(points: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     return centre, vt[0]
 
 
-def _looks_like_a_marker(gray: np.ndarray, corners: np.ndarray) -> bool:
+def _looks_like_a_marker(gray: np.ndarray, corners: np.ndarray, around: bool = True) -> bool:
     """
     Whether a frame has a dark ring along its edge, a light margin inside it, and light around it: a marker
     sits on a cube's white plastic. Without that last, the dark table around a white card made a ring too.
+    Close to, the cube's black corners touch the frame, and what is around it can be left out.
     """
     size, border = 48, 0.15
     square = rectify(gray, corners, size, border)
@@ -527,10 +620,10 @@ def _looks_like_a_marker(gray: np.ndarray, corners: np.ndarray) -> bool:
     edge = np.minimum(np.minimum(xs, 1.0 - xs), np.minimum(ys, 1.0 - ys))
     ring = square[(edge > _RING[0]) & (edge < _RING[1])]
     margin = square[(edge > _MARGIN[0]) & (edge < _MARGIN[1])]
-    around = square[(edge > -_AROUND[1]) & (edge < -_AROUND[0])]
+    outside = square[(edge > -_AROUND[1]) & (edge < -_AROUND[0])]
     dark = float(np.median(ring))
     checks = []
-    for light, share in ((margin, 0.85), (around, 0.75)):
+    for light, share in ((margin, 0.85), (outside, 0.75))[:2 if around else 1]:
         threshold = (dark + float(np.median(light))) / 2.0
         checks.append(float(np.median(light)) - dark > _MIN_CONTRAST and
                       (ring < threshold).mean() > 0.85 and (light > threshold).mean() > share)
@@ -538,13 +631,15 @@ def _looks_like_a_marker(gray: np.ndarray, corners: np.ndarray) -> bool:
 
 
 def _refine_sides(gray: np.ndarray, corners: np.ndarray,
-                  calibration: Optional[camera.CameraCalibration] = None) -> np.ndarray:
+                  calibration: Optional[camera.CameraCalibration] = None, inwards: bool = False) -> np.ndarray:
     """
     The corners, to a fraction of a pixel. Across each side, at a dozen places along its middle, brightness
     goes from the dark ring to the light plastic around it, and how much of the way across is dark, summed
     up, is where the side is: whatever the side's position between two pixels, blurring it into both does
     not change that sum. Found from which pixels are dark alone, a side could be half a pixel off, which for
     a marker 20 pixels wide is 2.5% of its distance; where brightness is halfway was up to 0.08 pixels off.
+    Inwards, the corners are those of the frame's inner edge, and the light margin is inside it. Where a side
+    has too little light beyond it, the corners are left as they are.
     """
     centre = corners.mean(axis=0)
     side = float(np.mean([np.hypot(*(corners[(i + 1) % 4] - corners[i])) for i in range(4)]))
@@ -559,7 +654,8 @@ def _refine_sides(gray: np.ndarray, corners: np.ndarray,
         a, b = corners[i], corners[(i + 1) % 4]
         direction = (b - a) / np.hypot(*(b - a))
         normal = np.array([-direction[1], direction[0]])
-        if normal @ (a - centre) < 0:
+        # From the ring towards the light.
+        if (normal @ (a - centre) < 0) != inwards:
             normal = -normal
         points = []
         for fraction in np.linspace(0.2, 0.8, 12):

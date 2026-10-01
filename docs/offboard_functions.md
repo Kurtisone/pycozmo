@@ -139,12 +139,16 @@ Done:
 - **Motion detection**, in the image with Anki's peripheral regions and on the ground: `pycozmo.motion_detection`.
 - **Cube markers**: `pycozmo.marker_detection` finds them, tells the three cubes apart - their sides carry the symbol
   either way round - and places them from their 25 mm size. Against Anki's engine, through its SDK, it named 655 of
-  656 frames the same and placed the cubes within 2%.
+  656 frames the same and placed the cubes within 2%. Close to, where the cube's black corners touch a frame, it is
+  found from the hole inside it: 130 more of the cubes Anki saw over 4092 images of two robots.
 
 Open:
 - **Where the camera points.** The robot's reported pitch, flat on a table, drifts from one session to the next by
   about a degree, which moves what is placed on the ground by a few percent. A cube sitting on the table, whose
   centre is 22.5 mm up, could correct it.
+- **Far in the dark.** In a dim room, a cube 28 cm away was not found: its frame is some 27 pixels wide, the light
+  margin inside it is lost in the blur, and the frame and the symbol make one dark patch. Taking such patches in
+  too found nothing more in the images of both robots.
 
 Missing:
 - **Faces**: detection, recognition by name, expressions. This needs a face detector, which would be a new

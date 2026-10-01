@@ -10,6 +10,7 @@ real robot's calibration, meets the marker's plane somewhere, and takes the brig
 import math
 import os
 import unittest
+from unittest import mock
 from typing import Any, Optional, Tuple
 
 import numpy as np
@@ -78,14 +79,28 @@ def drawing(cube: pycozmo.protocol_encoder.ObjectType, turns: int = 0, bar: bool
     return turned
 
 
+def sticker(cube: pycozmo.protocol_encoder.ObjectType) -> np.ndarray:
+    """ A cube's marker as a sticker has it, its frame thicker than in Anki's drawing. """
+    picture = drawing(cube)
+    t = (np.arange(picture.shape[0]) + 0.5) / picture.shape[0]
+    edge = np.minimum.outer(np.minimum(t, 1.0 - t), np.minimum(t, 1.0 - t))
+    thick: np.ndarray = np.where((edge > 0.05) & (edge < marker_detection._FRAME), 0.0, picture)
+    return thick
+
+
 def marker_texture(x: np.ndarray, y: np.ndarray, size: float, symbol: bool = True, ring: bool = True,
                    dark: float = 40.0, light: float = 200.0, background: float = 90.0,
-                   picture: Optional[np.ndarray] = None) -> np.ndarray:
+                   picture: Optional[np.ndarray] = None, touching: float = 0.0) -> np.ndarray:
     """
     Brightness on a cube side at points x, y in mm from the marker's centre, x right and y down: a frame and
-    a bar across it, or a picture of the marker from dark to light.
+    a bar across it, or a picture of the marker from dark to light. Something dark can touch the frame's left
+    side, that many mm wide, as the cube's black corners do seen close to.
     """
     face = 45.0
+    if touching:
+        out = marker_texture(x, y, size, symbol, ring, dark, light, background, picture)
+        out[(x < -size / 2) & (x > -size / 2 - touching) & (np.abs(y) < face / 2)] = dark
+        return out
     radius = 0.12 * size
     thickness = 0.1 * size
 
@@ -217,6 +232,30 @@ class TestFinding(unittest.TestCase):
     def test_nothing_in_a_blank_image(self):
         blank = np.random.default_rng(1).normal(120.0, 3.0, (240, 320))
         self.assertEqual(marker_detection.find_frames(blank), [])
+
+    def test_a_marker_touching_something_dark_is_found_from_inside(self):
+        # The dark pixels do not outline a frame: the hole inside them does.
+        cube = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1
+        for yaw, centre in ((0.0, (0.0, 0.0, 110.0)), (0.6, (20.0, 10.0, 130.0))):
+            with self.subTest(yaw=yaw):
+                rotation = turn(yaw)
+                image = render(rotation, centre, picture=sticker(cube), touching=6.0)
+                frame = only_frame(image)
+                assert frame is not None
+                np.testing.assert_allclose(frame, projected_corners(rotation, centre), atol=0.5)
+                self.assertEqual(marker_detection.identify(image, frame), (cube, 0))
+                with mock.patch.object(marker_detection, "_frames_within", return_value=[]):
+                    self.assertEqual(marker_detection.find_frames(image, CALIBRATION), [])
+
+    def test_so_only_with_a_cube_s_symbol_inside(self):
+        image = render(turn(), (0.0, 0.0, 110.0), touching=6.0)
+        self.assertEqual(marker_detection.find_frames(image, CALIBRATION), [])
+
+    def test_nor_seen_nearly_edge_on(self):
+        # Too narrow to be placed well: in the emulator, such a side put a cube some 100 mm nearer than it was.
+        cube = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1
+        image = render(turn(1.15), (0.0, 0.0, 130.0), picture=sticker(cube), touching=6.0)
+        self.assertEqual(marker_detection.find_frames(image, CALIBRATION), [])
 
 
 class TestIdentity(unittest.TestCase):
