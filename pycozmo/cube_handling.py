@@ -85,12 +85,18 @@ PUT_DOWN_BACKOFF = 30.0
 PLACE_ON_DISTANCE = 38.5
 PLACE_ON_LIFT_HEIGHT = 76.0
 PLACE_ON_BACKOFF = 55.0
-#: Rolling a cube: where the robot stops, the lift up; the lift's height hooking the cube's top edge; and how fast
-#: and how long it backs off lowering the lift. Anki's engine stopped at 31 mm.
+#: Rolling a cube: where the robot stops, the lift up. Anki's engine stopped at 31.6 mm. It lowered the lift from the
+#: top to the bottom in 1.1 s, steadily (55 mm/s, the first 0.3 s with the robot still), and backed off 0.55 s into it,
+#: up to 65 mm/s, for 75 mm in all; the robot's nose came up 27 degrees as the fork pulled on the cube's far top edge,
+#: and the cube went over after some 50 mm. Lowering the lift fast, in 0.3 s, and backing 45 mm, the cube stayed.
 ROLL_DISTANCE = 34.0
-ROLL_HOOK_HEIGHT = 74.0
-ROLL_PULL_SPEED = 55.0
-ROLL_PULL_TIME = 1.0
+ROLL_LOWER_TIME = 1.1
+ROLL_PULL_DELAY = 0.55
+ROLL_PULL_DISTANCE = 75.0
+ROLL_PULL_SPEED = 60.0
+#: How long, after the roll, the cube is waited for to say which way up it is, in seconds: on a robot it said so up to a
+#: second after the robot had stopped, and the roll that had worked was taken for one that had not.
+ROLL_REPORT_TIME = 3.0
 #: Popping a wheelie: where the robot stops, the lift up; and how fast and how long it drives on, bringing the lift
 #: down. Anki's engine stopped at 30 mm, and drove on at 150 mm/s; the robot was on its back, at 74 degrees, a
 #: third of a second later.
@@ -540,14 +546,17 @@ def roll_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = Non
             return False
         cli.enable_stop_on_cliff(False)
         try:
-            # The fork on the cube's top edge, then down, pulling it over.
-            cli.set_lift_height(ROLL_HOOK_HEIGHT)
-            _pause(SETTLE_TIME / 2, cancel)
-            cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm)
-            _creep(cli, -ROLL_PULL_SPEED, ROLL_PULL_TIME, cancel)
-            _pause(SETTLE_TIME / 2, cancel)
+            # The lift down, steadily, and the robot backing off part way: the fork goes over the cube's top, takes its
+            # far edge, and pulls it over.
+            cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm, duration=ROLL_LOWER_TIME)
+            _pause(ROLL_PULL_DELAY, cancel)
+            cli.drive_straight(util.Distance(mm=-ROLL_PULL_DISTANCE), speed=ROLL_PULL_SPEED, wait=False)
+            _pause(ROLL_PULL_DISTANCE / ROLL_PULL_SPEED + SETTLE_TIME / 2, cancel)
         finally:
             cli.enable_stop_on_cliff(True)
+        deadline = time.perf_counter() + ROLL_REPORT_TIME
+        while cube.up_axis == axis and time.perf_counter() < deadline:
+            _pause(0.1, cancel)
         # Where it is now has to be seen: on its side, a side's length nearer.
         cube.pose = None
         return cube.up_axis != axis

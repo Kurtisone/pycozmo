@@ -290,7 +290,7 @@ class GestureTestCase(unittest.TestCase):
         seeing = mock.patch.object(cube_handling, "observe", side_effect=observe)
         seeing.start()
         self.addCleanup(seeing.stop)
-        for name in ("SETTLE_TIME", "ROLL_PULL_TIME", "WHEELIE_TIME"):
+        for name in ("SETTLE_TIME", "ROLL_PULL_DELAY", "WHEELIE_TIME", "ROLL_REPORT_TIME"):
             quick = mock.patch.object(cube_handling, name, 0.0)
             quick.start()
             self.addCleanup(quick.stop)
@@ -356,20 +356,39 @@ class TestPlaceOn(GestureTestCase):
 
 class TestRoll(GestureTestCase):
 
-    def test_hook_the_top_edge_then_pull_it_over(self):
-        def rolled(left, right, *args, **kwargs):
-            self.cli.orders.append(("wheels", left))
-            if left < 0:
+    def test_lower_the_lift_steadily_and_back_off_into_it(self):
+        def backed(distance, speed=None, **kwargs):
+            self.cli.orders.append(("drive", distance.mm, kwargs.get("wait", True)))
+            if distance.mm < 0:
                 self.cube.up_axis = pycozmo.protocol_encoder.UpAxis.XPositive
+            return True
 
-        self.instead("drive_wheels", rolled)
-        self.assertTrue(cube_handling.roll_cube(self.cli, self.cube))
+        def lowered(height, *args, **kwargs):
+            self.cli.orders.append(("lift", height, kwargs.get("duration", 0.0)))
+
+        self.instead("drive_straight", backed)
+        self.instead("set_lift_height", lowered)
+        with mock.patch.object(cube_handling, "ROLL_PULL_SPEED", 1.0e6):
+            self.assertTrue(cube_handling.roll_cube(self.cli, self.cube))
         self.assertEqual(self.dock_with_cube.call_args.kwargs["distance"], cube_handling.ROLL_DISTANCE)
+        # Not a quick drop of the lift, nor wheels at a few mm/s: both lag and fail to hook, on a robot. The robot backs
+        # as a path, while the lift is still on its way down.
         self.assertEqual(self.cli.orders, [
-            ("lift", cube_handling.CARRY_HEIGHT), ("cliff", False), ("lift", cube_handling.ROLL_HOOK_HEIGHT),
-            ("lift", pycozmo.robot.MIN_LIFT_HEIGHT.mm), ("wheels", -cube_handling.ROLL_PULL_SPEED), ("wheels", 0.0),
-            ("cliff", True)])
+            ("lift", cube_handling.CARRY_HEIGHT, 0.0), ("cliff", False),
+            ("lift", pycozmo.robot.MIN_LIFT_HEIGHT.mm, cube_handling.ROLL_LOWER_TIME),
+            ("drive", -cube_handling.ROLL_PULL_DISTANCE, False), ("cliff", True)])
         self.assertIsNone(self.cube.pose)
+
+    def test_a_cube_that_says_so_late_did_roll(self):
+        # On a robot the cube said which way up it was up to a second after the robot had stopped.
+        def late(distance, speed=None, **kwargs):
+            axis = pycozmo.protocol_encoder.UpAxis.XPositive
+            threading.Timer(0.3, lambda: setattr(self.cube, "up_axis", axis)).start()
+            return True
+
+        self.instead("drive_straight", late)
+        with mock.patch.object(cube_handling, "ROLL_REPORT_TIME", 2.0):
+            self.assertTrue(cube_handling.roll_cube(self.cli, self.cube))
 
     def test_a_cube_that_did_not_turn_over_did_not_roll(self):
         self.assertFalse(cube_handling.roll_cube(self.cli, self.cube))
