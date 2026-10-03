@@ -1,6 +1,7 @@
 import math
 import threading
 import unittest
+from typing import Tuple
 from unittest import mock
 
 import numpy as np
@@ -126,6 +127,90 @@ class TestPutDownBy(unittest.TestCase):
         self.assertIs(self.cli.cubes.carried, self.cube)
 
 
+class TestDockError(unittest.TestCase):
+
+    def test_squarely_in_front(self):
+        # The marker 70 mm ahead, facing the robot: the cube's centre is half a side behind it.
+        along, left, turn = cube_handling.dock_error((70.0, 0.0, 22.5), (-1.0, 0.0, 0.0))
+        self.assertAlmostEqual(along, 70.0 + 22.5)
+        self.assertAlmostEqual(left, 0.0)
+        self.assertAlmostEqual(turn, 0.0)
+
+    def test_the_robot_to_one_side_of_the_line(self):
+        # A cube to the robot's left is a robot to the right of the line it makes, looking at the cube.
+        _, left, _ = cube_handling.dock_error((70.0, 20.0, 22.5), (-1.0, 0.0, 0.0))
+        self.assertAlmostEqual(left, -20.0)
+        _, left, _ = cube_handling.dock_error((70.0, -20.0, 22.5), (-1.0, 0.0, 0.0))
+        self.assertAlmostEqual(left, 20.0)
+
+    def test_the_robot_turned_from_the_line(self):
+        # The side faces the robot's left a little: the robot has to turn that way to face along it.
+        _, _, turn = cube_handling.dock_error((70.0, 0.0, 22.5), (-math.cos(0.2), -math.sin(0.2), 0.0))
+        self.assertAlmostEqual(turn, 0.2)
+        _, _, turn = cube_handling.dock_error((70.0, 0.0, 22.5), (-math.cos(0.2), math.sin(0.2), 0.0))
+        self.assertAlmostEqual(turn, -0.2)
+
+
+class TestServo(unittest.TestCase):
+    """ The steering, with a robot that is only a pair of wheels and a marker seen a moment late. """
+
+    DISTANCE = cube_handling.PICKUP_DISTANCE
+    STEP = 0.1
+    DELAY = 2
+
+    def drive_in(self, along: float, side: float, turn: float) -> Tuple[float, float, float]:
+        """
+        A cube's centre at the origin, its side facing along +x; the robot that far along, that far to the side
+        and turned that much off facing it. Drive in until the robot is where it should be; say where it ended up,
+        and how it faces.
+        """
+        x, y, heading = along, side, math.pi + turn
+        width = pycozmo.robot.TRACK_WIDTH.mm
+        sights: list = []
+        for _ in range(400):
+            # The cube as the robot sees it, in its own frame: ahead, to its left.
+            c, s = math.cos(-heading), math.sin(-heading)
+            centre = (c * (0 - x) - s * (0 - y), s * (0 - x) + c * (0 - y))
+            out = (c * 1.0, s * 1.0)
+            sights.append(((centre[0] + 22.5 * out[0], centre[1] + 22.5 * out[1], 22.5), (out[0], out[1], 0.0)))
+            if len(sights) <= self.DELAY:
+                continue
+            position, normal = sights[-1 - self.DELAY]
+            a, left, t = cube_handling.dock_error(position, normal)
+            if x - self.DISTANCE <= 0.0 or a <= self.DISTANCE:
+                break
+            left_wheel, right_wheel = cube_handling.servo_wheels(a, left, t, self.DISTANCE)
+            # Both wheels turn forwards, and fast enough to turn at all.
+            self.assertGreaterEqual(min(left_wheel, right_wheel), 20.0)
+            v, omega = (left_wheel + right_wheel) / 2, (right_wheel - left_wheel) / width
+            heading += omega * self.STEP
+            x += v * math.cos(heading) * self.STEP
+            y += v * math.sin(heading) * self.STEP
+        else:
+            self.fail("It never got there.")
+        c, s = math.cos(-heading), math.sin(-heading)
+        centre = (c * (0 - x) - s * (0 - y), s * (0 - x) + c * (0 - y))
+        return cube_handling.dock_error((centre[0] + 22.5 * c, centre[1] + 22.5 * s, 22.5), (c, s, 0.0))
+
+    def test_in_from_wherever_it_is_the_robot_ends_up_square_on(self):
+        for along, side, off in ((150.0, 0.0, 0.0), (150.0, 30.0, 0.0), (150.0, -30.0, 0.0),
+                                 (150.0, 0.0, math.radians(15)), (150.0, 0.0, math.radians(-15)),
+                                 (150.0, 25.0, math.radians(10)), (150.0, -25.0, math.radians(-10)),
+                                 (150.0, 25.0, math.radians(-15)), (150.0, -25.0, math.radians(15)),
+                                 (120.0, 15.0, math.radians(20))):
+            with self.subTest(along=along, side=side, off=math.degrees(off)):
+                _, left, t = self.drive_in(along, side, off)
+                self.assertLess(abs(left), cube_handling.SERVO_LATERAL_TOLERANCE)
+                self.assertLess(abs(t), cube_handling.SERVO_ANGLE_TOLERANCE)
+
+    def test_slowing_down_as_it_comes_in(self):
+        far = cube_handling.servo_wheels(200.0, 0.0, 0.0, self.DISTANCE)
+        near = cube_handling.servo_wheels(self.DISTANCE + 5.0, 0.0, 0.0, self.DISTANCE)
+        self.assertEqual(far, (cube_handling.SERVO_SPEED, cube_handling.SERVO_SPEED))
+        self.assertLess(near[0], far[0])
+        self.assertGreaterEqual(near[0], cube_handling.SERVO_MIN_SPEED)
+
+
 class GestureClient:
     """ What the manoeuvres ask of a client, recorded: the lift, the wheels, stopping at cliffs, backing off. """
 
@@ -179,7 +264,7 @@ class GestureTestCase(unittest.TestCase):
         seeing = mock.patch.object(cube_handling, "observe", side_effect=observe)
         seeing.start()
         self.addCleanup(seeing.stop)
-        for name in ("SETTLE_TIME", "PICKUP_CREEP", "ROLL_PULL_TIME", "WHEELIE_TIME"):
+        for name in ("SETTLE_TIME", "ROLL_PULL_TIME", "WHEELIE_TIME"):
             quick = mock.patch.object(cube_handling, name, 0.0)
             quick.start()
             self.addCleanup(quick.stop)
@@ -204,8 +289,18 @@ class GestureTestCase(unittest.TestCase):
 class TestPickUp(GestureTestCase):
 
     def test_the_lift_rises_as_the_robot_creeps_on(self):
-        self.lifting_moves_it()
+        def lift(height, *args, **kwargs):
+            self.cli.orders.append(("lift", height))
+            if height > 50:
+                self.moves()
+
+        self.instead("set_lift_height", lift)
         self.assertTrue(cube_handling.pick_up_cube(self.cli, self.cube))
+        # A path, not the wheels: a robot told to turn them at a few mm/s does not move.
+        self.assertIn(("drive", cube_handling.PICKUP_CREEP), self.cli.orders)
+        self.assertLess(self.cli.orders.index(("lift", cube_handling.CARRY_HEIGHT)),
+                        self.cli.orders.index(("drive", cube_handling.PICKUP_CREEP)))
+        self.assertNotIn("wheels", [order[0] for order in self.cli.orders])
         self.assertIs(self.cli.cubes.carried, self.cube)
         self.assertEqual(self.dock_with_cube.call_args.kwargs.get("distance", cube_handling.PICKUP_DISTANCE),
                          cube_handling.PICKUP_DISTANCE)

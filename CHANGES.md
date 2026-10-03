@@ -86,6 +86,13 @@ Bug fixes:
     handling another - and the reaction cut short the behavior that had moved it. Cubes in use are left alone, and
     so is the one in the lift, and any cube while the robot handles one or plays a game.
 - A cube moved by someone else is no longer taken to be where it was last seen.
+- A robot did not pick a cube up, or picked it up crooked, whichever way PyCozmo tried: on a real robot a cube was
+    never taken properly, in the six tries made. Three things were wrong. The wheels, told 15 mm/s, do not turn - they
+    start at some 20 mm/s - so the 8 mm creep on that lifted the cube was 1 mm; it is a path now. The lift rose in 0.3 s
+    where Anki's engine took 0.75 s. And the robot came in by where the cube was seen, a turn and a drive, which leaves
+    it a few mm to the side and ten degrees off: it now steers by the marker in each camera image, as Anki's engine did,
+    and comes in along the line the cube's side makes to within a millimetre or two, in simulation. On a robot: a cube
+    taken flat on the next try. Docking for the other manoeuvres steers the same way.
 
 Documentation:
 - The README is a front page again, at half its length: what the robot does, needs, sees and hears, which had grown

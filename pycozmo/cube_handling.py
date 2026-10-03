@@ -8,9 +8,10 @@ with it. Anki's engine did the rest - seeing the cube, working out where to stan
 this module, for the brain's behaviors and for applications.
 
 What it does is what Anki's engine was seen doing, through the official SDK, on a robot: it goes to stand some
-15 cm from the cube and has a look, then docks with its head down, looking at the marker again on the way, and
-from there makes the manoeuvre's own moves. Picking a cube up, it lifts while creeping on: the fork slides under
-as it rises. Setting one on another, it lets go at 76 mm, not with the lift all the way down. Rolling one, it
+15 cm from the cube and has a look, then docks with its head down, steering by the marker in every camera image so
+as to come in along the line the cube's side makes - an angle off by ten degrees, or a few mm to the side, and the
+fork does not take it - and from there makes the manoeuvre's own moves. Picking a cube up, it lifts while creeping
+on, over the 0.75 s that Anki's engine took: the fork slides under as it rises. Setting one on another, it lets go at 76 mm, not with the lift all the way down. Rolling one, it
 hooks the top edge with the fork at 74 mm, and lowers the lift backing off: the cube tips over towards it. Popping
 a wheelie, it brings the lift down hard on the cube driving on at 150 mm/s, and ends up on its back. The distances
 are Anki's, 2.5 mm longer: PyCozmo places a cube that much further than Anki's engine did on the same images.
@@ -23,7 +24,7 @@ dispatches the client's events: a behavior's own thread will do. Each step can b
 import math
 import threading
 import time
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Sequence, Tuple
 
 from . import camera
 from . import event
@@ -52,6 +53,8 @@ __all__ = [
     "dock_pose",
     "go_to_cube",
     "dock_with_cube",
+    "dock_error",
+    "servo_wheels",
     "pick_up_cube",
     "put_down_cube",
     "put_down_by",
@@ -65,10 +68,15 @@ __all__ = [
 #: measured on a robot after Anki's engine picked it up.
 DOCK_DISTANCE = 52.5
 #: Where the robot stops, the cube's centre that far ahead, before it lifts; and how far it creeps on while it does,
-#: and how fast. Anki's engine stopped at 44.4 mm, by its own reckoning, and crept on 7 mm.
+#: and how fast. Anki's engine stopped at 44.4 mm, by its own reckoning, and crept on 7 mm at some 17 mm/s. The creep
+#: is a path: the wheels, told 15 mm/s, do not turn, and moved a robot 1 mm in half a second, where a path of 8 mm
+#: took it 8.3 to 8.6.
 PICKUP_DISTANCE = 47.0
 PICKUP_CREEP = 8.0
-CREEP_SPEED = 15.0
+CREEP_SPEED = 30.0
+#: How long the lift takes to rise with the cube, in seconds: Anki's engine took 0.74 s from the lowest to the top,
+#: the first 0.2 s slowly. The lift's own speed does it in 0.3 s, and by then it was up without the cube.
+PICKUP_LIFT_TIME = 0.75
 #: How far the robot backs off from a cube it has set down, in mm, as Anki's engine did.
 PUT_DOWN_BACKOFF = 30.0
 #: Where the robot stops to set the cube it carries on another, the other's centre that far ahead, and how far it
@@ -90,8 +98,6 @@ WHEELIE_SPEED = 150.0
 WHEELIE_TIME = 0.35
 #: How far beyond where it docks the robot stands to have a look at the cube, in mm: some 15 cm from it.
 PREDOCK_GAP = 100.0
-#: Where the robot stops on the way in to have another look, beyond where it docks, in mm.
-DOCK_STAGE_GAP = 35.0
 #: The head's angle for looking at a cube on the ground nearby, in radians: the whole marker is in sight from
 #: the lift's fork to 450 mm.
 LOOK_HEAD_ANGLE = math.radians(-8.0)
@@ -99,6 +105,20 @@ LOOK_HEAD_ANGLE = math.radians(-8.0)
 DOCK_HEAD_ANGLE = math.radians(-17.0)
 #: The lift's height for carrying a cube, in mm.
 CARRY_HEIGHT = robot.MAX_LIFT_HEIGHT.mm
+#: Steering in on a cube by its marker, as Anki's engine did, a sight of it at a time: how fast the robot drives, at
+#: the most and the least - its wheels do not turn below some 20 mm/s - and how it slows, in mm/s and per mm to go; how
+#: much it steers by the way it faces, in 1/s, and by its distance from the line the cube's side makes, as the speed
+#: that distance takes to be made up in; how long it goes on without seeing the marker, and how long in all, in
+#: seconds; and how far off the line, in mm, and how far turned from it, in radians, it may be at the end.
+SERVO_SPEED = 45.0
+SERVO_MIN_SPEED = 28.0
+SERVO_SLOWING = 0.5
+SERVO_TURN_GAIN = 2.5
+SERVO_LINE_SPEED = 40.0
+SERVO_LOST_TIME = 0.5
+SERVO_TIME = 12.0
+SERVO_LATERAL_TOLERANCE = 6.0
+SERVO_ANGLE_TOLERANCE = math.radians(6.0)
 #: How long the head and the lift take to get where they are sent, at most, in seconds.
 SETTLE_TIME = 1.0
 #: How far the robot turns at a time looking round for a cube, in radians: a little less than the camera's
@@ -225,34 +245,120 @@ def dock_with_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] 
         if not look_for_cube(cli, cube, cancel=cancel):
             return False
         cli.set_head_angle(DOCK_HEAD_ANGLE)
-        if not _drive_up(cli, cube, distance + DOCK_STAGE_GAP, cancel):
-            return False
-        # Closer, the cube is placed better. Not seen, the first look will do.
-        look_for_cube(cli, cube, timeout=1.0, cancel=cancel, head_angle=DOCK_HEAD_ANGLE)
-        return _drive_up(cli, cube, distance, cancel)
+        # Squarely facing the cube's side, which the turn and the drive by where the cube was last seen - a few mm off,
+        # and an angle off by ten degrees at 25 cm - do not come to: the fork does not take the cube if it is not.
+        return _servo_to_cube(cli, cube, distance, cancel)
 
 
-def _drive_up(cli: Any, cube: LightCube, distance: float, cancel: Optional[threading.Event]) -> bool:
-    """ Drive to where the cube's centre is that far ahead, facing it squarely. """
-    target = dock_pose(cube, distance)
-    x, y = cli.pose.position.x, cli.pose.position.y
-    dx, dy = target.position.x - x, target.position.y - y
-    remaining = math.hypot(dx, dy)
-    if remaining > 1.0:
-        # Face the spot, drive to it, and face the cube. Backwards, if the spot is behind.
-        heading = math.atan2(dy, dx)
-        backwards = abs(_wrap(heading - cli.pose.rotation.angle_z.radians)) > math.pi / 2
-        if backwards:
-            heading += math.pi
-        _check(cancel)
-        if not cli.turn_in_place(util.Angle(radians=_wrap(heading - cli.pose.rotation.angle_z.radians))):
+def dock_error(position: Sequence[float], normal: Sequence[float]) -> Tuple[float, float, float]:
+    """
+    Where a robot is to the line a cube's side makes, from the marker it sees, as it is in the robot's frame: its
+    centre and the way it faces, a unit vector out of the cube. The distance along the line from the cube's centre
+    to the robot's origin, how far to the left of the line - looking at the cube - the origin is, and how far the
+    robot has to turn, to the left, to face along the line.
+    """
+    n = math.hypot(normal[0], normal[1])
+    out_x, out_y = normal[0] / n, normal[1] / n
+    centre_x, centre_y = position[0] - CUBE_SIDE / 2 * out_x, position[1] - CUBE_SIDE / 2 * out_y
+    along = -(centre_x * out_x + centre_y * out_y)
+    # Looking into the cube, along -out; the origin is at -centre from its centre.
+    left = out_x * centre_y - out_y * centre_x
+    turn = _wrap(math.atan2(-out_y, -out_x))
+    return along, left, turn
+
+
+def servo_wheels(along: float, left: float, turn: float, distance: float) -> Tuple[float, float]:
+    """
+    How fast to turn the wheels, left and right, in mm/s, steering in on a cube: to face along the line its side makes,
+    and onto it, as a car would, by the angle that the distance off the line takes to make up at some speed.
+    """
+    speed = min(SERVO_SPEED, max(SERVO_MIN_SPEED, SERVO_MIN_SPEED + SERVO_SLOWING * (along - distance)))
+    steer = turn - math.atan2(left, SERVO_LINE_SPEED)
+    # Both wheels have to turn forwards, however far off the robot is: it is not to turn on the spot.
+    limit = 2.0 * (speed - SERVO_MIN_SPEED + 4.0) / robot.TRACK_WIDTH.mm
+    omega = max(-limit, min(limit, SERVO_TURN_GAIN * steer))
+    return speed - omega * robot.TRACK_WIDTH.mm / 2, speed + omega * robot.TRACK_WIDTH.mm / 2
+
+
+class _Eyes:
+    """ The camera's newest image, and the wait for a newer one. """
+
+    def __init__(self, cli: Any) -> None:
+        self.cli = cli
+        self.condition = threading.Condition()
+        self.image: Any = None
+        self.count = 0
+        self.handler = cli.add_handler(event.EvtNewRawCameraImage, self._on_image)
+
+    def _on_image(self, _: Any, image: Any) -> None:
+        with self.condition:
+            self.image = image
+            self.count += 1
+            self.condition.notify_all()
+
+    def after(self, count: int, timeout: float) -> Tuple[Any, int]:
+        """ The image after the count-th, or None, and its number. """
+        with self.condition:
+            self.condition.wait_for(lambda: self.count > count, timeout)
+            return (self.image, self.count) if self.count > count else (None, count)
+
+    def close(self) -> None:
+        self.cli.del_handler(event.EvtNewRawCameraImage, self.handler)
+
+
+def _marker_of(cli: Any, cube: LightCube, image: Any) -> Optional[marker_detection.ObservedMarker]:
+    """ The marker of a cube in an image, the nearest if there are several: the robot's own head and pitch are used. """
+    calibration = cli.camera_calibration or camera.DEFAULT_CALIBRATION
+    markers = marker_detection.observe_markers(image, calibration, cli.head_angle.radians, cli.pose_pitch.radians)
+    found = [marker for marker in markers if marker.cube == cube.object_type]
+    return min(found, key=lambda marker: marker.distance) if found else None
+
+
+def _servo_to_cube(cli: Any, cube: LightCube, distance: float, cancel: Optional[threading.Event]) -> bool:
+    """
+    Drive in on a cube, its centre that far ahead at the end, steering by the marker in each camera image, as Anki's
+    engine did: the robot comes in along the line the cube's side makes, whatever it was off by. Near, the marker
+    is out of sight, and the rest of the way is driven blind. Say whether the robot ended up there, facing it.
+    """
+    eyes = _Eyes(cli)
+    start = time.perf_counter()
+    count = eyes.count
+    last: Optional[Tuple[float, float, float, float, util.Pose]] = None
+    try:
+        while time.perf_counter() - start < SERVO_TIME:
+            _check(cancel)
+            image, count = eyes.after(count, 0.3)
+            marker = None if image is None else _marker_of(cli, cube, image)
+            now = time.perf_counter()
+            if marker is None:
+                if last is None and now - start > 2.0:
+                    return False
+                if last is not None and now - last[0] > SERVO_LOST_TIME:
+                    break
+                continue
+            along, left, turn = dock_error(marker.position, marker.normal)
+            last = (now, along, left, turn, cli.pose)
+            if along <= distance:
+                break
+            cli.drive_wheels(*servo_wheels(along, left, turn, distance))
+        else:
             return False
+    finally:
+        cli.drive_wheels(0.0, 0.0)
+        eyes.close()
+    if last is None:
+        return False
+    _, along, left, turn, pose = last
+    # The rest is blind: what the marker said last, less what the robot has driven since.
+    heading = pose.rotation.angle_z.radians
+    driven = ((cli.pose.position.x - pose.position.x) * math.cos(heading) +
+              (cli.pose.position.y - pose.position.y) * math.sin(heading))
+    left_to_go = along - driven - distance
+    if left_to_go > 2.0:
         _check(cancel)
-        if not cli.drive_straight(util.Distance(mm=-remaining if backwards else remaining), speed=robot.DOCK_SPEED):
+        if not cli.drive_straight(util.Distance(mm=min(left_to_go, 40.0)), speed=CREEP_SPEED):
             return False
-    _check(cancel)
-    return bool(cli.turn_in_place(util.Angle(
-        radians=_wrap(target.rotation.angle_z.radians - cli.pose.rotation.angle_z.radians))))
+    return abs(left) <= SERVO_LATERAL_TOLERANCE and abs(turn) <= SERVO_ANGLE_TOLERANCE
 
 
 def _creep(cli: Any, speed: float, seconds: float, cancel: Optional[threading.Event]) -> None:
@@ -287,9 +393,10 @@ def _pick_up_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event]) 
 
     handler = cli.add_handler(event.EvtCubeMovingChange, on_moving)
     try:
-        cli.set_lift_height(CARRY_HEIGHT)
-        _creep(cli, CREEP_SPEED, PICKUP_CREEP / CREEP_SPEED, cancel)
-        _pause(SETTLE_TIME / 2, cancel)
+        # The fork takes the cube as the lift rises and the robot goes on, both at once.
+        cli.set_lift_height(CARRY_HEIGHT, duration=PICKUP_LIFT_TIME)
+        cli.drive_straight(util.Distance(mm=PICKUP_CREEP), speed=CREEP_SPEED, wait=False)
+        _pause(SETTLE_TIME, cancel)
     finally:
         cli.del_handler(event.EvtCubeMovingChange, handler)
     if _on_the_ground_ahead(cli, cube):
