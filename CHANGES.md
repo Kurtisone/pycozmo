@@ -13,15 +13,18 @@ Unreleased
 
 Checked against an emulator of the robot, which is not part of this repository, and in part on a robot, with the Cozmo
 application's own engine recorded through the SDK beside it: how cubes connect, the animation stream, the cube lights,
-and the moves of the games and of Anki's cube handling. The cube handling as written from those recordings, and the
-games played through, are not yet tried on a robot.
+and the moves of the games and of Anki's cube handling. On a robot, tried: picking a cube up and putting it down, and
+setting one on another, each to the user's eye; rolling a cube, which went over both times; and a song, which sounded
+right. Not tried: the games, popping a wheelie, and the behaviors that run these - on its one try the RollBlock
+behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back, the cube not rolled, and why is
+not known: its lift came down in 0.13 s, not the 1.1 s it was asked to take.
 
 New features:
 - Handling the cubes. pycozmo.cube_handling does it as Anki's engine was recorded doing it on a robot: it finds a
     cube, looking round for it if need be, goes to stand some 15 cm from the side it saw and has a look, then docks
-    with its head down, looking at the marker again on the way. It picks the cube up, the lift rising as the robot
-    creeps on; puts it down; sets it on another, letting go at 76 mm; rolls it, the fork hooking the top edge at
-    74 mm and coming down as the robot backs off; and pops a wheelie, the lift slamming down on the cube as the robot
+    with its head down, steering by the marker in each camera image. It picks the cube up, the lift rising as the
+    robot creeps on; puts it down; sets it on another, letting go at 76 mm; rolls it, the lift coming steadily down
+    and the robot backing off part way into it; and pops a wheelie, the lift slamming down on the cube as the robot
     drives on at 150 mm/s. The distances are Anki's, 2.5 mm longer, as PyCozmo places cubes. A cube an animation sets
     down is followed where the fork pushes it.
 - Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
