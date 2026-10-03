@@ -200,8 +200,26 @@ class TestServo(unittest.TestCase):
                                  (120.0, 15.0, math.radians(20))):
             with self.subTest(along=along, side=side, off=math.degrees(off)):
                 _, left, t = self.drive_in(along, side, off)
-                self.assertLess(abs(left), cube_handling.SERVO_LATERAL_TOLERANCE)
-                self.assertLess(abs(t), cube_handling.SERVO_ANGLE_TOLERANCE)
+                self.assertLess(abs(left), 3.0)
+                self.assertLess(abs(math.degrees(t)), 4.0)
+
+    def test_a_sight_that_wanders_is_steered_by_all_the_same(self):
+        # As on a robot: the angle of the side is off by 3 degrees from one image to the next, and the distance to
+        # the line by 4 mm. Taking the mean of the last few sights made it worse: it is a turn the later.
+        rng = np.random.default_rng(3)
+        original = cube_handling.dock_error
+
+        def noisy(position, normal):
+            along, left, turn = original(position, normal)
+            return along, left + rng.normal(0.0, 4.0), turn + rng.normal(0.0, math.radians(3.0))
+
+        with mock.patch.object(cube_handling, "dock_error", noisy):
+            for along, side, off in ((150.0, 20.0, 0.0), (150.0, -20.0, 0.0), (150.0, 0.0, math.radians(12)),
+                                     (150.0, 0.0, math.radians(-12))):
+                with self.subTest(side=side, off=math.degrees(off)):
+                    _, left, t = self.drive_in(along, side, off)
+                    self.assertLess(abs(left), cube_handling.SERVO_LATERAL_TOLERANCE)
+                    self.assertLess(abs(t), cube_handling.SERVO_ANGLE_TOLERANCE)
 
     def test_slowing_down_as_it_comes_in(self):
         far = cube_handling.servo_wheels(200.0, 0.0, 0.0, self.DISTANCE)

@@ -11,10 +11,11 @@ What it does is what Anki's engine was seen doing, through the official SDK, on 
 15 cm from the cube and has a look, then docks with its head down, steering by the marker in every camera image so
 as to come in along the line the cube's side makes - an angle off by ten degrees, or a few mm to the side, and the
 fork does not take it - and from there makes the manoeuvre's own moves. Picking a cube up, it lifts while creeping
-on, over the 0.75 s that Anki's engine took: the fork slides under as it rises. Setting one on another, it lets go at 76 mm, not with the lift all the way down. Rolling one, it
-hooks the top edge with the fork at 74 mm, and lowers the lift backing off: the cube tips over towards it. Popping
-a wheelie, it brings the lift down hard on the cube driving on at 150 mm/s, and ends up on its back. The distances
-are Anki's, 2.5 mm longer: PyCozmo places a cube that much further than Anki's engine did on the same images.
+on, over the 0.75 s that Anki's engine took: the fork slides under as it rises. Setting one on another, it lets go
+at 76 mm, not with the lift all the way down. Rolling one, it hooks the top edge with the fork at 74 mm, and lowers
+the lift backing off: the cube tips over towards it. Popping a wheelie, it brings the lift down hard on the cube
+driving on at 150 mm/s, and ends up on its back. The distances are Anki's, 2.5 mm longer: PyCozmo places a cube that
+much further than Anki's engine did on the same images.
 
 Everything here blocks until done and waits for the robot's reports, so it must not run on the thread that
 dispatches the client's events: a behavior's own thread will do. Each step can be cut short with a cancel event.
@@ -109,7 +110,8 @@ CARRY_HEIGHT = robot.MAX_LIFT_HEIGHT.mm
 #: the most and the least - its wheels do not turn below some 20 mm/s - and how it slows, in mm/s and per mm to go; how
 #: much it steers by the way it faces, in 1/s, and by its distance from the line the cube's side makes, as the speed
 #: that distance takes to be made up in; how long it goes on without seeing the marker, and how long in all, in
-#: seconds; and how far off the line, in mm, and how far turned from it, in radians, it may be at the end.
+#: seconds; and how far off the line, in mm, and how far turned from it, in radians, it may be at the end by the last
+#: sight - which is off by some 4 mm and 3 degrees: to catch a robot that is badly off, not to place it.
 SERVO_SPEED = 45.0
 SERVO_MIN_SPEED = 28.0
 SERVO_SLOWING = 0.5
@@ -117,8 +119,8 @@ SERVO_TURN_GAIN = 2.5
 SERVO_LINE_SPEED = 40.0
 SERVO_LOST_TIME = 0.5
 SERVO_TIME = 12.0
-SERVO_LATERAL_TOLERANCE = 6.0
-SERVO_ANGLE_TOLERANCE = math.radians(6.0)
+SERVO_LATERAL_TOLERANCE = 10.0
+SERVO_ANGLE_TOLERANCE = math.radians(10.0)
 #: How long the head and the lift take to get where they are sent, at most, in seconds.
 SETTLE_TIME = 1.0
 #: How far the robot turns at a time looking round for a cube, in radians: a little less than the camera's
