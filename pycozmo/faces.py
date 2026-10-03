@@ -66,6 +66,7 @@ class Face:
         "observations",
         "present",
         "features",
+        "views",
         "identified_at",
     ]
 
@@ -85,7 +86,14 @@ class Face:
         self.present = False
         #: Its features when last told apart: see face_detection.similarity().
         self.features: Optional[np.ndarray] = None
+        #: The last few of them, a second or so apart: a face is not the same from one moment to the next, in a dim
+        #: room least.
+        self.views: List[np.ndarray] = []
         self.identified_at = float("-inf")
+
+    def resemblance(self, features: np.ndarray) -> float:
+        """ How alike features are to the face, as a cosine: to the view of it that they are most alike. """
+        return max((face_detection.similarity(features, view) for view in self.views), default=-1.0)
 
     def seen_within(self, seconds: float, now: Optional[float] = None) -> bool:
         now = time.perf_counter() if now is None else now
@@ -204,6 +212,8 @@ class Faces:
     RECOGNIZE_INTERVAL = 1.0
     #: How far apart enrollment takes its views, in seconds.
     ENROLL_INTERVAL = 0.4
+    #: How many views of a face are kept to tell it by.
+    VIEWS = 6
 
     def __init__(self, cli: Any, detector: Optional[Any] = None, gallery: Optional[FaceGallery] = None) -> None:
         # The client. Typed Any, since importing it here would be circular.
@@ -279,12 +289,14 @@ class Faces:
                 taken.add(candidate.face_id)
         for index, (detection, world, distance) in enumerate(placed):
             face: Optional[Face] = tracked.get(index)
+            if face is None and detection.score < face_detection.SCORE_THRESHOLD:
+                # Not sure enough to take it for a face; only one already followed is let to be that unsure.
+                continue
             features: Optional[np.ndarray] = None
             if face is not None and (face.features is None or now - face.identified_at >= self.RECOGNIZE_INTERVAL or
                                      self._wants_view(now)):
                 features = detector.embed(image, detection)
-                if face.features is not None and \
-                        face_detection.similarity(features, face.features) < face_detection.SAME_PERSON:
+                if face.views and face.resemblance(features) < face_detection.SAME_PERSON:
                     # Another person where the face was.
                     face = None
             if face is None:
@@ -327,7 +339,7 @@ class Faces:
         if self._detector is None and not self._unavailable:
             if face_detection.opencv_available() and face_detection.models_present():
                 try:
-                    self._detector = face_detection.FaceDetector()
+                    self._detector = face_detection.FaceDetector(score_threshold=face_detection.FOLLOW_THRESHOLD)
                 except Exception as e:
                     logger.warning("Failed to load the face models. %s", e)
                     self._unavailable = True
@@ -363,9 +375,9 @@ class Faces:
         best: Optional[Face] = None
         best_score = face_detection.SAME_PERSON
         for face in self._faces.values():
-            if face.features is None or face.face_id in taken:
+            if not face.views or face.face_id in taken:
                 continue
-            score = face_detection.similarity(features, face.features)
+            score = face.resemblance(features)
             if score >= best_score:
                 best, best_score = face, score
         return best
@@ -381,6 +393,8 @@ class Faces:
         identified = None
         if features is not None:
             face.features = features
+            face.views.append(features)
+            del face.views[:-self.VIEWS]
             face.identified_at = now
             name, face.similarity = self.gallery.identify(features)
             if name is not None and name != face.name:

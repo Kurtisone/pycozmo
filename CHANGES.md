@@ -55,7 +55,9 @@ New features:
     from their features - and knows people by name: Faces.enroll() takes a few views of the face in front of the
     camera, and keeps the features, not the pictures, in the user's own directory. EvtFaceAppeared, EvtFaceObserved,
     EvtFaceIdentified and EvtFaceDisappeared; a face that appears raises Anki's FacePositionUpdated, which has
-    Cozmo acknowledge it. Not yet tried on a robot. examples/faces.py shows what Cozmo sees.
+    Cozmo acknowledge it. A face is taken for one at a score of 0.9 but followed down to 0.7, and told by the
+    last six views of it, not the last: in a dim room, the first try on a robot, one person was seven faces. Not yet
+    tried on anybody else. examples/faces.py shows what Cozmo sees.
 - Songs. pycozmo.songs sings Cozmo's songs: the singing animations' event plays a song a WWise switch picks, a MIDI
     track of Cozmo's sound bank, and PyCozmo renders it as the application's sound engine did, with the instrument of
     sung notes the bank holds, then cuts it short where the animation stops it. Client.set_audio_switch() picks the

@@ -37,6 +37,7 @@ from . import util
 
 __all__ = [
     "SCORE_THRESHOLD",
+    "FOLLOW_THRESHOLD",
     "SAME_PERSON",
     "EYE_DISTANCE",
     "MODELS",
@@ -52,8 +53,12 @@ __all__ = [
 ]
 
 
-#: How sure YuNet has to be of a face, as a score from 0 to 1. Blurred cubes score up to 0.8; OpenCV's default.
+#: How sure YuNet has to be of a face to take it for one, as a score from 0 to 1. Blurred cubes score up to 0.8
+#: (4154 camera images, none with a face); OpenCV's default.
 SCORE_THRESHOLD = 0.9
+#: How sure it has to be of one it is already following. In a dim room a face scores 0.8 to 0.9, and is lost at every
+#: frame under SCORE_THRESHOLD, which it is not.
+FOLLOW_THRESHOLD = 0.7
 #: How much two detections of the same face overlap before one is dropped, as intersection over union.
 NMS_THRESHOLD = 0.3
 #: How many candidates YuNet keeps before dropping those that overlap.

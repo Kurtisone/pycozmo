@@ -264,6 +264,48 @@ class TestTracking(FacesTestCase):
         self.assertIsNot(other, first)
         self.assertEqual(len(self.faces), 2)
 
+    def test_a_face_already_followed_may_be_less_sure(self):
+        # In a dim room a face scores 0.8 or so, which is not enough to take for one, but enough to lose none.
+        sure = (face_detection.SCORE_THRESHOLD + 1.0) / 2
+        unsure = (face_detection.FOLLOW_THRESHOLD + face_detection.SCORE_THRESHOLD) / 2
+        first, = self.look(10.0, (seen_face(score=sure), person(0)))
+        again, = self.look(10.2, (seen_face(score=unsure), person(0)))
+        self.assertIs(again, first)
+        self.assertEqual(self.happened(), [("Appeared", 1), ("Observed", 1), ("Observed", 1)])
+
+    def test_a_face_not_sure_enough_is_not_a_new_one(self):
+        unsure = (face_detection.FOLLOW_THRESHOLD + face_detection.SCORE_THRESHOLD) / 2
+        self.assertEqual(self.look(10.0, (seen_face(score=unsure), person(0))), [])
+        self.assertEqual(len(self.faces), 0)
+        self.assertEqual(self.happened(), [])
+        # Nor is it, once the face it might be a sight of is no longer followed.
+        self.look(10.1, (seen_face(), person(0)))
+        self.look(10.1 + self.faces.TRACK_TIME + 0.1)
+        self.happened()
+        self.assertEqual(self.look(13.0, (seen_face(left=500.0, score=unsure), person(5))), [])
+        self.assertEqual(self.happened(), [])
+
+    def test_a_face_that_changes_is_still_the_same_by_a_view_it_had(self):
+        # Features that drift, a second at a time, from a person's towards another's, and back to the first.
+        def between(a: int, b: int, towards_b: float) -> np.ndarray:
+            mixed = person(a) * (1.0 - towards_b) + person(b) * towards_b
+            return (mixed / np.linalg.norm(mixed)).astype(np.float32)
+
+        first, = self.look(10.0, (seen_face(), between(0, 5, 0.0)))
+        self.look(11.1, (seen_face(), between(0, 5, 0.5)))
+        self.look(12.2, (seen_face(), between(0, 5, 0.95)))
+        # Not like the last view, and like the first.
+        assert first.features is not None
+        self.assertLess(face_detection.similarity(between(0, 5, 0.0), first.features), face_detection.SAME_PERSON)
+        again, = self.look(13.3, (seen_face(), between(0, 5, 0.0)))
+        self.assertIs(again, first)
+        self.assertEqual(len(self.faces), 1)
+
+    def test_only_so_many_views_of_a_face_are_kept(self):
+        for i in range(self.faces.VIEWS + 4):
+            face, = self.look(10.0 + i * 1.1, (seen_face(), person(0)))
+        self.assertEqual(len(face.views), self.faces.VIEWS)
+
     def test_two_faces_keep_their_own_tracks(self):
         a, b = self.look(10.0, (seen_face(600.0, left=-150.0), person(0)), (seen_face(700.0, left=150.0), person(1)))
         # They come in the other order, and a little moved.
