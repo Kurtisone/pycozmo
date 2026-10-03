@@ -233,6 +233,34 @@ class TestFinding(unittest.TestCase):
         blank = np.random.default_rng(1).normal(120.0, 3.0, (240, 320))
         self.assertEqual(marker_detection.find_frames(blank), [])
 
+    def test_a_frame_is_looked_for_in_each_neighbourhood(self):
+        # Three cubes a hand's breadth away, in a dim room, their lights on: the dark about each light is joined to
+        # the ring of the frame below it by a neighbourhood 12 pixels around, and is not by one 6 around.
+        # The picture is from a robot's camera, and is not here: this is what it leaves.
+        blank = np.full((240, 320), 90.0)
+        frame = projected_corners(turn(), (0.0, 0.0, 150.0))
+        only_the_smaller = mock.Mock(side_effect=lambda gray, radius, calibration, min_size:
+                                     [frame] if radius == min(marker_detection._DARK_RADII) else [])
+        with mock.patch.object(marker_detection, "_find_frames", only_the_smaller):
+            found = marker_detection.find_frames(blank)
+        self.assertEqual(len(found), 1)
+        np.testing.assert_allclose(found[0], frame)
+        self.assertEqual(sorted(call.args[1] for call in only_the_smaller.call_args_list),
+                         sorted(marker_detection._DARK_RADII))
+
+    def test_a_frame_found_with_each_is_one(self):
+        blank = np.full((240, 320), 90.0)
+        frame = projected_corners(turn(), (0.0, 0.0, 150.0))
+        size = float(np.linalg.norm(frame[0] - frame[2]))
+        shifted = frame + np.array([0.1 * size, 0.0])
+        other = frame + np.array([1.2 * size, 0.0])
+        for second, count in ((shifted, 1), (other, 2)):
+            with self.subTest(count=count):
+                finds = mock.Mock(side_effect=lambda gray, radius, calibration, min_size, second=second:
+                                  [frame] if radius == marker_detection._DARK_RADII[0] else [second])
+                with mock.patch.object(marker_detection, "_find_frames", finds):
+                    self.assertEqual(len(marker_detection.find_frames(blank)), count)
+
     def test_a_marker_touching_something_dark_is_found_from_inside(self):
         # The dark pixels do not outline a frame: the hole inside them does.
         cube = pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE1

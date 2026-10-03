@@ -84,9 +84,11 @@ CUBE_MARKERS = {
 #: Smallest frame looked for, in pixels. A marker 27 mm wide is 12 pixels wide at about 670 mm.
 MIN_FRAME_SIZE = 12
 
-# Neighbourhood a pixel's brightness is compared with, as a radius in pixels, and how much darker than it a
-# pixel has to be to count as dark: a fraction of its brightness, and at least a few levels.
-_DARK_RADIUS = 12
+# Neighbourhoods a pixel's brightness is compared with, as radii in pixels, and how much darker than it a
+# pixel has to be to count as dark: a fraction of its brightness, and at least a few levels. A frame is looked
+# for with each: one 12 pixels around is right for frames 30 to 45 pixels wide, but a nearer cube, in a dim
+# room, has a frame whose dark ring is joined to the dark about it, and the neighbourhood there is a ring wide.
+_DARK_RADII = (12, 6)
 _DARK_FRACTION = 0.12
 _DARK_MIN = 6.0
 
@@ -158,7 +160,23 @@ def find_frames(image: np.ndarray, calibration: Optional[camera.CameraCalibratio
     straight sides, is taken out before they are fitted.
     """
     gray = np.asarray(image, dtype=np.float64)
-    mean = _box_mean(gray, _DARK_RADIUS)
+    frames: List[np.ndarray] = []
+    for radius in _DARK_RADII:
+        for frame in _find_frames(gray, radius, calibration, min_size):
+            if not any(_same_frame(frame, other) for other in frames):
+                frames.append(frame)
+    return frames
+
+
+def _same_frame(a: np.ndarray, b: np.ndarray) -> bool:
+    """ Whether two sets of corners are one frame's: their centres are a third of the size of it apart, or less. """
+    size = max(np.linalg.norm(a[0] - a[2]), np.linalg.norm(b[0] - b[2]))
+    return bool(np.linalg.norm(a.mean(axis=0) - b.mean(axis=0)) < size / 3)
+
+
+def _find_frames(gray: np.ndarray, radius: int, calibration: Optional[camera.CameraCalibration],
+                 min_size: int) -> List[np.ndarray]:
+    mean = _box_mean(gray, radius)
     dark = gray < mean - np.maximum(_DARK_MIN, _DARK_FRACTION * mean)
     frames = []
     for runs in _components(dark):

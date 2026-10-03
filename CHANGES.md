@@ -67,6 +67,10 @@ New features:
 - Cube markers are found close to as well, where the cube's black corners touch the frame and the dark pixels no
     longer outline it: from the hole inside them. Over 4092 images of two robots, 130 more of the cubes Anki's
     engine saw are found, and they are placed as well as the others, within a few mm.
+- Cube markers are found with the cubes' lights on. Three cubes lit, 20 to 26 cm from a robot in a dim room, were
+    none of them seen: the dark about each light was joined to the ring of its frame in a neighbourhood 12 pixels
+    around. A frame is looked for with a neighbourhood 6 pixels around as well. Over 4154 images of two robots, 13
+    more of the cubes Anki's engine saw are found, and cubes it did not know of; the search takes twice as long.
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
