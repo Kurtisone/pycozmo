@@ -107,17 +107,22 @@ DOCK_HEAD_ANGLE = math.radians(-17.0)
 #: The lift's height for carrying a cube, in mm.
 CARRY_HEIGHT = robot.MAX_LIFT_HEIGHT.mm
 #: Steering in on a cube by its marker, as Anki's engine did, a sight of it at a time: how fast the robot drives, at
-#: the most and the least - its wheels do not turn below some 20 mm/s - and how it slows, in mm/s and per mm to go; how
-#: much it steers by the way it faces, in 1/s, and by its distance from the line the cube's side makes, as the speed
-#: that distance takes to be made up in; how long it goes on without seeing the marker, and how long in all, in
-#: seconds; and how far off the line, in mm, and how far turned from it, in radians, it may be at the end by the last
-#: sight - which is off by some 4 mm and 3 degrees: to catch a robot that is badly off, not to place it.
+#: the most and the least - its wheels do not turn below some 20 mm/s - and how it slows, in mm/s and per mm to go;
+#: how much it steers by the way it faces, in 1/s; where on the line the cube's side makes it aims, as a fraction of its
+#: distance along the line, at least so far in mm, and at the most how far to the side of the way it faces, in radians:
+#: steering harder, it loses the cube from the camera's view; how long it goes on without seeing the marker, and how
+#: long in all, in seconds; how far short of the end the robot stops steering and drives the rest by a path, in mm; and
+#: how far off the line, in mm, and how far turned from it, in radians, it may be at the end by the last sight - which
+#: is off by some 4 mm and 3 degrees: to catch a robot that is badly off, not to place it.
 SERVO_SPEED = 45.0
 SERVO_MIN_SPEED = 28.0
 SERVO_SLOWING = 0.5
-SERVO_TURN_GAIN = 2.5
-SERVO_LINE_SPEED = 40.0
-SERVO_LOST_TIME = 0.5
+SERVO_TURN_GAIN = 3.0
+SERVO_LOOKAHEAD = 0.4
+SERVO_LOOKAHEAD_MIN = 40.0
+SERVO_APPROACH_ANGLE = math.radians(25.0)
+SERVO_LOST_TIME = 0.15
+SERVO_BLIND_GAP = 15.0
 SERVO_TIME = 12.0
 SERVO_LATERAL_TOLERANCE = 10.0
 SERVO_ANGLE_TOLERANCE = math.radians(10.0)
@@ -272,10 +277,12 @@ def dock_error(position: Sequence[float], normal: Sequence[float]) -> Tuple[floa
 def servo_wheels(along: float, left: float, turn: float, distance: float) -> Tuple[float, float]:
     """
     How fast to turn the wheels, left and right, in mm/s, steering in on a cube: to face along the line its side makes,
-    and onto it, as a car would, by the angle that the distance off the line takes to make up at some speed.
+    and onto it, by the angle to a point of the line a good way ahead, never so far to one side that the cube leaves
+    the camera's view.
     """
     speed = min(SERVO_SPEED, max(SERVO_MIN_SPEED, SERVO_MIN_SPEED + SERVO_SLOWING * (along - distance)))
-    steer = turn - math.atan2(left, SERVO_LINE_SPEED)
+    aim = math.atan2(left, max(SERVO_LOOKAHEAD_MIN, SERVO_LOOKAHEAD * along))
+    steer = turn - max(-SERVO_APPROACH_ANGLE, min(SERVO_APPROACH_ANGLE, aim))
     # Both wheels have to turn forwards, however far off the robot is: it is not to turn on the spot.
     limit = 2.0 * (speed - SERVO_MIN_SPEED + 4.0) / robot.TRACK_WIDTH.mm
     omega = max(-limit, min(limit, SERVO_TURN_GAIN * steer))
@@ -289,20 +296,25 @@ class _Eyes:
         self.cli = cli
         self.condition = threading.Condition()
         self.image: Any = None
+        self.pose: Optional[util.Pose] = None
         self.count = 0
         self.handler = cli.add_handler(event.EvtNewRawCameraImage, self._on_image)
 
     def _on_image(self, _: Any, image: Any) -> None:
         with self.condition:
             self.image = image
+            # Where the robot was as the image came, not as it has been looked at: it drives all the while.
+            self.pose = self.cli.pose
             self.count += 1
             self.condition.notify_all()
 
-    def after(self, count: int, timeout: float) -> Tuple[Any, int]:
-        """ The image after the count-th, or None, and its number. """
+    def after(self, count: int, timeout: float) -> Tuple[Any, Optional[util.Pose], int]:
+        """ The image after the count-th, or None, the robot's pose as it came, and its number. """
         with self.condition:
             self.condition.wait_for(lambda: self.count > count, timeout)
-            return (self.image, self.count) if self.count > count else (None, count)
+            if self.count > count:
+                return self.image, self.pose, self.count
+            return None, None, count
 
     def close(self) -> None:
         self.cli.del_handler(event.EvtNewRawCameraImage, self.handler)
@@ -329,18 +341,20 @@ def _servo_to_cube(cli: Any, cube: LightCube, distance: float, cancel: Optional[
     try:
         while time.perf_counter() - start < SERVO_TIME:
             _check(cancel)
-            image, count = eyes.after(count, 0.3)
+            image, pose, count = eyes.after(count, 0.3)
             marker = None if image is None else _marker_of(cli, cube, image)
             now = time.perf_counter()
-            if marker is None:
+            if marker is None or pose is None:
                 if last is None and now - start > 2.0:
                     return False
                 if last is not None and now - last[0] > SERVO_LOST_TIME:
                     break
                 continue
             along, left, turn = dock_error(marker.position, marker.normal)
-            last = (now, along, left, turn, cli.pose)
-            if along <= distance:
+            last = (now, along, left, turn, pose)
+            # The last of the way is driven by the path follower, which stops where it is told: the wheels, told to
+            # stop, go on for as long as the sight and the order take.
+            if along <= distance + SERVO_BLIND_GAP:
                 break
             cli.drive_wheels(*servo_wheels(along, left, turn, distance))
         else:

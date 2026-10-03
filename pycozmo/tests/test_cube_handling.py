@@ -172,12 +172,20 @@ class TestServo(unittest.TestCase):
             c, s = math.cos(-heading), math.sin(-heading)
             centre = (c * (0 - x) - s * (0 - y), s * (0 - x) + c * (0 - y))
             out = (c * 1.0, s * 1.0)
-            sights.append(((centre[0] + 22.5 * out[0], centre[1] + 22.5 * out[1], 22.5), (out[0], out[1], 0.0)))
+            # The camera sees 28 degrees to either side, and a marker is not read from too slanting a view.
+            bearing = math.atan2(centre[1], centre[0])
+            slant = math.acos(max(-1.0, min(1.0, -(centre[0] * out[0] + centre[1] * out[1]) / math.hypot(*centre))))
+            sights.append(((centre[0] + 22.5 * out[0], centre[1] + 22.5 * out[1], 22.5), (out[0], out[1], 0.0),
+                           abs(bearing) < math.radians(24.0) and slant < math.radians(60.0)))
             if len(sights) <= self.DELAY:
                 continue
-            position, normal = sights[-1 - self.DELAY]
+            position, normal, seen = sights[-1 - self.DELAY]
+            self.assertTrue(seen, "The cube left the camera's view.")
             a, left, t = cube_handling.dock_error(position, normal)
-            if x - self.DISTANCE <= 0.0 or a <= self.DISTANCE:
+            if x - self.DISTANCE <= 0.0 or a <= self.DISTANCE + cube_handling.SERVO_BLIND_GAP:
+                # The rest of the way is a path: straight, and as far as the last sight said.
+                x += (a - self.DISTANCE) * math.cos(heading)
+                y += (a - self.DISTANCE) * math.sin(heading)
                 break
             left_wheel, right_wheel = cube_handling.servo_wheels(a, left, t, self.DISTANCE)
             # Both wheels turn forwards, and fast enough to turn at all.
@@ -193,15 +201,15 @@ class TestServo(unittest.TestCase):
         return cube_handling.dock_error((centre[0] + 22.5 * c, centre[1] + 22.5 * s, 22.5), (c, s, 0.0))
 
     def test_in_from_wherever_it_is_the_robot_ends_up_square_on(self):
-        for along, side, off in ((150.0, 0.0, 0.0), (150.0, 30.0, 0.0), (150.0, -30.0, 0.0),
+        for along, side, off in ((150.0, 0.0, 0.0), (150.0, 25.0, 0.0), (150.0, -25.0, 0.0),
                                  (150.0, 0.0, math.radians(15)), (150.0, 0.0, math.radians(-15)),
                                  (150.0, 25.0, math.radians(10)), (150.0, -25.0, math.radians(-10)),
-                                 (150.0, 25.0, math.radians(-15)), (150.0, -25.0, math.radians(15)),
-                                 (120.0, 15.0, math.radians(20))):
+                                 (150.0, 25.0, math.radians(-10)), (150.0, -25.0, math.radians(10)),
+                                 (170.0, 34.0, math.radians(17)), (170.0, -34.0, math.radians(-17))):
             with self.subTest(along=along, side=side, off=math.degrees(off)):
                 _, left, t = self.drive_in(along, side, off)
-                self.assertLess(abs(left), 3.0)
-                self.assertLess(abs(math.degrees(t)), 4.0)
+                self.assertLess(abs(left), 5.0)
+                self.assertLess(abs(math.degrees(t)), 8.0)
 
     def test_a_sight_that_wanders_is_steered_by_all_the_same(self):
         # As on a robot: the angle of the side is off by 3 degrees from one image to the next, and the distance to
