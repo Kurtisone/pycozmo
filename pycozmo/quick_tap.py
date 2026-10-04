@@ -89,6 +89,10 @@ ANIMATION_DELAY = 0.4
 #: How far off its place the robot may have drifted before it goes back, in radians and in mm.
 DRIFT_ANGLE = math.radians(1.5)
 DRIFT_DISTANCE = 4.0
+#: The furthest the robot goes back, in mm: the animations move it some 10 mm. More than this, the place it holds is
+#: not where the robot was - on a robot that had been lifted its position began again at zero, in a new frame - and it
+#: stays where it is rather than drive at the cube.
+MAX_DRIFT_DISTANCE = 60.0
 #: The name the game's lights are shown under: see Cubes.show_lights().
 LIGHTS_NAME = "QuickTap"
 
@@ -267,18 +271,23 @@ class QuickTap:
     def _go_back(self, cancel: Optional[threading.Event]) -> None:
         """ Go back to where the robot stood when the game started, if its animations have moved it off. """
         pose = self.cli.pose
-        if self.place is None:
+        if self.place is None or self.place.origin_id != pose.origin_id:
+            # The first hand, or the robot's position has begun again in a new frame: this is the place now.
             self.place = pose
             return
         if cancel is not None and cancel.is_set():
             raise Cancelled()
         heading = self.place.rotation.angle_z.radians
-        error = _wrap(heading - pose.rotation.angle_z.radians)
-        if abs(error) > DRIFT_ANGLE:
-            self.cli.turn_in_place(util.Angle(radians=error))
         # How far ahead of its place the robot stands, along its heading.
         ahead = ((pose.position.x - self.place.position.x) * math.cos(heading) +
                  (pose.position.y - self.place.position.y) * math.sin(heading))
+        if math.hypot(pose.position.x - self.place.position.x, pose.position.y - self.place.position.y) > \
+                MAX_DRIFT_DISTANCE:
+            self.place = pose
+            return
+        error = _wrap(heading - pose.rotation.angle_z.radians)
+        if abs(error) > DRIFT_ANGLE:
+            self.cli.turn_in_place(util.Angle(radians=error))
         if abs(ahead) > DRIFT_DISTANCE:
             self.cli.drive_straight(util.Distance(mm=-ahead), speed=robot.DOCK_SPEED)
 

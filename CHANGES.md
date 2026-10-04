@@ -85,6 +85,9 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- Quick Tap drove the robot at its cube after a hand when the robot had been lifted: its position began again at zero,
+    in a new frame, and the place the game held, in the old one, put the robot 130 mm from where it stood. The place
+    is now the robot's where the frame has changed, and the robot goes back no more than 60 mm.
 - Keep Away gave Cozmo the point for a tap the cube reported, and a player who had pulled the cube away in time lost
     the hand: the lift slamming down on the floor beside the cube, or the cube jerked away, made it report a tap. A
     pounce is now judged by the lift and by whether the cube moved. On a robot the lift stopped at 52 to 55 mm on a cube

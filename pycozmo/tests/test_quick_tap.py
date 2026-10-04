@@ -182,6 +182,28 @@ class TestPlace(GameTestCase):
         self.assertAlmostEqual(self.cli.turn_in_place.call_args.args[0].degrees, -6.0)
         self.assertAlmostEqual(self.cli.drive_straight.call_args.args[0].mm, -10.0)
 
+    def test_a_new_frame_makes_the_place_the_robot_is_at(self):
+        # A robot that had been lifted began its position again at zero, in a new frame; the place it held was in the
+        # old one, and going back to it drove the robot 130 mm at its cube.
+        game = self.game(match=False)
+        self.cli.pose = pycozmo.util.Pose(297.0, 66.0, 0.0, angle_z=pycozmo.util.Angle(degrees=-15.0), origin_id=1)
+        game.play_hand()
+        self.cli.pose = pycozmo.util.Pose(0.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(degrees=-1.0), origin_id=2)
+        game.play_hand()
+        self.cli.turn_in_place.assert_not_called()
+        self.cli.drive_straight.assert_not_called()
+        # And it goes back to that place after.
+        self.cli.pose = pycozmo.util.Pose(10.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(degrees=-1.0), origin_id=2)
+        game.play_hand()
+        self.assertAlmostEqual(self.cli.drive_straight.call_args.args[0].mm, -10.0, delta=0.1)
+
+    def test_it_does_not_drive_a_long_way_back(self):
+        game = self.game(match=False)
+        game.play_hand()
+        self.cli.pose = pycozmo.util.Pose(130.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(degrees=0.0))
+        game.play_hand()
+        self.cli.drive_straight.assert_not_called()
+
     def test_a_little_drift_is_let_be(self):
         game = self.game(match=False)
         game.play_hand()
