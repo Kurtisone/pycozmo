@@ -56,8 +56,10 @@ FLASH_TIME = 0.5
 GAP_TIME = 0.25
 #: How long a tapped cube stays lit, in seconds.
 TAP_FLASH_TIME = 0.3
-#: How long the player has for each tap, in seconds.
-INPUT_TIMEOUT = 6.0
+#: How long the player has for each tap, in seconds. A cube misses some knocks and shows no sign of it - one in five
+#: on a robot - and a player who taps again once they see no light needs the time: with 6 s, a retry that came 6.1 s
+#: after the tap before it lost the hand.
+INPUT_TIMEOUT = 10.0
 #: How long after a cube has said it was tapped it is taken to be saying the same tap again, in seconds. On a robot a
 #: cube said so twice 0.12 s apart for one knock, and up to three times, 0.13 s apart, in another game: the second
 #: was taken for a wrong tap, and the player lost a hand they had won.

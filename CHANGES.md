@@ -113,8 +113,9 @@ Bug fixes:
     the player lost a hand they had won. A cube that has spoken is not heard again for 0.3 s. A cube also misses
     knocks, which nothing here can mend: on a robot it told 8 of the 10 or 11 the user gave it, once each, and in a
     longer run twice 5 of 17 times, 0.07 to 0.16 s after the knock. Its accelerometer, streamed at 29 Hz, is too slow
-    to see a knock, and the protocol has no setting for how hard a cube has to be knocked. A tap the cube misses
-    costs the player a hand of Memory Match and a point of Quick Tap.
+    to see a knock, and a knock does not move the cube, so its moves tell nothing either; the protocol has no setting
+    for how hard a cube has to be knocked. A tap the cube misses costs the player a hand of Memory Match and a point of
+    Quick Tap; Memory Match gives 10 s a tap, not 6, for the player to see no light and tap again.
 - Cozmo's tap in Quick Tap came late, and fell short. A robot takes some 0.4 s to start an animation it is sent, so its
     lift met the cube 0.5 to 0.57 s after the tap was asked for, not the 0.13 s of the clip, and the player, tapping
     in 0.7 s, won nearly every hand. The tap is now asked for that much before it is to land. Cozmo also stood at 50
