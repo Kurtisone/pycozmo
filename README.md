@@ -193,8 +193,7 @@ written; the details say which.
 Tools
 -----
 
-- [pycozmo_app.py](tools/pycozmo_app.py) - an alternative Cozmo application, implementing off-board functions
-    ([video](https://youtu.be/gMEc6RzIm-E)).
+- [pycozmo_app.py](tools/pycozmo_app.py) - an alternative Cozmo application, implementing off-board functions.
 - [pycozmo_resources.py](tools/pycozmo_resources.py) - downloads, shows the status of, or removes Anki's resources.
 - [pycozmo_convert_audio.py](tools/pycozmo_convert_audio.py) - converts Cozmo's Vorbis sounds, which need codebooks from
     the Cozmo application: see [sound.md](docs/sound.md).
