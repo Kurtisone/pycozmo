@@ -88,7 +88,11 @@ Bug fixes:
     and none off, which cube_lights.steady() gives. The user saw the colours right after it, but for white, which a cube
     shows as a yellow: its blue light is the weak one.
 - A cube reported one knock twice in Memory Match, 0.12 s apart, and the second was taken for the next tap, a wrong one:
-    the player lost a hand they had won. A cube that has spoken is not heard again for 0.3 s.
+    the player lost a hand they had won. A cube that has spoken is not heard again for 0.3 s. A cube also misses
+    knocks, which nothing here can mend: on a robot it told 8 of the 10 or 11 the user gave it, once each, and in a
+    longer run twice 5 of 17 times, 0.07 to 0.16 s after the knock. Its accelerometer, streamed at 29 Hz, is too slow
+    to see a knock, and the protocol has no setting for how hard a cube has to be knocked. A tap the cube misses
+    costs the player a hand of Memory Match and a point of Quick Tap.
 - Cozmo's tap in Quick Tap came late, and fell short. A robot takes some 0.4 s to start an animation it is sent, so its
     lift met the cube 0.5 to 0.57 s after the tap was asked for, not the 0.13 s of the clip, and the player, tapping
     in 0.7 s, won nearly every hand. The tap is now asked for that much before it is to land. Cozmo also stood at 50
