@@ -93,8 +93,9 @@ Bug fixes:
     down on nothing; between, a cube that moved was pulled away in time, and one that did not is caught if it said it
     was tapped. The lift's first coming down is the one that counts: every pounce ends with it going to the bottom,
     the robot having backed off. A robot that says nothing of its lift is still judged by the cube's tap. The middle
-    zone is not clean: on a robot a pull that came late, the lift landing at 45.7 mm on the cube's edge, was taken for
-    one in time, as a pull in time had landed at 48.7; what a cube said of the knock, and when, did not tell them apart.
+    zone is not clean: on a robot a hand the user took for a pull too late, the lift landing at 45.7 mm, was counted
+    for the player, which it may rightly have been, Cozmo having only just missed the cube; a pull in time had landed
+    at 48.7. What a cube said of the knock, and when, did not tell the two apart.
 - The cubes lit up by Quick Tap and Memory Match showed the wrong colours: they were told 0 frames on and 0 off, and a
     white came out as two lights, a yellow and a red. Anki's patterns for a light that stays are 30 frames on, a second,
     and none off, which cube_lights.steady() gives. The user saw the colours right after it, but for white, which a cube
