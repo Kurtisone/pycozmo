@@ -609,6 +609,10 @@ class BehaviorDriveOffCharger(Behavior):
     The robot backs onto its charger, so leaving it means driving forward: off the contacts, then
     the extra distance the configuration asks for. The distance is timed rather than measured, the
     robot reporting no odometry a behavior could wait on.
+
+    The robot's cliff stop is off while it does. The brain turns it on, and a robot driving off its
+    charger with it on stopped after 25 mm, its cliff flag up: the charger's lip, which it takes for a
+    cliff. With it off, it drove 95 to 105 mm in a straight line.
     """
 
     #: Speed the robot drives off at, in mm/s.
@@ -646,6 +650,7 @@ class BehaviorDriveOffCharger(Behavior):
         self.attempts += 1
         self.last_run = time.perf_counter()
         self.post_emotion_event("DriveOffCharger")
+        self.cli.enable_stop_on_cliff(False)
         self.cli.drive_wheels(self.SPEED, self.SPEED)
         self.timer = threading.Timer(
             (self.CONTACTS_DISTANCE + self.extra_distance) / self.SPEED, self._arrived)
@@ -654,6 +659,7 @@ class BehaviorDriveOffCharger(Behavior):
 
     def _arrived(self) -> None:
         self.cli.stop_all_motors()
+        self.cli.enable_stop_on_cliff(True)
         if self.attempts >= self.MAX_ATTEMPTS:
             logger.warning(
                 "Behavior '{}' has driven off the charger {} times and the robot still reads as on "
@@ -665,6 +671,7 @@ class BehaviorDriveOffCharger(Behavior):
             self.timer.cancel()
             self.timer = None
         self.cli.stop_all_motors()
+        self.cli.enable_stop_on_cliff(True)
 
 
 class BehaviorPounceOnMotion(Behavior):

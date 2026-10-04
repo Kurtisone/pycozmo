@@ -14,10 +14,12 @@ Unreleased
 Checked against an emulator of the robot, which is not part of this repository, and in part on a robot, with the Cozmo
 application's own engine recorded through the SDK beside it: how cubes connect, the animation stream, the cube lights,
 and the moves of the games and of Anki's cube handling. On a robot, tried: picking a cube up and putting it down, and
-setting one on another, each to the user's eye; rolling a cube, which went over both times; and a song, which sounded
-right. Not tried: the games, popping a wheelie, and the behaviors that run these - on its one try the RollBlock
-behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back, the cube not rolled, and why is
-not known: its lift came down in 0.13 s, not the 1.1 s it was asked to take.
+setting one on another, each to the user's eye; rolling a cube, which went over each time; a song, which sounded
+right; and driving off the charger. Not tried: the games, popping a wheelie, and most of the behaviors that run these.
+The RollBlock behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back on a first try, at
+3.6 V, the cube not rolled, and why is not known: its lift came down in 0.13 s, not the 1.1 s it was asked to take. On
+a second try, at 4.0 V, the same behavior on the same cube rolled it as Anki's engine did, the lift down in 0.9 s and
+the nose up 33 degrees, and the user was pleased; the robot did not find the cube again for the roll after.
 
 New features:
 - Handling the cubes. pycozmo.cube_handling does it as Anki's engine was recorded doing it on a robot: it finds a
@@ -77,6 +79,9 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- DriveOffCharger took the robot off its charger by 25 mm and no more, the brain having turned on the robot's cliff
+    stop, which the charger's lip trips. The cliff stop is off while the robot drives off, and on again after: 95 mm
+    in a straight line on a robot, 4 mm to one side.
 - Only one cube stayed connected at a time. ObjectConnect's second field, taken for a "connect" flag, is the slot
     the robot puts the cube in, 0 to 4, and every cube went into the same one, pushing the last out. Each kind of
     cube has a slot of its own.

@@ -54,6 +54,7 @@ class FakeClient(pycozmo.event.Dispatcher):
         self.cancelled = 0
         self.wheel_speeds = []
         self.stopped = 0
+        self.cliff_stops = []
 
     def play_anim_group(self, name):
         self.played.append(name)
@@ -66,6 +67,9 @@ class FakeClient(pycozmo.event.Dispatcher):
 
     def stop_all_motors(self):
         self.stopped += 1
+
+    def enable_stop_on_cliff(self, enable=True):
+        self.cliff_stops.append(enable)
 
 
 class BehaviorTestCase(unittest.TestCase):
@@ -374,6 +378,19 @@ class TestBehaviorDriveOffCharger(BehaviorTestCase):
         self.assertEqual(self.cli.wheel_speeds, [(behavior.SPEED, behavior.SPEED)])
         self.assertEqual(self.posted_emotion_events(), ["DriveOffCharger"])
         self.assertNotDone()
+
+    def test_it_does_not_stop_at_the_chargers_lip(self):
+        # The robot takes the lip of its charger for a cliff, and with its cliff stop on, as the brain has it, it
+        # came off by 24 mm and no more. The stop is back on once it has gone far enough, or been told to stop.
+        behavior = self.make_behavior()
+        behavior.activate()
+        self.assertEqual(self.cli.cliff_stops, [False])
+        behavior.timer.cancel()
+        behavior._arrived()
+        self.assertEqual(self.cli.cliff_stops, [False, True])
+        behavior.activate()
+        behavior.deactivate()
+        self.assertEqual(self.cli.cliff_stops, [False, True, False, True])
 
     def test_it_stops_where_the_configuration_says(self):
         behavior = self.make_behavior(extra_distance=0.0)
