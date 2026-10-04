@@ -13,7 +13,7 @@ from typing import Any, List
 from unittest import mock
 
 import pycozmo
-from pycozmo import event, quick_tap
+from pycozmo import cube_handling, event, quick_tap
 from pycozmo.protocol_encoder import ObjectType
 
 from .test_brain import cozmo_assets_available
@@ -203,6 +203,32 @@ class TestPlace(GameTestCase):
         self.cli.pose = pycozmo.util.Pose(130.0, 0.0, 0.0, angle_z=pycozmo.util.Angle(degrees=0.0))
         game.play_hand()
         self.cli.drive_straight.assert_not_called()
+
+    def test_a_pushed_cube_is_taken_up_again_before_the_next_hand(self):
+        # Cozmo's tap pushed its cube once on a robot, and the next taps would have fallen short of it.
+        game = self.game(match=False)
+        game.play_hand()
+        game._on_moving(self.cli, self.cozmo_cube, True)
+        with mock.patch.object(cube_handling, "find_cube", return_value=True) as find, \
+                mock.patch.object(quick_tap, "take_position", return_value=True) as take:
+            game.play_hand()
+        self.assertAlmostEqual(self.cli.drive_straight.call_args.args[0].mm, -cube_handling.PREDOCK_GAP)
+        find.assert_called_once()
+        take.assert_called_once()
+        # Only the once.
+        with mock.patch.object(cube_handling, "find_cube", return_value=True) as find, \
+                mock.patch.object(quick_tap, "take_position", return_value=True) as take:
+            game.play_hand()
+        find.assert_not_called()
+        take.assert_not_called()
+
+    def test_the_players_cube_moving_is_not_a_push(self):
+        game = self.game(match=False)
+        game.play_hand()
+        game._on_moving(self.cli, self.player_cube, True)
+        with mock.patch.object(quick_tap, "take_position") as take:
+            game.play_hand()
+        take.assert_not_called()
 
     def test_a_little_drift_is_let_be(self):
         game = self.game(match=False)

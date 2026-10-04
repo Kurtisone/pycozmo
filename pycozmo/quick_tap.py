@@ -169,6 +169,8 @@ class QuickTap:
         self._lock = threading.Lock()
         #: Where the robot stands to tap its cube: where it was when the game started.
         self.place: Optional[util.Pose] = None
+        # Whether Cozmo's cube has said it moved since the robot last took its place: its tap can push it.
+        self._pushed = False
 
     def play(self, cancel: Optional[threading.Event] = None) -> str:
         """ Play a game, and say who won it: COZMO or PLAYER. """
@@ -201,8 +203,16 @@ class QuickTap:
     def play_hand(self, cancel: Optional[threading.Event] = None) -> Optional[str]:
         """ Play one hand, and say who won it: COZMO, PLAYER, or None when no one tapped. """
         self._load_resources()
-        with in_use(self.cozmo_cube, self.player_cube):
-            return self._play_hand(cancel)
+        moves = self.cli.add_handler(event.EvtCubeMovingChange, self._on_moving)
+        try:
+            with in_use(self.cozmo_cube, self.player_cube):
+                return self._play_hand(cancel)
+        finally:
+            self.cli.del_handler(event.EvtCubeMovingChange, moves)
+
+    def _on_moving(self, _: Any, cube: LightCube, moving: bool) -> None:
+        if moving and cube is self.cozmo_cube:
+            self._pushed = True
 
     def _play_hand(self, cancel: Optional[threading.Event]) -> Optional[str]:
         self._go_back(cancel)
@@ -270,6 +280,15 @@ class QuickTap:
 
     def _go_back(self, cancel: Optional[threading.Event]) -> None:
         """ Go back to where the robot stood when the game started, if its animations have moved it off. """
+        if self._pushed and self.place is not None:
+            # Cozmo's tap pushed its cube, and the next would fall short of it: back off, look at the cube, and take
+            # the place again. Without the cube found, the robot stays where it is.
+            self._pushed = False
+            self.cli.drive_straight(util.Distance(mm=-cube_handling.PREDOCK_GAP), speed=robot.DOCK_SPEED)
+            if cube_handling.find_cube(self.cli, self.cozmo_cube, cancel=cancel):
+                take_position(self.cli, self.cozmo_cube, cancel)
+            self.place = self.cli.pose
+            return
         pose = self.cli.pose
         if self.place is None or self.place.origin_id != pose.origin_id:
             # The first hand, or the robot's position has begun again in a new frame: this is the place now.

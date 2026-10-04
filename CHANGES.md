@@ -85,6 +85,9 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- Cozmo's tap in Quick Tap pushed its cube, once in a round of 15 hands on a robot, and the next taps would have fallen
+    short of it. The cube says it has moved; the robot backs off, looks for the cube and takes its place again before the
+    next hand.
 - Quick Tap drove the robot at its cube after a hand when the robot had been lifted: its position began again at zero,
     in a new frame, and the place the game held, in the old one, put the robot 130 mm from where it stood. The place
     is now the robot's where the frame has changed, and the robot goes back no more than 60 mm.
