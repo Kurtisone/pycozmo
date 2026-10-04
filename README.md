@@ -311,6 +311,9 @@ mypy .
 pytest pycozmo/
 ```
 
+The tests share nothing, so `pytest -n 4 pycozmo/` runs them on four processes, with `pytest-xdist` from
+`requirements-dev.txt`: 75 seconds on a Steam Deck, where `pytest pycozmo/` takes some three minutes.
+
 Test coverage, which CI does not gate on:
 
 ```
