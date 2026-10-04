@@ -26,9 +26,12 @@ from .json_loader import load_json_file, get_json_files
 __all__ = [
     "MS_PER_LIGHT_FRAME",
     "STEADY_FRAMES",
+    "CHANNEL_COST",
+    "COLOR_BUDGET",
 
     "CubeLightPattern",
 
+    "limit",
     "steady",
     "load_cube_light_animations",
 ]
@@ -41,6 +44,15 @@ MS_PER_LIGHT_FRAME = 1000.0 / 30.0
 #: How many light frames a light that stays one colour is on for, in Anki's patterns: a second, 1000 ms, and off for
 #: none. A cube given none at all, 0 frames on and 0 off, showed white as two lights, a yellow and a red.
 STEADY_FRAMES = 30
+#: How strong a colour a cube's four lights can show together. On a robot's cubes a colour of several channels, on all
+#: four lights, lost channels when it was too strong: a white of 31 each came out as two yellow lights and two red, a
+#: yellow of 31 and 24 the same, a cyan of 31 and 31 as two green and two cyan, a white of 21 each as a cross and one
+#: of 26 as a little green; a white of 20 each, a yellow of 24 and 18, and a colour of one channel, at 31, were right.
+#: What fits that is a cost that counts a channel's strength with a weight - green's the heaviest, then red's, then
+#: blue's - against a budget: the yellow of 24 and 18 that was right costs 49, and one of 27 and 21, a cost of 56, had
+#: one side a little green. The colours are scaled down to it, keeping their hue.
+CHANNEL_COST = (1.0, 1.4, 0.7)
+COLOR_BUDGET = 50.0
 
 
 @dataclass(frozen=True)
@@ -71,14 +83,34 @@ class CubeLightPattern:
                    duration=float(data.get("duration_ms", 0)) / 1000.0)
 
 
+def limit(color: int) -> int:
+    """
+    A colour as a light takes it, 15 bits of 5 for red, green and blue, brought down to what a cube's four lights can
+    show together: see COLOR_BUDGET. The hue is kept; the colours of one channel, the strongest, are not changed.
+    """
+    channels = [(color & lights.LED_ENC_RED) >> lights.LED_ENC_RED_SHIFT,
+                (color & lights.LED_ENC_GREEN) >> lights.LED_ENC_GREEN_SHIFT,
+                (color & lights.LED_ENC_BLUE) >> lights.LED_ENC_BLUE_SHIFT]
+    cost = sum(weight * channel for weight, channel in zip(CHANNEL_COST, channels))
+    if cost <= COLOR_BUDGET:
+        return color
+    scale = COLOR_BUDGET / cost
+    red, green, blue = (int(channel * scale) for channel in channels)
+    return (color & lights.LED_ENC_IR) | (red << lights.LED_ENC_RED_SHIFT) | (green << lights.LED_ENC_GREEN_SHIFT) | \
+        (blue << lights.LED_ENC_BLUE_SHIFT)
+
+
 def steady(color: lights.Color) -> protocol_encoder.LightState:
-    """ A cube light that stays one colour, as Anki's patterns for one are: on for a second, off for none. """
-    return protocol_encoder.LightState(on_color=color.to_int16(), off_color=color.to_int16(),
-                                       on_frames=STEADY_FRAMES, off_frames=0)
+    """
+    A cube light that stays one colour, as Anki's patterns for one are: on for a second, off for none. The colour is
+    limited to what the cube's lights can show together: see limit().
+    """
+    value = limit(color.to_int16())
+    return protocol_encoder.LightState(on_color=value, off_color=value, on_frames=STEADY_FRAMES, off_frames=0)
 
 
 def _color(rgba: Sequence[int]) -> int:
-    return lights.Color(rgb=(int(rgba[0]), int(rgba[1]), int(rgba[2]))).to_int16()
+    return limit(lights.Color(rgb=(int(rgba[0]), int(rgba[1]), int(rgba[2]))).to_int16())
 
 
 def _frames(ms: float, limit: int = 255) -> int:

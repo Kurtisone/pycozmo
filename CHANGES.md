@@ -98,8 +98,14 @@ Bug fixes:
     at 48.7. What a cube said of the knock, and when, did not tell the two apart.
 - The cubes lit up by Quick Tap and Memory Match showed the wrong colours: they were told 0 frames on and 0 off, and a
     white came out as two lights, a yellow and a red. Anki's patterns for a light that stays are 30 frames on, a second,
-    and none off, which cube_lights.steady() gives. The user saw the colours right after it, but for white, which a cube
-    shows as a yellow: its blue light is the weak one.
+    and none off, which cube_lights.steady() gives.
+- A colour of several channels, on all four of a cube's lights, lost channels when it was too strong, with the frames
+    right: a white of 31 each came out as two yellow lights and two red, a yellow of 31 and 24 the same, a cyan of 31
+    and 31 as two green and two cyan; a colour of one channel, at 31, was right, and so was a single light in white.
+    cube_lights.limit() scales a colour down to what fits - a cost of red, 1.4 times green and 0.7 times blue, under
+    50 - keeping its hue, and steady() and Anki's patterns are limited with it: the games' yellow is 23 and 18, white
+    16 each, cyan 23 each, each seen right by the user, on four lights. It is the cubes' limit, not the frames'; the
+    cubes' batteries read 140 to 145, and no other cause was found.
 - A cube reported one knock twice in Memory Match, 0.12 s apart, and the second was taken for the next tap, a wrong one:
     the player lost a hand they had won. A cube that has spoken is not heard again for 0.3 s. A cube also misses
     knocks, which nothing here can mend: on a robot it told 8 of the 10 or 11 the user gave it, once each, and in a

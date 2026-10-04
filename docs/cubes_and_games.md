@@ -15,6 +15,9 @@ cube it sees in the robot's world frame, in `cli.cubes`. A cube seen for the fir
 acknowledged (`ObjectPositionUpdated`), and one moved while the robot sees it is reacted to (`CubeMoved`) - unless
 the robot moved it itself, lifting it, docking with it or tapping it in a game. Taps and moves come as `EvtCubeTapped`
 and `EvtCubeMovingChange`, sightings as `EvtCubeObserved`. A light frame lasts 33.3 ms, measured on a robot.
+A colour of several channels, on a cube's four lights, has to be kept under a cost - `cube_lights.limit()`, applied
+to Anki's patterns and to the games' lights - or the cube drops channels: a white of 31 each shows as two yellow
+lights and two red.
 
 
 Handling
@@ -43,6 +46,7 @@ are PyCozmo's reading of them. `pycozmo.memory_match` plays Memory Match: the th
 another, the player repeats the pattern by tapping them, and so does Cozmo, turning to point at each with Anki's
 animations; the pattern grows by one each round, and whoever gets it wrong first loses. `pycozmo.keep_away` plays
 Keep Away: Cozmo raises its lift and pounces on the player's cube, or pretends to; pulled away in time, the point is
-the player's, caught or flinched, Cozmo's; the lift stopping on the cube says it was caught. `PlayWithHumans` has the robot ask for a game now and then: the player
-takes it up by tapping a cube - for Quick Tap and Keep Away, the cube becomes theirs - and turning it down, letting
-the request time out, makes the robot wait longer before asking again.
+the player's, caught or flinched, Cozmo's; the lift stopping on the cube says it was caught. `PlayWithHumans` has
+the robot ask for a game now and then: the player takes it up by tapping a cube - for Quick Tap and Keep Away, the
+cube becomes theirs - and turning it down, letting the request time out, makes the robot wait longer before asking
+again.

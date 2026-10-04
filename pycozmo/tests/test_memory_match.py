@@ -12,7 +12,7 @@ import unittest
 from typing import List
 from unittest import mock
 
-from pycozmo import event, lights, memory_match
+from pycozmo import cube_lights, event, lights, memory_match
 from pycozmo.protocol_encoder import ObjectType
 
 from .test_quick_tap import GameClient
@@ -57,7 +57,7 @@ class TestPattern(MatchTestCase):
             self.game().show_pattern([2, 0, 1])
         lit = [(self.cubes.index(args[0]), args[2][0].on_color) for args, _ in show_lights.call_args_list
                if args[2][0].on_color != lights.off.to_int16()]
-        self.assertEqual(lit, [(i, memory_match.COLORS[i].to_int16()) for i in (2, 0, 1)])
+        self.assertEqual(lit, [(i, cube_lights.steady(memory_match.COLORS[i]).on_color) for i in (2, 0, 1)])
 
     def test_three_cubes_or_none(self):
         with self.assertRaises(ValueError):

@@ -230,6 +230,54 @@ class TestSteadyLight(unittest.TestCase):
         self.assertAlmostEqual(state.on_frames * cube_lights.MS_PER_LIGHT_FRAME, 1000.0)
 
 
+class TestLimit(unittest.TestCase):
+
+    @staticmethod
+    def channels(color: int) -> Tuple[int, int, int]:
+        return ((color & lights.LED_ENC_RED) >> lights.LED_ENC_RED_SHIFT,
+                (color & lights.LED_ENC_GREEN) >> lights.LED_ENC_GREEN_SHIFT,
+                color & lights.LED_ENC_BLUE)
+
+    @staticmethod
+    def encoded(red: int, green: int, blue: int) -> int:
+        return (red << lights.LED_ENC_RED_SHIFT) | (green << lights.LED_ENC_GREEN_SHIFT) | blue
+
+    @staticmethod
+    def cost(channels: Tuple[int, int, int]) -> float:
+        return sum(weight * channel for weight, channel in zip(cube_lights.CHANNEL_COST, channels))
+
+    def test_a_colour_of_one_channel_is_left_alone(self):
+        for rgb in ((255, 0, 0), (0, 255, 0), (0, 0, 255)):
+            color = lights.Color(rgb=rgb).to_int16()
+            self.assertEqual(cube_lights.limit(color), color)
+
+    def test_a_mixed_colour_within_the_budget_is_left_alone(self):
+        # A yellow of 24 and 18 and a white of 12 each were right on four lights of a robot's cube.
+        for channels in ((12, 12, 12), (24, 18, 0), (0, 21, 21), (20, 0, 31)):
+            color = self.encoded(*channels)
+            self.assertEqual(cube_lights.limit(color), color)
+
+    def test_what_failed_on_a_robot_is_scaled_down_under_the_budget(self):
+        # A white of 31 each, a white of 21, a yellow of 31 and 24 and a cyan of 31 and 31 all lost channels.
+        for channels in ((31, 31, 31), (21, 21, 21), (31, 24, 0), (0, 31, 31)):
+            limited = self.channels(cube_lights.limit(self.encoded(*channels)))
+            self.assertLessEqual(self.cost(limited), cube_lights.COLOR_BUDGET, channels)
+            self.assertLess(self.cost(limited), self.cost(channels))
+
+    def test_the_hue_is_kept(self):
+        red, green, blue = self.channels(cube_lights.limit(lights.Color(rgb=(255, 200, 0)).to_int16()))
+        self.assertEqual(blue, 0)
+        self.assertAlmostEqual(green / red, 24 / 31, delta=0.06)
+        white = self.channels(cube_lights.limit(lights.Color(rgb=(255, 255, 255)).to_int16()))
+        self.assertEqual(white[0], white[1])
+        self.assertEqual(white[1], white[2])
+
+    def test_steady_is_limited(self):
+        yellow = cube_lights.steady(lights.Color(rgb=(255, 200, 0)))
+        self.assertEqual(yellow.on_color, cube_lights.limit(lights.Color(rgb=(255, 200, 0)).to_int16()))
+        self.assertNotEqual(yellow.on_color, lights.Color(rgb=(255, 200, 0)).to_int16())
+
+
 class TestLightAnimations(unittest.TestCase):
 
     def test_anki_s_forty(self):
