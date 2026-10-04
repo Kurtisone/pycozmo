@@ -43,6 +43,6 @@ are PyCozmo's reading of them. `pycozmo.memory_match` plays Memory Match: the th
 another, the player repeats the pattern by tapping them, and so does Cozmo, turning to point at each with Anki's
 animations; the pattern grows by one each round, and whoever gets it wrong first loses. `pycozmo.keep_away` plays
 Keep Away: Cozmo raises its lift and pounces on the player's cube, or pretends to; pulled away in time, the point is
-the player's, caught or flinched, Cozmo's. `PlayWithHumans` has the robot ask for a game now and then: the player
+the player's, caught or flinched, Cozmo's; the lift stopping on the cube says it was caught. `PlayWithHumans` has the robot ask for a game now and then: the player
 takes it up by tapping a cube - for Quick Tap and Keep Away, the cube becomes theirs - and turning it down, letting
 the request time out, makes the robot wait longer before asking again.

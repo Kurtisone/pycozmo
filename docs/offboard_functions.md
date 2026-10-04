@@ -233,14 +233,18 @@ player repeats it by tapping them and Cozmo by turning to point at each, and who
 `examples/memory_match.py`. In freeplay the robot asks for either, through `PlayWithHumans`; the player answers on a
 cube rather than on a phone - a tap takes the game up - and the robot asks from where it is, without looking for a
 face or bringing a cube over. `pycozmo.keep_away` plays Keep Away: Cozmo moves to where its pounce reaches the
-player's cube, raises its lift and pounces, or pretends to; the cube tells what happened - a tap when the lift comes
-down on it, a move when it is pulled away - and a cube moved while Cozmo only waited or pretended is a flinch, and
-Cozmo's point; `examples/keep_away.py`.
+player's cube, raises its lift and pounces, or pretends to; the lift tells whether the pounce caught the cube - it
+stops on the cube, at 52 to 70 mm, and goes to the bottom, at 27 to 35, when the cube has been pulled away; the cube's
+own tap is no judge, the lift slamming on the floor beside it makes one - and a cube moved while Cozmo only waited or
+pretended is a flinch, and Cozmo's point; `examples/keep_away.py`.
 
-The games' moves were measured on a robot, not the games played through on one: Quick Tap's tap comes down on a cube
-50 mm ahead of the robot's origin; Keep Away's pounces carried the robot 39 to 57 mm on as the lift came down, and
-caught a cube 88 mm ahead; Memory Match's turns were 20 to 27 degrees small and 46 big, and the robot points straight
-ahead at a cube less than 12 degrees off, with a big turn from 35.
+The games' moves were measured on a robot, and hands of Quick Tap, Memory Match and Keep Away played on one, a whole
+game of none: Quick Tap's tap comes down on a cube with the robot 42 mm from its centre, and the robot takes some 0.4 s
+to start the animation, which the game allows for; Keep Away's pounces carried the robot 39 to 72 mm on as the lift
+came down, and caught a cube 88 mm ahead, though not every pounce reaches that far; Memory Match's turns were 20 to
+27 degrees small and 46 big, and the robot points straight ahead at a cube less than 12 degrees off, with a big turn
+from 35. A cube is not a good judge of a tap: on a robot it told 8 of 10 or 11 taps, and sometimes told one twice, 0.07
+to 0.16 s apart, which Memory Match takes for one.
 
 
 Compared with the Cozmo SDK
@@ -287,7 +291,7 @@ Compared with the Cozmo application
 | Needs, and asking to be played with | Yes |
 | Feeding, repairing | Taken as actions; no minigame |
 | Sparks: tricks on request | No way to ask for one |
-| Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; their moves measured on a robot, the games not yet played through on one |
+| Games: Quick Tap, Memory Match, Keep Away | Yes, asked for in freeplay and answered on a cube; their moves measured on a robot, hands of each played on one, a whole game of none |
 | Meeting people: enrolling faces, saying names | Enrolling yes, by `Faces.enroll()`; no asking, and no saying names: that is text to speech |
 | Songs | Yes, all 39, in freeplay now and then; the vibrato is left out |
 | Explorer mode: driving by hand, with the camera | `examples/rc.py` drives it with an Xbox 360 controller, without the camera |
