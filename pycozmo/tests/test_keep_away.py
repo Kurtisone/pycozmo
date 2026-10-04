@@ -12,7 +12,7 @@ import unittest
 from typing import Callable, Dict
 from unittest import mock
 
-from pycozmo import cube_handling, event, keep_away
+from pycozmo import cube_handling, event, keep_away, robot, util
 from pycozmo.protocol_encoder import ObjectType
 
 from .test_quick_tap import GameClient
@@ -34,6 +34,11 @@ class PounceClient(GameClient):
 
     def move(self) -> None:
         self.dispatch(event.EvtCubeMovingChange, self, self.cube, True)
+
+    def lift_to(self, height: float) -> None:
+        """ The robot says its lift is that high. """
+        self.lift_position = robot.LiftPosition(height=util.Distance(mm=height))
+        self.dispatch(event.EvtRobotStateUpdated, self)
 
     def play_anim_group(self, name: str) -> None:
         if name in self.reports:
@@ -70,6 +75,44 @@ class TestHand(AwayTestCase):
     def test_caught(self):
         self.cli.reports["CubePouncePounceNormal"] = self.cli.tap
         self.assertEqual(self.game().play_hand(), keep_away.COZMO)
+
+    def test_caught_when_the_lift_stops_on_the_cube(self):
+        # The lift came down on the cube: it stopped at 52 mm on a robot. The cube may not say it was tapped.
+        self.cli.reports["CubePouncePounceNormal"] = lambda: self.cli.lift_to(55.0)
+        self.assertEqual(self.game().play_hand(), keep_away.COZMO)
+
+    def test_a_tap_with_the_lift_at_the_bottom_is_not_a_catch(self):
+        # The cube pulled away in time: the lift slammed down on the floor, and the cube said it was tapped, and
+        # moved. The player had won the hand and lost it.
+        def pounce() -> None:
+            self.cli.tap()
+            self.cli.lift_to(30.0)
+            self.cli.move()
+
+        self.cli.reports["CubePouncePounceNormal"] = pounce
+        self.assertEqual(self.game().play_hand(), keep_away.PLAYER)
+
+    def test_a_tap_with_the_lift_at_the_bottom_and_no_move_is_out_of_reach(self):
+        def pounce() -> None:
+            self.cli.tap()
+            self.cli.lift_to(30.0)
+
+        self.cli.reports["CubePouncePounceNormal"] = pounce
+        self.assertIsNone(self.game().play_hand())
+
+    def test_the_animations_last_lowering_of_the_lift_is_not_the_pounce(self):
+        # The pounce ends with the lift to the bottom, the robot having backed off the cube: it stopped at 60 mm on the
+        # cube, rose, and went down to 30 at the end.
+        def pounce() -> None:
+            for height in (92.0, 75.0, 60.0, 80.0, 92.0, 30.0):
+                self.cli.lift_to(height)
+
+        self.cli.reports["CubePouncePounceNormal"] = pounce
+        self.assertEqual(self.game().play_hand(), keep_away.COZMO)
+
+    def test_a_lift_that_did_not_come_down_is_no_catch(self):
+        self.cli.reports["CubePouncePounceNormal"] = lambda: self.cli.lift_to(92.0)
+        self.assertIsNone(self.game().play_hand())
 
     def test_pulled_away(self):
         self.cli.reports["CubePouncePounceNormal"] = self.cli.move

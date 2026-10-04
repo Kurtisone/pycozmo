@@ -19,7 +19,9 @@ right; driving off the charger; and a few hands of Quick Tap, with the user as t
 were told, and the user judged the pace of Cozmo's taps well matched to theirs and, with the changes below, its arm
 on the cube. A game of Memory Match went as far as the user's tapping, pointing and winning: Cozmo turned to each cube
 in the pattern, within 3 to 11 degrees. Not tried: a whole game of Quick Tap, a whole game of Memory Match with the user
-tapping the pattern rightly, Keep Away, popping a wheelie, and most of the behaviors that run these.
+tapping the pattern rightly, a whole game of Keep Away, popping a wheelie, and most of the behaviors that run these.
+Keep Away was played in hands: Cozmo took its place, waited, pretended and pounced, and the cube said it was tapped
+when the lift came down.
 The RollBlock behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back on a first try, at
 3.6 V, the cube not rolled, and why is not known: its lift came down in 0.13 s, not the 1.1 s it was asked to take. On
 a second try, at 4.0 V, the same behavior on the same cube rolled it as Anki's engine did, the lift down in 0.9 s and
@@ -83,6 +85,12 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- Keep Away gave Cozmo the point for a tap the cube reported, and a player who had pulled the cube away in time lost
+    the hand: the lift slamming down on the floor beside the cube, or the cube jerked away, made it report a tap. A
+    pounce is now judged by the lift, as Anki's pounces are: on a robot it stopped at 52 and 70 mm on a cube left in
+    place, and went to the bottom, at 27 to 35 mm, when the cube had been taken away. The lift's first coming down is
+    the one that counts: every pounce ends with it going to the bottom, the robot having backed off. A robot that says
+    nothing of its lift is still judged by the cube's tap.
 - The cubes lit up by Quick Tap and Memory Match showed the wrong colours: they were told 0 frames on and 0 off, and a
     white came out as two lights, a yellow and a red. Anki's patterns for a light that stays are 30 frames on, a second,
     and none off, which cube_lights.steady() gives. The user saw the colours right after it, but for white, which a cube

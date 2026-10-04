@@ -59,6 +59,17 @@ HEADING_TOLERANCE = math.radians(8.0)
 WAIT_TIME = (1.0, 4.0)
 #: How long after an animation a move of the cube still counts towards it, in seconds.
 MOVE_GRACE = 0.3
+#: How high, in mm, the lift is when a pounce has come down on the cube, as against on nothing. On a robot, with the
+#: cube there it stopped at 52 and 70 mm, on its top; with the player's hand having taken the cube away it went to the
+#: bottom, 27 to 35 mm. The cube's tap does not tell: the lift slamming down on the floor beside it, or the cube
+#: jerked away, made it report one, and the player who had pulled the cube away in time lost the hand.
+CAUGHT_LIFT_HEIGHT = (45.0, 80.0)
+#: The lift is taken to have come down, for the pounce, when it is below this, in mm; its first coming down is the
+#: one that counts, as the animation lowers it to the bottom at its end, after the robot has backed off the cube. It
+#: counts until the lift rises again by more than LIFT_REBOUND mm, or for JUDGE_TIME seconds after.
+POUNCE_LIFT_HEIGHT = 80.0
+LIFT_REBOUND = 8.0
+JUDGE_TIME = 0.6
 #: How long the robot looks for the cube before a hand, in seconds, and how many hands in a row it does not see it
 #: before it gives the game up.
 LOOK_TIMEOUT = 10.0
@@ -89,6 +100,11 @@ class KeepAway:
         # What the cube reported during what the robot is doing: taps and moves, when.
         self._taps: List[float] = []
         self._moves: List[float] = []
+        # The lowest the lift went in its first coming down since, inf when the robot has said nothing of it; when that
+        # began; and whether it is over.
+        self._lowest = math.inf
+        self._slam_at: Optional[float] = None
+        self._settled = False
         self._lock = threading.Lock()
 
     def play(self, cancel: Optional[threading.Event] = None) -> Optional[str]:
@@ -123,12 +139,14 @@ class KeepAway:
         self._load_resources()
         taps = self.cli.add_handler(event.EvtCubeTapped, self._on_tapped)
         moves = self.cli.add_handler(event.EvtCubeMovingChange, self._on_moving)
+        states = self.cli.add_handler(event.EvtRobotStateUpdated, self._on_state)
         try:
             with in_use(self.cube):
                 return self._play_hand(cancel)
         finally:
             self.cli.del_handler(event.EvtCubeTapped, taps)
             self.cli.del_handler(event.EvtCubeMovingChange, moves)
+            self.cli.del_handler(event.EvtRobotStateUpdated, states)
 
     def _play_hand(self, cancel: Optional[threading.Event]) -> Optional[str]:
         if not self.take_position(cancel):
@@ -155,8 +173,10 @@ class KeepAway:
         play_and_wait(self.cli, "CubePouncePounceNormal", cancel)
         self._pause(MOVE_GRACE, cancel)
         with self._lock:
-            tapped, moved = bool(self._taps), bool(self._moves)
-        if tapped:
+            tapped, moved, lowest = bool(self._taps), bool(self._moves), self._lowest
+        # The lift tells whether it came down on the cube; the cube's tap only when the robot says nothing of the lift.
+        caught = CAUGHT_LIFT_HEIGHT[0] < lowest < CAUGHT_LIFT_HEIGHT[1] if lowest != math.inf else tapped
+        if caught:
             return COZMO
         # Not caught: pulled away, or not in reach to begin with.
         return PLAYER if moved else None
@@ -186,10 +206,25 @@ class KeepAway:
         with self._lock:
             self._taps.clear()
             self._moves.clear()
+            self._lowest = math.inf
+            self._slam_at = None
+            self._settled = False
 
     def _moved(self) -> bool:
         with self._lock:
             return bool(self._moves)
+
+    def _on_state(self, cli: Any) -> None:
+        height = cli.lift_position.height.mm
+        now = time.perf_counter()
+        with self._lock:
+            if self._settled:
+                return
+            self._lowest = min(self._lowest, height)
+            if self._slam_at is None and self._lowest < POUNCE_LIFT_HEIGHT:
+                self._slam_at = now
+            if self._slam_at is not None and (height > self._lowest + LIFT_REBOUND or now - self._slam_at > JUDGE_TIME):
+                self._settled = True
 
     def _on_tapped(self, _: Any, cube: LightCube, taps: int) -> None:
         if cube is self.cube:
