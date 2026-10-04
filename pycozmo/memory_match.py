@@ -20,15 +20,15 @@ import math
 import random
 import threading
 import time
-from typing import Any, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from . import event
 from . import lights
 from . import util
 from .cube_behaviors import play_and_wait
 from .cube_handling import Cancelled
+from .cube_lights import steady
 from .cubes import LightCube, in_use
-from .protocol_encoder import LightState
 
 
 __all__ = [
@@ -58,6 +58,10 @@ GAP_TIME = 0.25
 TAP_FLASH_TIME = 0.3
 #: How long the player has for each tap, in seconds.
 INPUT_TIMEOUT = 6.0
+#: How long after a cube has said it was tapped it is taken to be saying the same tap again, in seconds. On a robot a
+#: cube said so twice 0.12 s apart for one knock, and up to three times, 0.13 s apart, in another game: the second
+#: was taken for a wrong tap, and the player lost a hand they had won.
+TAP_DEBOUNCE = 0.3
 #: Each cube's colour, in the order the cubes are given.
 COLORS = (
     lights.Color(name="blue", rgb=(0, 0, 255)),
@@ -189,11 +193,18 @@ class MemoryMatch:
         """ Wait for the player to tap the pattern, and say whether they got it right. """
         taps: List[int] = []
         tapped = threading.Event()
+        # When each cube last spoke, a repeat of what it said included.
+        spoke: Dict[int, float] = {}
 
         def on_tapped(_: Any, cube: LightCube, count: int) -> None:
             if cube in self.cubes:
-                taps.append(self.cubes.index(cube))
-                tapped.set()
+                index = self.cubes.index(cube)
+                now = time.perf_counter()
+                before = spoke.get(index)
+                spoke[index] = now
+                if before is None or now - before >= TAP_DEBOUNCE:
+                    taps.append(index)
+                    tapped.set()
 
         handler = self.cli.add_handler(event.EvtCubeTapped, on_tapped)
         try:
@@ -252,7 +263,7 @@ class MemoryMatch:
         self._show(index, lights.off)
 
     def _show(self, index: int, color: lights.Color) -> None:
-        state = LightState(on_color=color.to_int16(), off_color=color.to_int16())
+        state = steady(color)
         self.cli.cubes.show_lights(self.cubes[index], LIGHTS_NAME, (state, ) * 4)
 
     def _all_off(self) -> None:

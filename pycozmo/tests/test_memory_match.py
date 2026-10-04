@@ -25,7 +25,7 @@ class MatchTestCase(unittest.TestCase):
     def setUp(self):
         self.cli = GameClient()
         self.cubes = [self.cli.cubes[object_type] for object_type in CUBES]
-        for name in ("FLASH_TIME", "GAP_TIME", "TAP_FLASH_TIME"):
+        for name in ("FLASH_TIME", "GAP_TIME", "TAP_FLASH_TIME", "TAP_DEBOUNCE"):
             patcher = mock.patch.object(memory_match, name, 0.0)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -69,6 +69,12 @@ class TestPlayer(MatchTestCase):
     def test_the_right_taps(self):
         self.player_taps([1, 0, 2])
         self.assertTrue(self.game().player_repeats([1, 0, 2]))
+
+    def test_a_knock_a_cube_says_twice_is_one_tap(self):
+        # A cube reported one knock twice, 0.12 s apart, and the second counted for a wrong tap.
+        self.player_taps([1, 1, 0, 0, 0, 2])
+        with mock.patch.object(memory_match, "TAP_DEBOUNCE", 0.3):
+            self.assertTrue(self.game().player_repeats([1, 0, 2]))
 
     def test_a_wrong_one(self):
         self.player_taps([1, 2])

@@ -33,10 +33,9 @@ from . import robot
 from . import util
 from .cube_behaviors import play_and_wait
 from .cube_handling import Cancelled
-from .cube_lights import CubeLightPattern
+from .cube_lights import CubeLightPattern, steady
 from .cubes import LightCube, in_use
 from .json_loader import get_json_files, load_json_file
-from .protocol_encoder import LightState
 
 
 __all__ = [
@@ -324,7 +323,7 @@ class QuickTap:
                 self._taps.append((time.perf_counter(), cube))
 
     def _show(self, cube: LightCube, color: lights.Color) -> None:
-        state = LightState(on_color=color.to_int16(), off_color=color.to_int16())
+        state = steady(color)
         self.cli.cubes.show_lights(cube, LIGHTS_NAME, (state, ) * 4)
 
     def _pause(self, seconds: float, cancel: Optional[threading.Event]) -> None:

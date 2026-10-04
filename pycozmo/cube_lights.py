@@ -25,9 +25,11 @@ from .json_loader import load_json_file, get_json_files
 
 __all__ = [
     "MS_PER_LIGHT_FRAME",
+    "STEADY_FRAMES",
 
     "CubeLightPattern",
 
+    "steady",
     "load_cube_light_animations",
 ]
 
@@ -36,6 +38,9 @@ __all__ = [
 #: 33.3 ms, from its rising and its falling edges - 30 frames a second. The five seconds between two breaths of
 #: "Connected", the longest period in the resources, are 150 of them, which a period's byte holds.
 MS_PER_LIGHT_FRAME = 1000.0 / 30.0
+#: How many light frames a light that stays one colour is on for, in Anki's patterns: a second, 1000 ms, and off for
+#: none. A cube given none at all, 0 frames on and 0 off, showed white as two lights, a yellow and a red.
+STEADY_FRAMES = 30
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,12 @@ class CubeLightPattern:
             for i in range(4))
         return cls(states=states, rotation_period_frames=_frames(pattern.get("rotationPeriod_ms", 0)),
                    duration=float(data.get("duration_ms", 0)) / 1000.0)
+
+
+def steady(color: lights.Color) -> protocol_encoder.LightState:
+    """ A cube light that stays one colour, as Anki's patterns for one are: on for a second, off for none. """
+    return protocol_encoder.LightState(on_color=color.to_int16(), off_color=color.to_int16(),
+                                       on_frames=STEADY_FRAMES, off_frames=0)
 
 
 def _color(rgba: Sequence[int]) -> int:

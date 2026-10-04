@@ -17,8 +17,9 @@ and the moves of the games and of Anki's cube handling. On a robot, tried: picki
 setting one on another, each to the user's eye; rolling a cube, which went over each time; a song, which sounded
 right; driving off the charger; and a few hands of Quick Tap, with the user as the player: the cubes lit up, the taps
 were told, and the user judged the pace of Cozmo's taps well matched to theirs and, with the changes below, its arm
-on the cube. Not tried: a whole game of Quick Tap, Memory Match and Keep Away, popping a wheelie, and most of the
-behaviors that run these.
+on the cube. A game of Memory Match went as far as the user's tapping, pointing and winning: Cozmo turned to each cube
+in the pattern, within 3 to 11 degrees. Not tried: a whole game of Quick Tap, a whole game of Memory Match with the user
+tapping the pattern rightly, Keep Away, popping a wheelie, and most of the behaviors that run these.
 The RollBlock behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back on a first try, at
 3.6 V, the cube not rolled, and why is not known: its lift came down in 0.13 s, not the 1.1 s it was asked to take. On
 a second try, at 4.0 V, the same behavior on the same cube rolled it as Anki's engine did, the lift down in 0.9 s and
@@ -82,6 +83,12 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- The cubes lit up by Quick Tap and Memory Match showed the wrong colours: they were told 0 frames on and 0 off, and a
+    white came out as two lights, a yellow and a red. Anki's patterns for a light that stays are 30 frames on, a second,
+    and none off, which cube_lights.steady() gives. The user saw the colours right after it, but for white, which a cube
+    shows as a yellow: its blue light is the weak one.
+- A cube reported one knock twice in Memory Match, 0.12 s apart, and the second was taken for the next tap, a wrong one:
+    the player lost a hand they had won. A cube that has spoken is not heard again for 0.3 s.
 - Cozmo's tap in Quick Tap came late, and fell short. A robot takes some 0.4 s to start an animation it is sent, so its
     lift met the cube 0.5 to 0.57 s after the tap was asked for, not the 0.13 s of the clip, and the player, tapping
     in 0.7 s, won nearly every hand. The tap is now asked for that much before it is to land. Cozmo also stood at 50

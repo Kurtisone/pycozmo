@@ -219,6 +219,17 @@ class TestSeeing(CubesTestCase):
 
 
 @unittest.skipUnless(cozmo_assets_available(), "Cozmo assets not downloaded.")
+class TestSteadyLight(unittest.TestCase):
+
+    def test_it_is_on_for_a_second_and_off_for_none(self):
+        # Anki's patterns for a colour that stays are 1000 ms on and 0 off. A cube given 0 frames and 0, as the games
+        # did, showed white as two lights, a yellow and a red.
+        state = cube_lights.steady(lights.Color(name="green", rgb=(0, 255, 0)))
+        self.assertEqual((state.on_color, state.off_color), (lights.Color(rgb=(0, 255, 0)).to_int16(),) * 2)
+        self.assertEqual((state.on_frames, state.off_frames), (30, 0))
+        self.assertAlmostEqual(state.on_frames * cube_lights.MS_PER_LIGHT_FRAME, 1000.0)
+
+
 class TestLightAnimations(unittest.TestCase):
 
     def test_anki_s_forty(self):
