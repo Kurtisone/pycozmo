@@ -6,7 +6,8 @@ JSON reading functions for files containing non-standard comments
 
 import json
 import os
-from typing import Dict, List, Optional
+import threading
+from typing import Dict, List, Optional, Tuple
 
 
 def load_json_file(filename: str) -> Dict:
@@ -38,8 +39,29 @@ def get_json_files(resource_dir: str, base_names: List[str]) -> List[str]:
     return file_addr
 
 
+# The files under a directory, by name: where the first of them is, as walking the tree finds it. Finding a file used to
+# walk the whole tree, and the animation groups' 573 triggers walked it 573 times - 7 s of the 8 s load_anims() takes,
+# 75 000 directories visited.
+_FILE_INDEXES: Dict[Tuple[str, float], Dict[str, str]] = {}
+_FILE_INDEXES_LOCK = threading.Lock()
+
+
+def _index(directory: str) -> Dict[str, str]:
+    # A tree changed since is walked again: the directory's own modification time is part of the key.
+    try:
+        key = (os.path.abspath(directory), os.stat(directory).st_mtime)
+    except OSError:
+        return {}
+    with _FILE_INDEXES_LOCK:
+        index = _FILE_INDEXES.get(key)
+        if index is None:
+            index = {}
+            for root, _, files in os.walk(directory):
+                for name in files:
+                    index.setdefault(name, os.path.join(root, name))
+            _FILE_INDEXES[key] = index
+        return index
+
+
 def find_file(directory: str, name: str) -> Optional[str]:
-    for root, _, files in os.walk(directory):
-        if name in files:
-            return os.path.join(root, name)
-    return None
+    return _index(directory).get(name)

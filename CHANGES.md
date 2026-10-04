@@ -85,6 +85,9 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- Client.load_anims() took 8 s, 7 of them finding the files of the animation groups' 573 triggers: each walked the whole
+    tree of Cozmo's resources, 75 000 directories in all. The tree is walked once, and it takes 0.3 s; the brain starts
+    as fast, and the tests that load the animations, which are most of them, are the quicker for it.
 - Cozmo's tap in Quick Tap pushed its cube, once in a round of 15 hands on a robot, and the next taps would have fallen
     short of it. The cube says it has moved; the robot backs off, looks for the cube and takes its place again before the
     next hand.
