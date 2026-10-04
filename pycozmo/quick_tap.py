@@ -75,11 +75,18 @@ COLORS = (
     lights.Color(name="yellow", rgb=(255, 200, 0)),
     lights.Color(name="purple", rgb=(160, 0, 255)),
 )
-#: Where Cozmo stands to tap its cube, the cube's centre that far ahead, in mm: there, on a robot, the tap came
-#: down to 65 mm and the cube said so two times out of three - the end of the animation stands in for the third.
-TAP_DISTANCE = 50.0
+#: Where Cozmo stands to tap its cube, the cube's centre that far ahead, in mm. At 50 the fork came down to 65 mm and
+#: the cube said so two times out of three, but the fork was short: it reaches 30 mm ahead of the robot, and the
+#: cube's near face was at 27.5, so it hardly covered the cube's top, and the user saw it not touch the cube. At 42 it
+#: comes down on the cube, and the user saw it touch it.
+TAP_DISTANCE = 42.0
 #: The longest Cozmo's tap or fake is waited for, in seconds.
 ANIMATION_TIMEOUT = 2.0
+#: How long a robot takes to start playing an animation it has been sent, in seconds: on a robot, the tap's lift met
+#: the cube 0.50 to 0.57 s after the animation was asked for, 0.40 s over the 0.13 s the clip takes, and no different
+#: after the waiting animation than at rest. The frames the controller keeps ahead of the robot, 0.33 s of them, are
+#: most of it. The tap is asked for that long before Cozmo is to hit the cube.
+ANIMATION_DELAY = 0.4
 #: How far off its place the robot may have drifted before it goes back, in radians and in mm.
 DRIFT_ANGLE = math.radians(1.5)
 DRIFT_DISTANCE = 4.0
@@ -131,8 +138,9 @@ class Skill:
 
     def __init__(self, reaction: Tuple[float, float] = (0.3, 0.8), fake_odds: float = 0.3,
                  mistake_odds: float = 0.05) -> None:
-        #: How long Cozmo takes to tap once the colours match, in seconds: a time drawn in this range. The tap
-        #: itself, from the start of the animation to the lift meeting the cube, takes 0.13 s more.
+        #: How long Cozmo takes to tap once the colours match, in seconds: a time drawn in this range, which the
+        #: robot cannot make shorter than ANIMATION_DELAY, its time to start the animation. The tap itself, from
+        #: the start of the animation to the lift meeting the cube, takes 0.13 s more.
         self.reaction = reaction
         #: How often Cozmo pretends to tap when the colours differ, to fool the player.
         self.fake_odds = fake_odds
@@ -211,7 +219,7 @@ class QuickTap:
         with self._lock:
             self._taps.clear()
         start = time.perf_counter()
-        action_time = start + self.rng.uniform(*self.skill.reaction)
+        action_time = start + max(0.0, self.rng.uniform(*self.skill.reaction) - ANIMATION_DELAY)
         self._show(self.cozmo_cube, cozmo_color)
         self._show(self.player_cube, player_color)
 

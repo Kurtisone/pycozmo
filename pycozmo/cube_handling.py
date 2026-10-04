@@ -134,9 +134,10 @@ SERVO_LATERAL_TOLERANCE = 10.0
 SERVO_ANGLE_TOLERANCE = math.radians(10.0)
 #: How long the head and the lift take to get where they are sent, at most, in seconds.
 SETTLE_TIME = 1.0
-#: How far the robot turns at a time looking round for a cube, in radians: a little less than the camera's
-#: 57 degrees.
-SEARCH_STEP = math.radians(45.0)
+#: How far the robot turns at a time looking round for a cube, in radians: about half the camera's 57 degrees, so
+#: that two views overlap by more than a cube near by is wide - 21 degrees at 12 cm. At 45 degrees a cube at 12 cm
+#: stood across the edges of two views, whole in neither, and a robot turning right round did not see it.
+SEARCH_STEP = math.radians(30.0)
 #: How close to its lowest the lift is taken to have set a cube down, in mm.
 LIFT_DOWN_MARGIN = 5.0
 #: How far the robot turns, at most, pushing a cube it has set down, in radians.

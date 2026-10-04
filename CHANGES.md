@@ -15,7 +15,10 @@ Checked against an emulator of the robot, which is not part of this repository, 
 application's own engine recorded through the SDK beside it: how cubes connect, the animation stream, the cube lights,
 and the moves of the games and of Anki's cube handling. On a robot, tried: picking a cube up and putting it down, and
 setting one on another, each to the user's eye; rolling a cube, which went over each time; a song, which sounded
-right; and driving off the charger. Not tried: the games, popping a wheelie, and most of the behaviors that run these.
+right; driving off the charger; and a few hands of Quick Tap, with the user as the player: the cubes lit up, the taps
+were told, and the user judged the pace of Cozmo's taps well matched to theirs and, with the changes below, its arm
+on the cube. Not tried: a whole game of Quick Tap, Memory Match and Keep Away, popping a wheelie, and most of the
+behaviors that run these.
 The RollBlock behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back on a first try, at
 3.6 V, the cube not rolled, and why is not known: its lift came down in 0.13 s, not the 1.1 s it was asked to take. On
 a second try, at 4.0 V, the same behavior on the same cube rolled it as Anki's engine did, the lift down in 0.9 s and
@@ -79,6 +82,13 @@ New features:
 - A cube light frame lasts 33.3 ms, as measured on a robot, not 30 ms.
 
 Bug fixes:
+- Cozmo's tap in Quick Tap came late, and fell short. A robot takes some 0.4 s to start an animation it is sent, so its
+    lift met the cube 0.5 to 0.57 s after the tap was asked for, not the 0.13 s of the clip, and the player, tapping
+    in 0.7 s, won nearly every hand. The tap is now asked for that much before it is to land. Cozmo also stood at 50
+    mm from its cube, the fork hardly over the cube's top: it stands at 42 mm, and the fork comes down on the cube.
+- Looking round for a cube, the robot turned 45 degrees at a time, the camera seeing 57: a cube 12 cm away
+    stood across the edges of two views, whole in neither, and was not found in a full turn. It turns 30 degrees at
+    a time.
 - DriveOffCharger took the robot off its charger by 25 mm and no more, the brain having turned on the robot's cliff
     stop, which the charger's lip trips. The cliff stop is off while the robot drives off, and on again after: 95 mm
     in a straight line on a robot, 4 mm to one side.

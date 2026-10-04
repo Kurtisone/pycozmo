@@ -7,6 +7,7 @@ reported by its cube at once; the player taps from a timer. The waits are shorte
 
 import random
 import threading
+import time
 import unittest
 from typing import Any, List
 from unittest import mock
@@ -55,7 +56,7 @@ class GameTestCase(unittest.TestCase):
         self.cli = GameClient()
         self.cozmo_cube = self.cli.cubes[ObjectType.Block_LIGHTCUBE1]
         self.player_cube = self.cli.cubes[ObjectType.Block_LIGHTCUBE2]
-        for name, value in (("DARK_TIME", (0.0, 0.0)), ("TAP_WINDOW", 0.3)):
+        for name, value in (("DARK_TIME", (0.0, 0.0)), ("TAP_WINDOW", 0.3), ("ANIMATION_DELAY", 0.0)):
             patcher = mock.patch.object(quick_tap, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -81,6 +82,41 @@ class TestHand(GameTestCase):
         self.player_taps(0.05)
         self.assertEqual(game.play_hand(), quick_tap.PLAYER)
         self.assertNotIn(quick_tap.TAP, self.cli.played)
+
+    def test_the_tap_is_asked_for_before_the_robot_is_to_hit_the_cube(self):
+        # The robot takes ANIMATION_DELAY to start an animation, so Cozmo's tap, to land 0.5 s after the lights, is
+        # asked for 0.3 s after them.
+        asked: List[float] = []
+        play = self.cli.play_anim_group
+
+        def playing(name: str, *args: object) -> None:
+            if name == quick_tap.TAP:
+                asked.append(time.perf_counter())
+            play(name, *args)
+
+        game = self.game(match=True, reaction=0.5)
+        with mock.patch.object(quick_tap, "ANIMATION_DELAY", 0.3), \
+                mock.patch.object(self.cli, "play_anim_group", side_effect=playing):
+            start = time.perf_counter()
+            self.assertEqual(game.play_hand(), quick_tap.COZMO)
+        self.assertEqual(len(asked), 1)
+        self.assertTrue(0.1 < asked[0] - start < 0.4, asked[0] - start)
+
+    def test_a_reaction_shorter_than_the_robots_delay_is_asked_for_at_once(self):
+        asked: List[float] = []
+        play = self.cli.play_anim_group
+
+        def playing(name: str, *args: object) -> None:
+            if name == quick_tap.TAP:
+                asked.append(time.perf_counter())
+            play(name, *args)
+
+        game = self.game(match=True, reaction=0.1)
+        with mock.patch.object(quick_tap, "ANIMATION_DELAY", 0.4), \
+                mock.patch.object(self.cli, "play_anim_group", side_effect=playing):
+            start = time.perf_counter()
+            self.assertEqual(game.play_hand(), quick_tap.COZMO)
+        self.assertLess(asked[0] - start, 0.15)
 
     def test_cozmo_taps_on_a_match(self):
         in_use: List[bool] = []
