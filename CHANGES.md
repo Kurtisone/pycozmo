@@ -87,10 +87,12 @@ New features:
 Bug fixes:
 - Keep Away gave Cozmo the point for a tap the cube reported, and a player who had pulled the cube away in time lost
     the hand: the lift slamming down on the floor beside the cube, or the cube jerked away, made it report a tap. A
-    pounce is now judged by the lift, as Anki's pounces are: on a robot it stopped at 52 and 70 mm on a cube left in
-    place, and went to the bottom, at 27 to 35 mm, when the cube had been taken away. The lift's first coming down is
-    the one that counts: every pounce ends with it going to the bottom, the robot having backed off. A robot that says
-    nothing of its lift is still judged by the cube's tap.
+    pounce is now judged by the lift and by whether the cube moved. On a robot the lift stopped at 52 to 55 mm on a cube
+    left in place, and went down to 27 to 49 mm when it had been taken away: the clips whose lift is sent to 48 or to 57
+    mm stop at 46 and 49 on the floor, within 4 mm of a cube. So from 55 mm up the lift is on the cube; below 45 it came
+    down on nothing; between, a cube that moved was pulled away in time, and one that did not is caught if it said it
+    was tapped. The lift's first coming down is the one that counts: every pounce ends with it going to the bottom,
+    the robot having backed off. A robot that says nothing of its lift is still judged by the cube's tap.
 - The cubes lit up by Quick Tap and Memory Match showed the wrong colours: they were told 0 frames on and 0 off, and a
     white came out as two lights, a yellow and a red. Anki's patterns for a light that stays are 30 frames on, a second,
     and none off, which cube_lights.steady() gives. The user saw the colours right after it, but for white, which a cube

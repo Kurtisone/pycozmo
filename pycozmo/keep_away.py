@@ -60,10 +60,15 @@ WAIT_TIME = (1.0, 4.0)
 #: How long after an animation a move of the cube still counts towards it, in seconds.
 MOVE_GRACE = 0.3
 #: How high, in mm, the lift is when a pounce has come down on the cube, as against on nothing. On a robot, with the
-#: cube there it stopped at 52 and 70 mm, on its top; with the player's hand having taken the cube away it went to the
-#: bottom, 27 to 35 mm. The cube's tap does not tell: the lift slamming down on the floor beside it, or the cube
-#: jerked away, made it report one, and the player who had pulled the cube away in time lost the hand.
-CAUGHT_LIFT_HEIGHT = (45.0, 80.0)
+#: cube there it stopped at 52 to 55 mm, and 70 on its edge; with the cube taken away it went down to 27 to 35 mm, or,
+#: in the clips whose lift is sent to 48 and to 57 mm, to 46 and 49: within 4 mm of the cube. The cube's tap does not
+#: tell either: the lift slamming down on the floor beside it, or the cube jerked away, made it report one, and the
+#: player who had pulled the cube away in time lost the hand. What the cube does tells the rest: it moves when the
+#: player pulls it away, and did not when the lift only came down on it. So: from CAUGHT_LIFT_HEIGHT up, the lift is
+#: on the cube, whatever the cube does after; below MISSED_LIFT_HEIGHT, it came down on nothing; between, a cube that
+#: moved was pulled away in time, and one that did not was caught if it said it was tapped.
+CAUGHT_LIFT_HEIGHT = 55.0
+MISSED_LIFT_HEIGHT = 45.0
 #: The lift is taken to have come down, for the pounce, when it is below this, in mm; its first coming down is the
 #: one that counts, as the animation lowers it to the bottom at its end, after the robot has backed off the cube. It
 #: counts until the lift rises again by more than LIFT_REBOUND mm, or for JUDGE_TIME seconds after.
@@ -174,8 +179,17 @@ class KeepAway:
         self._pause(MOVE_GRACE, cancel)
         with self._lock:
             tapped, moved, lowest = bool(self._taps), bool(self._moves), self._lowest
-        # The lift tells whether it came down on the cube; the cube's tap only when the robot says nothing of the lift.
-        caught = CAUGHT_LIFT_HEIGHT[0] < lowest < CAUGHT_LIFT_HEIGHT[1] if lowest != math.inf else tapped
+        if lowest == math.inf:
+            # The robot says nothing of its lift: the cube's tap is all there is.
+            caught = tapped
+        elif lowest >= POUNCE_LIFT_HEIGHT:
+            caught = False
+        elif lowest >= CAUGHT_LIFT_HEIGHT:
+            caught = True
+        elif lowest >= MISSED_LIFT_HEIGHT:
+            caught = tapped and not moved
+        else:
+            caught = False
         if caught:
             return COZMO
         # Not caught: pulled away, or not in reach to begin with.

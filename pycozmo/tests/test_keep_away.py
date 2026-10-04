@@ -78,8 +78,38 @@ class TestHand(AwayTestCase):
 
     def test_caught_when_the_lift_stops_on_the_cube(self):
         # The lift came down on the cube: it stopped at 52 mm on a robot. The cube may not say it was tapped.
-        self.cli.reports["CubePouncePounceNormal"] = lambda: self.cli.lift_to(55.0)
+        self.cli.reports["CubePouncePounceNormal"] = lambda: self.cli.lift_to(58.0)
         self.assertEqual(self.game().play_hand(), keep_away.COZMO)
+
+    def test_caught_though_the_cube_is_pulled_away_after(self):
+        def pounce() -> None:
+            self.cli.lift_to(58.0)
+            self.cli.move()
+
+        self.cli.reports["CubePouncePounceNormal"] = pounce
+        self.assertEqual(self.game().play_hand(), keep_away.COZMO)
+
+    def test_a_lift_only_just_above_the_floor_with_the_cube_pulled_away_is_no_catch(self):
+        # A clip that sends the lift to 57 mm brought it to 49 on the floor, 4 mm from where a cube stops it.
+        def pounce() -> None:
+            self.cli.tap()
+            self.cli.lift_to(49.0)
+            self.cli.move()
+
+        self.cli.reports["CubePouncePounceNormal"] = pounce
+        self.assertEqual(self.game().play_hand(), keep_away.PLAYER)
+
+    def test_a_lift_only_just_above_the_floor_with_the_cube_left_and_tapped_is_a_catch(self):
+        def pounce() -> None:
+            self.cli.tap()
+            self.cli.lift_to(49.0)
+
+        self.cli.reports["CubePouncePounceNormal"] = pounce
+        self.assertEqual(self.game().play_hand(), keep_away.COZMO)
+
+    def test_a_lift_only_just_above_the_floor_with_nothing_said_is_out_of_reach(self):
+        self.cli.reports["CubePouncePounceNormal"] = lambda: self.cli.lift_to(49.0)
+        self.assertIsNone(self.game().play_hand())
 
     def test_a_tap_with_the_lift_at_the_bottom_is_not_a_catch(self):
         # The cube pulled away in time: the lift slammed down on the floor, and the cube said it was tapped, and
