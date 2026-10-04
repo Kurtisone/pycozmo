@@ -222,6 +222,15 @@ class TestPlace(GameTestCase):
         find.assert_not_called()
         take.assert_not_called()
 
+    def test_the_place_is_taken_once_more_when_it_failed(self):
+        game = self.game(match=False)
+        game.play_hand()
+        game._on_moving(self.cli, self.cozmo_cube, True)
+        with mock.patch.object(cube_handling, "find_cube", return_value=True), \
+                mock.patch.object(quick_tap, "take_position", side_effect=[False, True]) as take:
+            game.play_hand()
+        self.assertEqual(take.call_count, 2)
+
     def test_the_players_cube_moving_is_not_a_push(self):
         game = self.game(match=False)
         game.play_hand()

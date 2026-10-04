@@ -286,7 +286,10 @@ class QuickTap:
             self._pushed = False
             self.cli.drive_straight(util.Distance(mm=-cube_handling.PREDOCK_GAP), speed=robot.DOCK_SPEED)
             if cube_handling.find_cube(self.cli, self.cozmo_cube, cancel=cancel):
-                take_position(self.cli, self.cozmo_cube, cancel)
+                # The cube's marker is not always seen at 15 cm, in a dim room: once more.
+                for _ in range(2):
+                    if take_position(self.cli, self.cozmo_cube, cancel):
+                        break
             self.place = self.cli.pose
             return
         pose = self.cli.pose
