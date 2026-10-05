@@ -154,3 +154,50 @@ class TestCharger(unittest.TestCase):
         see(cli, 200.0)
         time.sleep(0.05)
         self.assertEqual(len(heard), 1)
+
+
+def turned_to_face_it(cli: pycozmo.client.Client, x: float = 200.0, y: float = 0.0) -> None:
+    """ The robot, which rested on its charger facing 0, has driven out and turned to face it, at (x, y). """
+    cli.pose = util.Pose(x, y, 0.0, angle_z=util.Angle(radians=math.pi), origin_id=cli.pose.origin_id)
+
+
+def saying(cli: pycozmo.client.Client, ahead: float, left: float, off: float) -> charger.ChargerPose:
+    """ A view of the marker that says it faces `off` radians from the way it faces the robot squarely. """
+    normal = (math.cos(math.pi + off), math.sin(math.pi + off), 0.0)
+    return cli.charger.observe((ahead, left, 25.0), normal, math.hypot(ahead, left))
+
+
+class TestPrior(unittest.TestCase):
+
+    def test_the_heading_the_robot_rested_with_holds_against_views_squarely_seen(self):
+        cli = client()
+        cli.charger.docked()
+        turned_to_face_it(cli)
+        # Four views seen squarely that say the charger faces 4 degrees one way: its heading is nearer 0 than they say.
+        for _ in range(4):
+            pose = saying(cli, 200.0, 0.0, 0.07)
+        self.assertLess(abs(math.atan2(math.sin(pose.angle), math.cos(pose.angle))), 0.07 / 2)
+
+    def test_views_from_the_side_outweigh_it(self):
+        cli = client()
+        cli.charger.docked()
+        turned_to_face_it(cli, 250.0, -175.0)
+        for _ in range(16):
+            pose = saying(cli, 250.0, 175.0, 0.17)
+        # Sixteen views against the one: the heading has gone more than half way to theirs.
+        self.assertGreater(abs(math.atan2(math.sin(pose.angle), math.cos(pose.angle))), 0.17 / 2)
+
+    def test_forgetting_forgets_it_too(self):
+        cli = client()
+        cli.charger.docked()
+        turned_to_face_it(cli)
+        cli.charger.forget()
+        pose = saying(cli, 200.0, 0.0, 0.07)
+        self.assertAlmostEqual(math.atan2(math.sin(pose.angle), math.cos(pose.angle)), 0.07)
+
+    def test_a_heading_from_another_frame_says_nothing(self):
+        cli = client()
+        cli.charger.docked()
+        cli.pose = util.Pose(200.0, 0.0, 0.0, angle_z=util.Angle(radians=math.pi), origin_id=2)
+        pose = saying(cli, 200.0, 0.0, 0.07)
+        self.assertAlmostEqual(math.atan2(math.sin(pose.angle), math.cos(pose.angle)), 0.07)

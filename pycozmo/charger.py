@@ -30,11 +30,12 @@ __all__ = [
 
 
 #: How far the charger's axis - the line the robot's origin follows, backing on - is to the left of its marker's centre,
-#: looking the way the marker faces, in mm. The marker is not in the middle of the charger. A robot docked from 24 and
-#: from 18 mm to the left of the marker's line, and not from 4, 14 or 24 mm to its right, which went off to the right of
-#: the charger, nor from 24 plus the 8 mm that a heading 4 degrees out takes it, which stopped more than a centimetre to
-#: its left: the window is from about -4 to 30 mm, and the middle of it is 13.
-AXIS_OFFSET = 13.0
+#: looking the way the marker faces, in mm. The marker is not in the middle of the charger, and the ramp takes little.
+#: Robots that stood 24 and 18 mm to the left of the marker's line, by its views, docked; those 4 to 24 mm to its right
+#: went off to the right of the charger, and so did one aimed 13 mm left; one aimed 24 mm left went off to the left,
+#: with the 8 mm that a heading 4 degrees out takes a robot over 200 mm. The window is some 16 to 30 mm, 14 wide, and
+#: 22 is the middle of it.
+AXIS_OFFSET = 22.0
 #: How far the robot's origin is from the marker's plane, along the way the marker faces, with the robot on the charger
 #: and its back to the charger, in mm: measured by the robot's driving back onto the charger from the distance a marker
 #: was seen at, and the robot's own count of how far it went.
@@ -44,6 +45,9 @@ MAX_VIEWS = 16
 OUTLIER_DISTANCE = 30.0
 #: How much less a view counts for each view that came after it, in where the charger is.
 RECENCY = 0.8
+#: How much the heading the robot rested on its charger with counts against the views, in the weights of the views:
+#: that of three seen from the side, at 25 cm. The robot has turned since, and its gyro is 1.3% out on each turn.
+PRIOR_WEIGHT = 2e-5
 #: How much a view of the marker seen squarely counts for the heading, against one seen from the side, which counts 1.
 SQUARE_VIEW_WEIGHT = 0.03
 
@@ -98,6 +102,8 @@ class Charger:
         self.lock = threading.RLock()
         self._pose: Optional[ChargerPose] = None
         self._views: List[_View] = []
+        # The heading the robot rested on its charger with, which is the charger's: how it was known before any view.
+        self._prior: Optional[Tuple[float, int]] = None
 
     @property
     def pose(self) -> Optional[ChargerPose]:
@@ -116,6 +122,7 @@ class Charger:
         with self.lock:
             self._pose = None
             self._views = []
+            self._prior = None
 
     def docked(self) -> ChargerPose:
         """
@@ -126,6 +133,7 @@ class Charger:
         heading = pose.rotation.angle_z.radians
         with self.lock:
             self._views = []
+            self._prior = (heading, pose.origin_id)
             c, s = math.cos(heading), math.sin(heading)
             self._pose = ChargerPose(x=pose.position.x - DOCKED_DISTANCE * c + AXIS_OFFSET * s,
                                      y=pose.position.y - DOCKED_DISTANCE * s - AXIS_OFFSET * c,
@@ -156,13 +164,14 @@ class Charger:
         with self.lock:
             views = [v for v in self._views if v.origin_id == view.origin_id] + [view]
             self._views = views[-MAX_VIEWS:]
-            self._pose = self._combine(self._views)
+            prior = self._prior if self._prior is not None and self._prior[1] == view.origin_id else None
+            self._pose = self._combine(self._views, None if prior is None else prior[0])
             result = self._pose
         self.cli.dispatch(event.EvtChargerObserved, self.cli, result)
         return result
 
     @staticmethod
-    def _combine(views: List[_View]) -> ChargerPose:
+    def _combine(views: List[_View], prior: Optional[float] = None) -> ChargerPose:
         """ Where the views put the charger: their mean, the nearer weighing more, without any far from the rest. """
         middle = (statistics.median(v.x for v in views), statistics.median(v.y for v in views))
         kept = [v for v in views if math.hypot(v.x - middle[0], v.y - middle[1]) <= OUTLIER_DISTANCE] or views
@@ -172,7 +181,11 @@ class Charger:
         total = sum(weights)
         x = sum(w * v.x for w, v in zip(weights, kept)) / total
         y = sum(w * v.y for w, v in zip(weights, kept)) / total
-        angle = math.atan2(sum(v.angle_weight * math.sin(v.angle) for v in kept),
-                           sum(v.angle_weight * math.cos(v.angle) for v in kept))
+        sin_sum = sum(v.angle_weight * math.sin(v.angle) for v in kept)
+        cos_sum = sum(v.angle_weight * math.cos(v.angle) for v in kept)
+        if prior is not None:
+            sin_sum += PRIOR_WEIGHT * math.sin(prior)
+            cos_sum += PRIOR_WEIGHT * math.cos(prior)
+        angle = math.atan2(sin_sum, cos_sum)
         last = views[-1]
         return ChargerPose(x=x, y=y, angle=angle, origin_id=last.origin_id, time=last.time, views=len(kept))

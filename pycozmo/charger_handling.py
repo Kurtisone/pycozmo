@@ -48,8 +48,9 @@ __all__ = [
 
 
 #: How far from the marker's plane the robot stands to look at it a last time before it turns round, in mm: the marker
-#: is 36 px wide there, and well placed.
-PREDOCK_DISTANCE = 200.0
+#: is 43 px wide there, and the robot's nose, turning round, clears the ramp's edge, 90 mm out, by 15. The nearer, the
+#: less a heading a few degrees out takes it off its line before the ramp.
+PREDOCK_DISTANCE = 165.0
 #: How near the robot has to be to where it is to stand, in mm, and how nearly it has to face the marker, in radians,
 #: for it to turn round and back on.
 PREDOCK_TOLERANCE = 8.0
