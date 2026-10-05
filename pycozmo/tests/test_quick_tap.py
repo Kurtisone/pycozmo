@@ -9,7 +9,7 @@ import random
 import threading
 import time
 import unittest
-from typing import Any, List
+from typing import Any, List, Optional
 from unittest import mock
 
 import pycozmo
@@ -39,14 +39,26 @@ class GameClient(CubesClient):
         self.played: List[str] = []
         #: Whether Cozmo's cube reports the lift coming down on it.
         self.cube_reports_taps = True
+        #: On a robot, the lift coming down on the table makes every cube report, in the order of their numbers: when
+        #: not None, the seconds after which it does, the player's cube (2) before Cozmo's (1) and the third.
+        self.slam_after: Optional[float] = None
         # Moving about, for the tests that look at it.
         self.turn_in_place: Any = None
         self.drive_straight: Any = None
 
     def play_anim_group(self, name: str) -> None:
         self.played.append(name)
+        if name == quick_tap.TAP and self.slam_after is not None:
+            timer = threading.Timer(self.slam_after, self._slam)
+            timer.start()
+            return
         if name == quick_tap.TAP and self.cube_reports_taps:
             self.dispatch(event.EvtCubeTapped, self, self.cubes[ObjectType.Block_LIGHTCUBE1], 1)
+        self.dispatch(event.EvtAnimationCompleted, self)
+
+    def _slam(self) -> None:
+        for number in (ObjectType.Block_LIGHTCUBE2, ObjectType.Block_LIGHTCUBE1, ObjectType.Block_LIGHTCUBE3):
+            self.dispatch(event.EvtCubeTapped, self, self.cubes[number], 1)
         self.dispatch(event.EvtAnimationCompleted, self)
 
 
@@ -132,6 +144,28 @@ class TestHand(GameTestCase):
         # The cubes are in play during the hand, the tap no news to the brain; not after.
         self.assertTrue(all(in_use))
         self.assertFalse(self.cozmo_cube.in_use)
+
+    def test_a_slam_every_cube_reports_is_cozmo_s_tap_whichever_is_heard_first(self):
+        # The player's cube is heard before Cozmo's, and no one else has tapped: it is Cozmo's tap.
+        self.cli.slam_after = 0.1
+        with mock.patch.object(quick_tap, "SLAM_EARLIEST", 0.0):
+            self.assertEqual(self.game(match=True).play_hand(), quick_tap.COZMO)
+
+    def test_a_tap_before_the_slam_is_the_players(self):
+        self.cli.slam_after = 0.3
+        self.player_taps(0.15)
+        with mock.patch.object(quick_tap, "SLAM_EARLIEST", 0.0):
+            self.assertEqual(self.game(match=True, reaction=0.05).play_hand(), quick_tap.PLAYER)
+
+    def test_two_cubes_heard_before_the_slam_could_be_are_the_players_taps(self):
+        # A hard tap of the player's may make its neighbour report: it is no slam before Cozmo's could have come.
+        self.cli.slam_after = 0.6
+        self.player_taps(0.15)
+        timer = threading.Timer(0.16, self.cli.dispatch, (event.EvtCubeTapped, self.cli, self.cozmo_cube, 1))
+        timer.start()
+        self.addCleanup(timer.cancel)
+        with mock.patch.object(quick_tap, "SLAM_EARLIEST", 0.4):
+            self.assertEqual(self.game(match=True, reaction=0.05).play_hand(), quick_tap.PLAYER)
 
     def test_tapping_on_different_colours_loses(self):
         game = self.game(match=False)

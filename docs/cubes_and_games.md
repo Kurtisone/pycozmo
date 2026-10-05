@@ -41,7 +41,9 @@ Games
 
 `pycozmo.quick_tap` plays Quick Tap, the cube game of the Cozmo application: both cubes light up, and on the same
 colour the first to tap their cube wins the point, on different colours whoever taps loses it. The robot sits at its
-cube, the lift raised over it, and taps it with Anki's animations. The game's rules were the application's code; these
+cube, the lift raised over it, and taps it with Anki's animations: the lift coming down on the table makes every
+cube report a tap, in the order of their numbers, so the cubes that report together, 0.4 s or more after the tap was
+asked for, are Cozmo's, and a tap of the player's before them is the player's. The game's rules were the application's code; these
 are PyCozmo's reading of them. `pycozmo.memory_match` plays Memory Match: the three cubes light up one after
 another, the player repeats the pattern by tapping them, and so does Cozmo, turning to point at each with Anki's
 animations; the pattern grows by one each round, and whoever gets it wrong first loses. `pycozmo.keep_away` plays

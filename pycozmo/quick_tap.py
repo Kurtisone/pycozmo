@@ -86,6 +86,12 @@ ANIMATION_TIMEOUT = 2.0
 #: after the waiting animation than at rest. The frames the controller keeps ahead of the robot, 0.33 s of them, are
 #: most of it. The tap is asked for that long before Cozmo is to hit the cube.
 ANIMATION_DELAY = 0.4
+#: Cozmo's tap on the table makes every cube report it, the one it hit and the others, in the order of their numbers.
+#: What two cubes report within SLAM_SPREAD seconds of each other, no sooner than SLAM_EARLIEST seconds after the tap
+#: was asked for (it takes 0.5 s), is that tap and no one's else: the first to be heard is no clue to which cube was
+#: hit. A player's tap that came before it is heard on its own, and wins.
+SLAM_SPREAD = 0.1
+SLAM_EARLIEST = 0.4
 #: How far off its place the robot may have drifted before it goes back, in radians and in mm.
 DRIFT_ANGLE = math.radians(1.5)
 DRIFT_DISTANCE = 4.0
@@ -232,6 +238,7 @@ class QuickTap:
         with self._lock:
             self._taps.clear()
         start = time.perf_counter()
+        slam_earliest: Optional[float] = None
         action_time = start + max(0.0, self.rng.uniform(*self.skill.reaction) - ANIMATION_DELAY)
         self._show(self.cozmo_cube, cozmo_color)
         self._show(self.player_cube, player_color)
@@ -251,14 +258,17 @@ class QuickTap:
                 if cancel is not None and cancel.is_set():
                     raise Cancelled()
                 now = time.perf_counter()
-                first = self._first_tap()
+                first = self._first_tap(slam_earliest)
                 if first is None and action == TAP and animated.is_set():
                     # The lift came down, but the cube did not say so.
                     first = (animation_end[0], COZMO)
-                if first is not None:
+                # While Cozmo's tap is under way the cubes that report it are heard one after the other: wait for them.
+                if first is not None and (slam_earliest is None or now - first[0] >= SLAM_SPREAD):
                     break
                 if action is not None and handler is None and now >= action_time:
                     handler = self.cli.add_handler(event.EvtAnimationCompleted, on_completed, one_shot=True)
+                    if action == TAP:
+                        slam_earliest = time.perf_counter() + SLAM_EARLIEST
                     self.cli.play_anim_group(action)
                 # Cozmo's tap has its time to play out, but the hand does not wait for an animation that never
                 # says it ended.
@@ -341,17 +351,26 @@ class QuickTap:
     def _other(who: str) -> str:
         return PLAYER if who == COZMO else COZMO
 
-    def _first_tap(self) -> Optional[Tuple[float, str]]:
+    def _first_tap(self, slam_earliest: Optional[float] = None) -> Optional[Tuple[float, str]]:
+        """
+        The first tap of the hand, and whose it was. slam_earliest is the time before which Cozmo's tap cannot be heard
+        yet, None while it is not under way.
+        """
         with self._lock:
-            if not self._taps:
-                return None
-            when, cube = min(self._taps, key=lambda tap: tap[0])
-        return when, COZMO if cube is self.cozmo_cube else PLAYER
+            taps = sorted(self._taps, key=lambda tap: tap[0])
+        slam: Optional[float] = None
+        if slam_earliest is not None:
+            slam = next((when for when, cube in taps if when >= slam_earliest and
+                         any(other is not cube and abs(at - when) <= SLAM_SPREAD for at, other in taps)), None)
+        heard = [(when, COZMO if cube is self.cozmo_cube else PLAYER) for when, cube in taps
+                 if (cube is self.cozmo_cube or cube is self.player_cube) and (slam is None or when < slam - SLAM_SPREAD)]
+        if slam is not None:
+            heard.append((slam, COZMO))
+        return min(heard, key=lambda tap: tap[0]) if heard else None
 
     def _on_tapped(self, _: Any, cube: LightCube, taps: int) -> None:
-        if cube is self.cozmo_cube or cube is self.player_cube:
-            with self._lock:
-                self._taps.append((time.perf_counter(), cube))
+        with self._lock:
+            self._taps.append((time.perf_counter(), cube))
 
     def _show(self, cube: LightCube, color: lights.Color) -> None:
         state = steady(color)

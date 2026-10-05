@@ -15,11 +15,11 @@ Checked against an emulator of the robot, which is not part of this repository, 
 application's own engine recorded through the SDK beside it: how cubes connect, the animation stream, the cube lights,
 and the moves of the games and of Anki's cube handling. On a robot, tried: picking a cube up and putting it down, and
 setting one on another, each to the user's eye; rolling a cube, which went over each time; a song, which sounded
-right; driving off the charger; and a few hands of Quick Tap, with the user as the player: the cubes lit up, the taps
-were told, and the user judged the pace of Cozmo's taps well matched to theirs and, with the changes below, its arm
-on the cube. A game of Memory Match went as far as the user's tapping, pointing and winning: Cozmo turned to each cube
-in the pattern, within 3 to 11 degrees. Not tried: a whole game of Quick Tap, a whole game of Memory Match with the user
-tapping the pattern rightly, a whole game of Keep Away, popping a wheelie, and most of the behaviors that run these.
+right; driving off the charger; a whole game of Quick Tap and a whole game of Memory Match, with the user as the
+player: the cubes lit up, the taps were told, Cozmo turned to each cube in the pattern, within 3 to 11 degrees, and
+its animations for a hand, a round and a game played. A quick player beat Cozmo's tap in most hands of Quick Tap, which
+cannot come sooner than 0.5 s after the lights. Not tried: a whole game of Keep Away, popping a wheelie, and most of the
+behaviors that run these.
 Keep Away was played in hands: Cozmo took its place, waited, pretended and pounced, and the cube said it was tapped
 when the lift came down.
 The RollBlock behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back on a first try, at
@@ -88,6 +88,10 @@ Bug fixes:
 - Client.load_anims() took 8 s, 7 of them finding the files of the animation groups' 573 triggers: each walked the whole
     tree of Cozmo's resources, 75 000 directories in all. The tree is walked once, and it takes 0.3 s; the brain starts
     as fast, and the tests that load the animations, which are most of them, are the quicker for it.
+- Quick Tap gave the hand to whichever cube was heard first when Cozmo's tap came down, and on a robot every cube
+    reports that tap, in the order of their numbers: the player's cube, when it had the lower number, was heard before
+    Cozmo's, and the player won hands they had not tapped. The cubes that report within 0.1 s of each other, 0.4 s or
+    more after the tap was asked for, are Cozmo's tap; a tap of the player's before them is still the player's.
 - Cozmo's tap in Quick Tap pushed its cube, once in a round of 15 hands on a robot, and the next taps would have fallen
     short of it. The cube says it has moved; the robot backs off, looks for the cube and takes its place again before the
     next hand.
