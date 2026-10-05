@@ -44,11 +44,15 @@ DOCKED_DISTANCE = 10.0
 #: How many views are kept, and how far, in mm, a view may be from the middle of the others and still count.
 MAX_VIEWS = 16
 OUTLIER_DISTANCE = 30.0
+#: How far from squarely a marker may be seen, and how far from the heading the robot has an idea of the charger faces
+#: a view may say: a match that says more is something else, which has been seen to put the charger 9 cm off.
+MAX_VIEW_ANGLE = math.radians(65.0)
+MAX_HEADING_DISAGREEMENT = math.radians(40.0)
 #: How much less a view counts for each view that came after it, in where the charger is.
 RECENCY = 0.8
 #: How much the heading the robot rested on its charger with counts against the views, in the weights of the views:
 #: that of three seen from the side, at 25 cm. The robot has turned since, and its gyro is 1.3% out on each turn.
-PRIOR_WEIGHT = 2e-5
+PRIOR_WEIGHT = 1e-5
 #: How much a view of the marker seen squarely counts for the heading, against one seen from the side, which counts 1.
 SQUARE_VIEW_WEIGHT = 0.03
 
@@ -165,6 +169,25 @@ class Charger:
                                      aim=self._aim)
             result = self._pose
         return result
+
+    def plausible(self, position: Sequence[float], normal: Sequence[float]) -> bool:
+        """
+        Whether a view of the marker - its centre and the way it faces, in the robot's frame - could be one: a marker
+        faces the way it is seen from, to within MAX_VIEW_ANGLE, and, once the robot has an idea of which way the
+        charger faces, MAX_HEADING_DISAGREEMENT of it. A match that is not is something else that looked like it.
+        """
+        length = math.hypot(position[0], position[1]) * math.hypot(normal[0], normal[1])
+        if length <= 0.0:
+            return False
+        cosine = -(position[0] * normal[0] + position[1] * normal[1]) / length
+        if cosine < math.cos(MAX_VIEW_ANGLE):
+            return False
+        pose = self.pose
+        if pose is None:
+            return True
+        facing = self.cli.pose.rotation.angle_z.radians + math.atan2(normal[1], normal[0])
+        difference = math.atan2(math.sin(facing - pose.angle), math.cos(facing - pose.angle))
+        return abs(difference) <= MAX_HEADING_DISAGREEMENT
 
     def observe(self, position: Sequence[float], normal: Sequence[float], distance: float,
                 now: Optional[float] = None) -> ChargerPose:

@@ -19,7 +19,7 @@ the client's events: a behavior's own thread will do. Each step can be cut short
 import math
 import threading
 import time
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -30,6 +30,7 @@ from . import event
 from . import marker_detection
 from . import robot
 from . import util
+from .logger import logger
 from .cube_handling import Cancelled, SETTLE_TIME, _check, _pause, _wrap
 
 
@@ -86,11 +87,13 @@ STALL_GRACE = 0.8
 STALL_TIME = 0.8
 #: What the robot learns of where the ramp takes it: how far, in mm, it moves its aim off the side it was held on, after
 #: a backing that did not take, and how much of its distance from the axis, when it did, it takes for the way. A tread
-#: is held when its speed, over the last seconds of the backing, is under HELD_RATIO of the other's.
+#: is held when its speed, over HELD_WINDOW seconds of the backing, is under HELD_RATIO of the other's, and the robot
+#: says so, after HELD_MIN_TIME seconds in all.
 AIM_STEP = 6.0
 AIM_LEARNING = 0.7
-HELD_RATIO = 0.5
-HELD_WINDOW = 1.5
+HELD_RATIO = 0.4
+HELD_WINDOW = 0.3
+HELD_MIN_TIME = 0.25
 #: How far in front of the marker's plane the robot drives out to when backing has not taken, in mm, and how fast.
 OUT_DISTANCE = PREDOCK_DISTANCE - 20.0
 OUT_SPEED = 50.0
@@ -122,6 +125,8 @@ def observe(cli: Any, timeout: float = 1.0) -> Optional[charger_detection.Observ
     cubes = [np.array(marker.corners) for marker in
              marker_detection.observe_markers(images[0], calibration, head, pitch) if marker.cube is not None]
     seen = charger_detection.observe_charger(images[0], calibration, head, pitch, avoid=cubes)
+    if seen is not None and not cli.charger.plausible(seen.position, seen.normal):
+        return None
     if seen is not None:
         cli.charger.observe(seen.position, seen.normal, seen.distance)
     return seen
@@ -223,6 +228,9 @@ def go_to_predock(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
         here = cli.pose
         error = math.hypot(target.position.x - here.position.x, target.position.y - here.position.y)
         turn = _wrap(target.rotation.angle_z.radians - here.rotation.angle_z.radians)
+        logger.info("Charger: %d looks, charger at (%.0f, %.0f) facing %.0f degrees from %d views, aim %.1f; "
+                    "robot %.0f mm and %.0f degrees from the predock", looks, pose.x, pose.y, math.degrees(pose.angle),
+                    pose.views, pose.aim, error, math.degrees(turn))
         there = error <= PREDOCK_TOLERANCE and abs(turn) <= PREDOCK_ANGLE
         if looks >= MIN_LOOKS and there:
             return True
@@ -255,6 +263,8 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
     along, left = pose.in_its_frame(cli.pose.position.x, cli.pose.position.y)
     cli.charger.last_lateral = left
     cli.charger.last_held = None
+    logger.info("Charger: backing from %.0f mm in front of the marker, %.1f mm to the left of the axis (aim %.1f)",
+                along, left, pose.aim)
     travel = max(0.0, along - charger.DOCKED_DISTANCE) + BACK_MARGIN
     cli.enable_stop_on_cliff(False)
     try:
@@ -285,6 +295,8 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
         if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
             return True
         cli.charger.last_held = _held_tread(speeds)
+        logger.info("Charger: backing did not take; tread held: %s (%s s)", cli.charger.last_held,
+                    {side: round(seconds, 2) for side, seconds in _held_times(speeds).items()})
         return False
     finally:
         cli.enable_stop_on_cliff(True)
@@ -292,23 +304,41 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
 
 def _held_tread(speeds: Sequence[Tuple[float, float, float]]) -> Optional[str]:
     """
-    Which of the robot's treads was held, "left" or "right", over the last HELD_WINDOW seconds of the times it moved,
-    from their speeds, or None: a tread the ramp's edge holds turns less than the other, and it is the one on the side
-    the robot is off to.
+    Which of the robot's treads was held, "left" or "right", at some time while it backed, from their speeds, or None: a
+    tread the ramp's edge holds turns much less than the other, for a while, and it is the one on the side the robot is
+    off to. The first seconds, in which the wheels get going, and the times the robot did not move are left out.
     """
+    held = _held_times(speeds)
+    left, right = held["left"], held["right"]
+    if max(left, right) < HELD_MIN_TIME or abs(left - right) < HELD_MIN_TIME / 2.0:
+        return None
+    return "left" if left > right else "right"
+
+
+def _held_times(speeds: Sequence[Tuple[float, float, float]]) -> Dict[str, float]:
+    """ How long each tread was held, by windows of HELD_WINDOW seconds over the speeds: (time, left, right). """
+    times = {"left": 0.0, "right": 0.0}
     if not speeds:
-        return None
-    end = speeds[-1][0]
-    moving = [(left, right) for at, left, right in speeds if at > end - HELD_WINDOW and max(left, right) > 15.0]
-    if len(moving) < 5:
-        return None
-    left = sum(speed[0] for speed in moving) / len(moving)
-    right = sum(speed[1] for speed in moving) / len(moving)
-    if left < HELD_RATIO * right:
-        return "left"
-    if right < HELD_RATIO * left:
-        return "right"
-    return None
+        return times
+    begin = speeds[0][0] + STALL_GRACE
+    window: List[Tuple[float, float, float]] = []
+    previous = begin
+    for at, left, right in speeds:
+        if at < begin:
+            continue
+        window.append((at, left, right))
+        while window and window[0][0] < at - HELD_WINDOW:
+            window.pop(0)
+        if len(window) >= 3:
+            mean_left = sum(w[1] for w in window) / len(window)
+            mean_right = sum(w[2] for w in window) / len(window)
+            if max(mean_left, mean_right) > 20.0:
+                if mean_left < HELD_RATIO * mean_right:
+                    times["left"] += at - previous
+                elif mean_right < HELD_RATIO * mean_left:
+                    times["right"] += at - previous
+        previous = at
+    return times
 
 
 def _moved(before: util.Pose, after: util.Pose) -> bool:
@@ -339,6 +369,7 @@ def go_to_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
                 # Where it stood when it got on is where the ramp takes it: aim a little nearer there.
                 cli.charger.aim += AIM_LEARNING * cli.charger.last_lateral
                 return True
+            logger.info("Charger: aim %.1f mm, tread held %s", cli.charger.aim, cli.charger.last_held)
             # The tread held is on the side the robot was off to: aim the other way.
             if cli.charger.last_held == "left":
                 cli.charger.aim -= AIM_STEP

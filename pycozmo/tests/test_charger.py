@@ -7,7 +7,7 @@ Tests for what the robot knows of where its charger is.
 import math
 import time
 import unittest
-from typing import Optional
+from typing import Optional, Tuple
 
 import pycozmo
 from pycozmo import charger, event, util
@@ -221,3 +221,32 @@ class TestPrior(unittest.TestCase):
         cli.pose = util.Pose(200.0, 0.0, 0.0, angle_z=util.Angle(radians=math.pi), origin_id=2)
         pose = saying(cli, 200.0, 0.0, 0.07)
         self.assertAlmostEqual(math.atan2(math.sin(pose.angle), math.cos(pose.angle)), 0.07)
+
+
+def facing(angle: float) -> Tuple[float, float, float]:
+    """ A marker's normal in the robot's frame, as a unit vector at an angle. """
+    return math.cos(angle), math.sin(angle), 0.0
+
+
+class TestPlausible(unittest.TestCase):
+
+    def test_a_marker_seen_squarely_is_one(self):
+        cli = client()
+        self.assertTrue(cli.charger.plausible((200.0, 0.0, 25.0), facing(math.pi)))
+        self.assertTrue(cli.charger.plausible((250.0, 100.0, 25.0), facing(math.pi + 0.3)))
+
+    def test_a_marker_facing_away_or_far_off_the_way_it_is_seen_from_is_not(self):
+        cli = client()
+        # Facing 67 degrees off the robot, sideways, which a real marker seen from here does not.
+        self.assertFalse(cli.charger.plausible((200.0, 0.0, 25.0), facing(math.pi - 1.17)))
+        self.assertFalse(cli.charger.plausible((200.0, 0.0, 25.0), facing(0.0)))
+        self.assertFalse(cli.charger.plausible((0.0, 0.0, 25.0), facing(math.pi)))
+
+    def test_a_view_that_disagrees_with_what_is_known_is_not_one(self):
+        cli = client()
+        # The robot rested on its charger facing 0: the marker faces 0 in the world, and the robot now looks at it.
+        cli.charger.docked()
+        cli.pose = util.Pose(200.0, 0.0, 0.0, angle_z=util.Angle(radians=math.pi), origin_id=1)
+        self.assertTrue(cli.charger.plausible((200.0, 0.0, 25.0), facing(math.pi)))
+        # 50 degrees round: seen from the side that much, and the charger is not remembered so.
+        self.assertFalse(cli.charger.plausible((200.0, 0.0, 25.0), facing(math.pi + 0.87)))

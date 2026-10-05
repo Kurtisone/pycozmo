@@ -56,7 +56,12 @@ New features:
     heading a few degrees out takes it less off its line before the ramp, and the heading it rested on the charger with
     counts, against the views, for that of three seen from the side. It learns where the ramp takes it: after a backing
     that did not take, the tread held at the end - the one on the side the robot was off to, which tells which side
-    without anyone's help - moves its aim 6 mm the other way, and after one that did, it aims nearer where it stood. A half turn the gyro
+    without anyone's help - moves its aim 6 mm the other way, and after one that did, it aims nearer where it stood.
+    The held tread is looked for over the whole backing, not its end, for the rails hold a tread for a second or so
+    and the robot goes on over the top of the ramp, 5 cm past the contacts. A view of the marker that faces more than
+    65 degrees off the way it is seen from, or 40 off the way the charger is known to face, is not taken: two of them,
+    cap 113 degrees, put the charger 9 cm off, and the robot went there. On a robot, one return in two docked on its
+    own, in 24 s; the others went over the ramp's top 20 to 35 mm to its left. A half turn the gyro
     reports as 180 degrees is 182.4 on the floor, 1.3% more, which sent the robot back along a line 5 degrees out; it is
     asked for that much less (TURN_SCALE). The robot's own camera calibration is read, which the first tries used one
     of another robot's for, with a focal length 4% off and an optical centre 12 px out. The robot stops backing when

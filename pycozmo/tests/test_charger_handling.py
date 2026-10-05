@@ -400,24 +400,40 @@ class TestLens(unittest.TestCase):
 
 class TestLearning(unittest.TestCase):
 
-    def test_a_tread_held_is_told_by_its_speed_over_the_last_seconds(self):
-        now = 100.0
-        left_held = [(now - 1.0 + 0.1 * i, 5.0, 35.0) for i in range(10)]
-        right_held = [(now - 1.0 + 0.1 * i, 35.0, 8.0) for i in range(10)]
-        both = [(now - 1.0 + 0.1 * i, 34.0, 36.0) for i in range(10)]
-        self.assertEqual(charger_handling._held_tread(left_held), "left")
-        self.assertEqual(charger_handling._held_tread(right_held), "right")
-        self.assertIsNone(charger_handling._held_tread(both))
+    @staticmethod
+    def backing(left: float, right: float, held_from: float = 2.0, seconds: float = 4.0):
+        """ Speeds sampled every 20 ms for a backing: both treads at 35 mm/s, then one held from a time on. """
+        samples = []
+        for i in range(int(seconds / 0.02)):
+            at = 100.0 + 0.02 * i
+            held = at - 100.0 >= held_from
+            samples.append((at, left if held else 35.0, right if held else 35.0))
+        return samples
+
+    def test_a_tread_held_is_told_by_its_speed_during_the_backing(self):
+        self.assertEqual(charger_handling._held_tread(self.backing(5.0, 35.0)), "left")
+        self.assertEqual(charger_handling._held_tread(self.backing(35.0, 8.0)), "right")
+        self.assertIsNone(charger_handling._held_tread(self.backing(34.0, 36.0)))
+
+    def test_a_tread_held_early_in_the_backing_counts_though_the_robot_goes_on_after(self):
+        samples = self.backing(0.0, 60.0, held_from=1.5, seconds=2.2) + \
+            [(102.2 + 0.02 * i, 36.0, 37.0) for i in range(100)]
+        self.assertEqual(charger_handling._held_tread(samples), "left")
+
+    def test_a_tread_held_for_a_blink_does_not_count(self):
+        samples = [(100.0 + 0.02 * i, 35.0, 35.0) for i in range(200)]
+        samples[120] = (samples[120][0], 5.0, 35.0)
+        samples[121] = (samples[121][0], 5.0, 35.0)
+        self.assertIsNone(charger_handling._held_tread(samples))
+
+    def test_the_first_seconds_do_not_count(self):
+        # The wheels, getting going, are not even.
+        samples = [(100.0 + 0.02 * i, 3.0 if i < 20 else 35.0, 35.0) for i in range(200)]
+        self.assertIsNone(charger_handling._held_tread(samples))
 
     def test_a_robot_that_did_not_move_has_no_tread_held(self):
         self.assertIsNone(charger_handling._held_tread([(1.0 + 0.1 * i, 0.0, 0.0) for i in range(20)]))
         self.assertIsNone(charger_handling._held_tread([]))
-        # Too few moving samples to say.
-        self.assertIsNone(charger_handling._held_tread([(1.0, 5.0, 35.0), (1.1, 5.0, 35.0)]))
-
-    def test_the_old_speeds_do_not_count(self):
-        speeds = [(float(i), 5.0, 35.0) for i in range(5)] + [(10.0 + 0.1 * i, 34.0, 36.0) for i in range(10)]
-        self.assertIsNone(charger_handling._held_tread(speeds))
 
     def test_a_backing_held_on_the_left_moves_the_aim_to_the_right(self):
         fake = known(60.0, 0.0, 0.0)
@@ -469,8 +485,7 @@ class TestLearning(unittest.TestCase):
         fake.cli.left_wheel_speed = util.Speed(mmps=-30.0)
         fake.cli.right_wheel_speed = util.Speed(mmps=-4.0)
         with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
-                mock.patch.object(charger_handling, "STALL_TIME", 0.15), \
-                mock.patch.object(charger_handling, "HELD_WINDOW", 5.0):
+                mock.patch.object(charger_handling, "STALL_TIME", 0.6):
             self.assertFalse(charger_handling.back_onto_charger(fake.cli))
         # The robot is 7 mm to the left of the axis, which it knows from where it rested.
         self.assertAlmostEqual(fake.cli.charger.last_lateral, 7.0, delta=0.01)
