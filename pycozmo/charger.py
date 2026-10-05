@@ -44,7 +44,7 @@ OUTLIER_DISTANCE = 30.0
 #: How much less a view counts for each view that came after it, in where the charger is.
 RECENCY = 0.8
 #: How much a view of the marker seen squarely counts for the heading, against one seen from the side, which counts 1.
-SQUARE_VIEW_WEIGHT = 0.1
+SQUARE_VIEW_WEIGHT = 0.03
 
 
 @dataclass(frozen=True)

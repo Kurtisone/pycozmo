@@ -155,20 +155,30 @@ class TestBackOnto(unittest.TestCase):
         self.assertIn("stop", [move[0] for move in self.fake.moves])
         self.assertEqual([move[1] for move in self.fake.moves if move[0] == "cliff"], [0.0, 1.0])
 
-    def test_a_tread_held_against_the_ramp_stops_the_robot(self):
+    def test_a_robot_that_does_not_move_is_held_and_stopped(self):
+        # The fake's backing moves the pose at once, and then nothing moves.
         with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
                 mock.patch.object(charger_handling, "STALL_TIME", 0.1):
-            self.fake.cli.left_wheel_speed = util.Speed(mmps=-45.0)
-            self.fake.cli.right_wheel_speed = util.Speed(mmps=-5.0)
             self.assertFalse(charger_handling.back_onto_charger(self.fake.cli))
         self.assertIn("stop", [move[0] for move in self.fake.moves])
 
-    def test_both_treads_turning_the_robot_goes_on(self):
-        self.fake.on_charger_after = 0.3
-        self.fake.cli.left_wheel_speed = util.Speed(mmps=-35.0)
-        self.fake.cli.right_wheel_speed = util.Speed(mmps=-33.0)
+    def test_a_robot_that_turns_is_not_held(self):
+        # A tread held while the other turns, the ramp's rails turning the robot in: it goes on, and gets on.
+        self.fake.on_charger_after = 0.45
+        turning = threading.Event()
+
+        def turn() -> None:
+            while not turning.is_set():
+                pose = self.fake.cli.pose
+                self.fake.cli.pose = util.Pose(pose.position.x, pose.position.y, 0.0, origin_id=pose.origin_id,
+                                               angle_z=util.Angle(radians=pose.rotation.angle_z.radians + 0.05))
+                turning.wait(0.05)
+
+        thread = threading.Thread(target=turn, daemon=True)
+        thread.start()
+        self.addCleanup(turning.set)
         with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
-                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+                mock.patch.object(charger_handling, "STALL_TIME", 0.2):
             self.assertTrue(charger_handling.back_onto_charger(self.fake.cli))
 
     def test_a_charger_not_known_is_not_backed_onto(self):

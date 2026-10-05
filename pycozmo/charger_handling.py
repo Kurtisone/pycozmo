@@ -73,12 +73,14 @@ IN_THE_WAY = 130.0
 #: How much further than the gyro says the robot really turns: on a robot, two half turns that the gyro said made 360
 #: degrees took the marker's bearing 4.7 degrees (3.4 to 5.7) round, 1.3%. A half turn is asked for that much less.
 TURN_SCALE = 1.013
-#: A tread that turns less than this fraction of the other's, while the robot backs, is held: the robot has run against
-#: the ramp's edge. After the first STALL_GRACE seconds, in which the wheels get going, and for STALL_TIME, the robot
-#: stops: its treads going on push the charger, which slides on the floor.
-STALL_RATIO = 0.35
+#: A robot that has not gone back by STALL_DISTANCE mm, nor turned by STALL_ANGLE radians, for STALL_TIME seconds, after
+#: the first STALL_GRACE seconds in which its wheels get going, is held, against the ramp's edge or the charger: it
+#: stops, for its treads going on push the charger, which slides on the floor. A tread held while the other turns is
+#: not that: it is the ramp's rails turning the robot in, which they did from 9 degrees out, and it goes on.
+STALL_DISTANCE = 4.0
+STALL_ANGLE = math.radians(2.0)
 STALL_GRACE = 0.8
-STALL_TIME = 0.25
+STALL_TIME = 0.8
 #: How far in front of the marker's plane the robot drives out to when backing has not taken, in mm, and how fast.
 OUT_DISTANCE = PREDOCK_DISTANCE - 20.0
 OUT_SPEED = 50.0
@@ -246,7 +248,9 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
         cli.drive_straight(util.Distance(mm=-travel), speed=BACK_SPEED, wait=False)
         start = time.perf_counter()
         deadline = start + travel / BACK_SPEED * 1.5 + 3.0
-        held_since: Optional[float] = None
+        # Where the robot was when it last moved, and when.
+        moved_at = start
+        moved_from = cli.pose
         while time.perf_counter() < deadline:
             _check(cancel)
             if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
@@ -255,12 +259,11 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
                 _pause(0.3, cancel)
                 return True
             now = time.perf_counter()
-            if now - start > STALL_GRACE and _a_tread_is_held(cli):
-                held_since = now if held_since is None else held_since
-                if now - held_since > STALL_TIME:
-                    break
-            else:
-                held_since = None
+            here = cli.pose
+            if _moved(moved_from, here):
+                moved_at, moved_from = now, here
+            elif now - start > STALL_GRACE and now - moved_at > STALL_TIME:
+                break
             time.sleep(0.02)
         cli.stop_all_motors()
         _pause(0.3, cancel)
@@ -269,10 +272,11 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
         cli.enable_stop_on_cliff(True)
 
 
-def _a_tread_is_held(cli: Any) -> bool:
-    """ Whether one of the robot's treads turns much less than the other, as the ramp's edge makes it. """
-    left, right = abs(cli.left_wheel_speed.mmps), abs(cli.right_wheel_speed.mmps)
-    return bool(max(left, right) > 15.0 and min(left, right) < STALL_RATIO * max(left, right))
+def _moved(before: util.Pose, after: util.Pose) -> bool:
+    """ Whether a robot has gone, or turned, far enough between two poses to be said to be moving. """
+    distance = math.hypot(after.position.x - before.position.x, after.position.y - before.position.y)
+    turn = abs(_wrap(after.rotation.angle_z.radians - before.rotation.angle_z.radians))
+    return distance >= STALL_DISTANCE or turn >= STALL_ANGLE
 
 
 def go_to_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
