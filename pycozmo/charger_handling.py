@@ -52,8 +52,10 @@ __all__ = [
 PREDOCK_DISTANCE = 200.0
 #: How near the robot has to be to where it is to stand, in mm, and how nearly it has to face the marker, in radians,
 #: for it to turn round and back on.
-PREDOCK_TOLERANCE = 12.0
+PREDOCK_TOLERANCE = 8.0
 PREDOCK_ANGLE = math.radians(6.0)
+#: How far from facing the marker the robot may be and its not seeing it say that the charger is not there.
+BLIND_ANGLE = math.radians(20.0)
 #: The head's angle for looking at the charger's marker, which is 25 mm up: seen from 45 cm, and from 15.
 LOOK_HEAD_ANGLE = math.radians(-5.0)
 #: How many images are looked at, at most, at each stop, and how many of them have to show the marker.
@@ -216,7 +218,8 @@ def go_to_predock(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
         there = error <= PREDOCK_TOLERANCE and abs(turn) <= PREDOCK_ANGLE
         if looks >= MIN_LOOKS and there:
             return True
-        if looks < MIN_LOOKS and error <= 3.0 * PREDOCK_TOLERANCE:
+        # Standing where the marker should be seen, and looking that way, without seeing it, the charger is not there.
+        if looks < MIN_LOOKS and error <= 3.0 * PREDOCK_TOLERANCE and abs(turn) <= BLIND_ANGLE:
             return False
         if not _detour(cli, pose):
             return False

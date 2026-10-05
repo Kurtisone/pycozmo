@@ -49,8 +49,9 @@ New features:
     looks for the marker, where it remembers the charger to be and then all round; drives round the charger if it is
     behind it; stands 20 cm in front, and looks again; turns round, and backs on, with the cliff sensors off, until the
     robot says it is on, and tries again if that does not take. The marker is not in the middle of the charger: the
-    ramp's axis is 24 mm to the marker's left, looking the way it faces (AXIS_OFFSET); backings 4 to 24 mm to its
-    other side, by the marker, went off to the right of the charger, the right of a Cozmo on it. A half turn the gyro
+    ramp's axis is 13 mm to the marker's left, looking the way it faces (AXIS_OFFSET): backings 4 to 24 mm to its
+    other side, by the marker, went off to the right of the charger, the right of a Cozmo on it, and one aimed 24 mm
+    to the left went off to the left; the window that docks is from -4 to 30 mm. A half turn the gyro
     reports as 180 degrees is 182.4 on the floor, 1.3% more, which sent the robot back along a line 5 degrees out; it is
     asked for that much less (TURN_SCALE). The robot's own camera calibration is read, which the first tries used one
     of another robot's for, with a focal length 4% off and an optical centre 12 px out. The robot stops backing when

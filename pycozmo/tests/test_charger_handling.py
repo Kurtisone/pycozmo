@@ -322,6 +322,18 @@ class TestPredockStep(unittest.TestCase):
         with mock.patch.object(charger_handling, "observe", return_value=None):
             self.assertFalse(charger_handling.go_to_predock(fake.cli))
 
+    def test_near_the_place_but_facing_away_the_robot_turns_to_look(self):
+        # Not seeing the marker with its back to it says nothing: it turns to face it, and sees it.
+        fake = known(-charger.DOCKED_DISTANCE + charger_handling.PREDOCK_DISTANCE, 0.0, 0.0)
+        views = [None, None, object(), object()]
+
+        def observing(*args: object, **kwargs: object) -> object:
+            return views.pop(0) if views else object()
+
+        with mock.patch.object(charger_handling, "observe", side_effect=observing):
+            self.assertTrue(charger_handling.go_to_predock(fake.cli))
+        self.assertEqual(len([move for move in fake.moves if move[0] == "go"]), 1)
+
     def test_a_charger_not_known_is_not_gone_to(self):
         fake = Fake()
         with mock.patch.object(charger_handling, "observe", return_value=None):

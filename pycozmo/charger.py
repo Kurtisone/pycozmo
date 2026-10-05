@@ -30,10 +30,11 @@ __all__ = [
 
 
 #: How far the charger's axis - the line the robot's origin follows, backing on - is to the left of its marker's centre,
-#: looking the way the marker faces, in mm. A robot that stood 24 mm to its right docked; five that stood 4 to 24 mm
-#: to its other side, by the marker, did not, and the user saw them go off to the right of the charger, the right of a
-#: Cozmo on it. The marker is not in the middle of the charger.
-AXIS_OFFSET = 24.0
+#: looking the way the marker faces, in mm. The marker is not in the middle of the charger. A robot docked from 24 and
+#: from 18 mm to the left of the marker's line, and not from 4, 14 or 24 mm to its right, which went off to the right of
+#: the charger, nor from 24 plus the 8 mm that a heading 4 degrees out takes it, which stopped more than a centimetre to
+#: its left: the window is from about -4 to 30 mm, and the middle of it is 13.
+AXIS_OFFSET = 13.0
 #: How far the robot's origin is from the marker's plane, along the way the marker faces, with the robot on the charger
 #: and its back to the charger, in mm: measured by the robot's driving back onto the charger from the distance a marker
 #: was seen at, and the robot's own count of how far it went.
