@@ -36,6 +36,13 @@ New features:
     and the robot backing off part way into it; and pops a wheelie, the lift slamming down on the cube as the robot
     drives on at 150 mm/s. The distances are Anki's, 2.5 mm longer, as PyCozmo places cubes. A cube an animation sets
     down is followed where the fork pushes it.
+- The charger's marker. pycozmo.charger_detection finds it in a camera image and places it in the robot's frame: a dark
+    ring 24 mm wide and 17.5 high on the charger's face, with a battery drawn in it. The marker is drawn at every size it
+    can have and matched with the image, normalised so that a dim room does as well as a bright one, and its pose is
+    then fitted to every pixel of the sticker. Tried on a robot, in 16 images from 21 to 46 cm, it was found in each,
+    to 5% in distance and 6 mm sideways; its heading, seen squarely, is told no better than 15 degrees, and from a way
+    round, in drawn images, to 8. Nothing was taken for it in 159 images without a charger but four, all of a cube,
+    which a caller that knows the cubes' frames can pass to avoid.
 - Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
     CubeLiftWorkout, which reads Anki's four workouts, lifts as many times as the robot is confident, and has its
     energy choose the workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A

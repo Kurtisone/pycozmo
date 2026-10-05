@@ -311,17 +311,19 @@ def rectify(image: np.ndarray, corners: np.ndarray, size: int = 32, border: floa
 
 
 def frame_pose(corners: np.ndarray, calibration: camera.CameraCalibration,
-               size: float = MARKER_SIZE) -> Tuple[np.ndarray, np.ndarray]:
+               size: Union[float, Tuple[float, float]] = MARKER_SIZE) -> Tuple[np.ndarray, np.ndarray]:
     """
     Where a frame is in the camera's frame - x to the right, y down, z ahead, in mm: the rotation that takes
     the marker's own axes there, and its centre.
 
     The marker's own axes are x to the right and y down its face, as it shows on the screen from the top left
-    corner, and z into it. The corners are clockwise from the top left one.
+    corner, and z into it. The corners are clockwise from the top left one. The size is that of a square, or the
+    width and height of a frame that is not.
     """
     x, y = calibration.undistort(corners[:, 0], corners[:, 1])
-    half = size / 2.0
-    square = ((-half, -half), (half, -half), (half, half), (-half, half))
+    width, height = (size, size) if isinstance(size, (int, float)) else size
+    half_w, half_h = width / 2.0, height / 2.0
+    square = ((-half_w, -half_h), (half_w, -half_h), (half_w, half_h), (-half_w, half_h))
     h = _homography(square, np.stack([x, y], axis=1))
     h1, h2, h3 = h[:, 0], h[:, 1], h[:, 2]
     scale = 2.0 / (np.linalg.norm(h1) + np.linalg.norm(h2))
