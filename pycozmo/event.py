@@ -49,6 +49,7 @@ __all__ = [
     "EvtCubeMovingChange",
     "EvtCubeTapped",
     "EvtCubeObserved",
+    "EvtChargerObserved",
     "EvtFaceAppeared",
     "EvtFaceObserved",
     "EvtFaceIdentified",
@@ -231,6 +232,10 @@ class EvtCubeTapped(Event):
 
 class EvtCubeObserved(Event):
     """ Triggered with a cubes.LightCube each time the camera sees it; its pose is where. """
+
+
+class EvtChargerObserved(Event):
+    """ Triggered with a charger.ChargerPose each time the camera sees the charger's marker. """
 
 
 class EvtFaceAppeared(Event):

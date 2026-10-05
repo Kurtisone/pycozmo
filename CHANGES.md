@@ -43,6 +43,14 @@ New features:
     to 5% in distance and 6 mm sideways; its heading, seen squarely, is told no better than 15 degrees, and from a way
     round, in drawn images, to 8. Nothing was taken for it in 159 images without a charger but four, all of a cube,
     which a caller that knows the cubes' frames can pass to avoid.
+- Going back to the charger. Anki's application never did it: the robot was put on its charger by hand. Client.charger
+    keeps where the charger is - from where the robot stood on it at the start, and from the views of its marker put
+    together, in the frame the robot's position is in, which a pick-up ends. pycozmo.charger_handling.go_to_charger()
+    looks for the marker, where it remembers the charger to be and then all round; drives round the charger if it is
+    behind it; stands 20 cm in front, and looks again; turns round, and backs on, with the cliff sensors off, until the
+    robot says it is on, and tries again if that does not take. On a robot, one backing from 34 cm, 38 mm to the side
+    of where the marker put the charger, took the robot on to the ramp, 1 cm short of the contacts. The rest has
+    been tried against an emulator of the robot, which has the charger, its marker, its ramp and its contacts.
 - Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
     CubeLiftWorkout, which reads Anki's four workouts, lifts as many times as the robot is confident, and has its
     energy choose the workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A

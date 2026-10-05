@@ -146,6 +146,13 @@ Done:
   656 frames the same and placed the cubes within 2%. Close to, where the cube's black corners touch a frame, it is
   found from the hole inside it: 130 more of the cubes Anki saw over 4092 images of two robots.
 
+- **The charger's marker**: `pycozmo.charger_detection` finds it - a dark ring, 24 mm wide and 17.5 high, a battery
+  drawn in it - and places it. Anki's engine has no drawing of it in its resources, so the drawing is from the
+  robot's own camera images. See [Vision](vision.md#the-chargers-marker).
+- **Going back to the charger**: `pycozmo.charger_handling` looks for the marker, drives round the charger if it is
+  behind it, stands 20 cm in front, turns round and backs on. The version of the application this follows never did
+  it: the robot was put on its charger by hand.
+
 Open:
 - **Where the camera points.** The robot's reported pitch, flat on a table, drifts from one session to the next by
   about a degree, which moves what is placed on the ground by a few percent. A cube sitting on the table, whose
@@ -163,7 +170,7 @@ Open:
 Missing:
 - **Facial expressions**, and gaze, smile and blink: Anki's engine measured them, and no model here does.
 - **Pets.**
-- **The charger**, which carries a marker of its own; and the SDK's custom markers.
+- **The SDK's custom markers.**
 - **The laser dot** that `TrackLaser` follows.
 - **A memory map** of what is where: seen ground, edges, obstacles, cubes.
 
@@ -269,7 +276,9 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | `enable_stop_on_cliff` | Yes, and the brain turns it on, as the application did |
 | Light cubes: connection, lights, taps, moves | Yes: `Client.cubes` |
 | Light cubes: pose | Yes, from their markers |
-| Charger pose, custom objects | No |
+| Charger pose | Yes, from its marker, and from where the robot stood on it: `Client.charger`, `pycozmo.charger_detection` |
+| Going back to the charger | Yes, which Anki's application never did: `pycozmo.charger_handling` |
+| Custom objects | No |
 | Faces: seeing, naming, where they are | Yes, with OpenCV: `Client.faces` |
 | Facial expressions, pets | No |
 | Navigation memory map | No |

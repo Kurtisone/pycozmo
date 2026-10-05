@@ -363,7 +363,8 @@ class QuickTap:
             slam = next((when for when, cube in taps if when >= slam_earliest and
                          any(other is not cube and abs(at - when) <= SLAM_SPREAD for at, other in taps)), None)
         heard = [(when, COZMO if cube is self.cozmo_cube else PLAYER) for when, cube in taps
-                 if (cube is self.cozmo_cube or cube is self.player_cube) and (slam is None or when < slam - SLAM_SPREAD)]
+                 if (cube is self.cozmo_cube or cube is self.player_cube) and
+                 (slam is None or when < slam - SLAM_SPREAD)]
         if slam is not None:
             heard.append((slam, COZMO))
         return min(heard, key=lambda tap: tap[0]) if heard else None

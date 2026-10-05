@@ -108,3 +108,29 @@ is not; a blurred small one is still told from another person. Finding one takes
 telling it 14.6 ms, once a second a face. Over 4092 images of cubes and rooms, from two robots, the detector found
 nothing at its threshold of 0.9, and four blurred cubes at 0.6. Not tried on a robot, nor on faces of people: the
 numbers above come from one public domain photograph, shrunk and blurred to the camera's quality.
+
+
+The charger's marker
+--------------------
+
+The charger carries a marker too, on the face of its hood that looks the way the robot drives onto it: a dark ring, 24
+mm wide and 17.5 high along its middle, a white sticker round it, and inside it a battery drawn in dark lines. It is
+not the cubes' kind, and `pycozmo.marker_detection` does not find it; `pycozmo.charger_detection` does:
+
+```python
+from pycozmo import charger_detection
+
+charger = charger_detection.observe_charger(image, calibration, cli.head_angle.radians, cli.pose_pitch.radians)
+if charger is not None:
+    print(charger.position, charger.facing, charger.distance, charger.score)
+```
+
+The marker is drawn at every size it can have, and matched with the image, normalised so that a dim room does as well
+as a bright one; the best match is fitted to every pixel of the sticker, which gives its pose: where it is, to 5% in
+distance and 6 mm sideways, and which way it faces. Tried on a robot, in 16 images from 21 to 46 cm, it was found in
+each, in 0.2 to 0.4 s. Beyond 50 cm the ring is under 15 px wide, and nothing is looked for. Seen squarely, the heading
+is told no better than 15 degrees: the marker's sides are as long left as right, to a fraction of a pixel; from a way
+round, it is told to a few degrees. A cube's side, which is much like it, was taken for it in four of 159 images that
+held none, and `avoid` takes the frames of cubes found by `marker_detection`, which it leaves out. `Client.charger`
+keeps where the charger is, from the views put together and from where the robot stood on it; see
+`pycozmo.charger_handling` for the way home.

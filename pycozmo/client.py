@@ -32,6 +32,7 @@ from . import lights
 from . import image_encoder
 from . import anim
 from . import cubes
+from . import charger
 from . import faces
 from . import anim_encoder
 from . import audio
@@ -109,6 +110,8 @@ class Client(event.Dispatcher):
         self.connected_objects: Dict[int, Dict[str, Any]] = dict()
         #: The Light Cubes: connections, lights, and where they were seen.
         self.cubes = cubes.Cubes(self)
+        #: Where the robot's charger is, as far as it knows: see pycozmo.charger.
+        self.charger = charger.Charger(self)
         #: The faces the robot sees and knows: see pycozmo.faces. Found only with OpenCV: see pycozmo.face_detection.
         self.faces = faces.Faces(self)
         # Filters
@@ -151,6 +154,7 @@ class Client(event.Dispatcher):
         self.add_handler(protocol_encoder.ObjectPowerLevel, self.cubes.on_object_power_level)
         self.add_handler(protocol_encoder.DebugData, self._on_debug_data)
         self.add_handler(event.EvtRobotPickedUpChange, self._on_robot_picked_up)
+        self.add_handler(event.EvtRobotOnChargerChange, self._on_robot_on_charger)
         self.add_handler(event.EvtMotionObserved, self._on_motion_observed)
         self.add_handler(event.EvtRobotWheelsMovingChange, self._on_robot_moving)
         self.conn.start()
@@ -367,6 +371,11 @@ class Client(event.Dispatcher):
         del cli
         if motion.ground_centroid is not None:
             self.last_ground_motion = (time.perf_counter(), motion.ground_centroid)
+
+    def _on_robot_on_charger(self, _: "Client", state: bool) -> None:
+        # On its charger, the robot knows where it is.
+        if state:
+            self.charger.docked()
 
     def _on_robot_picked_up(self, cli, state):
         del cli
