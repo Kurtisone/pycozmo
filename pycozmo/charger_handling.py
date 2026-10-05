@@ -89,11 +89,21 @@ STALL_TIME = 0.8
 #: a backing that did not take, and how much of its distance from the axis, when it did, it takes for the way. A tread
 #: is held when its speed, over HELD_WINDOW seconds of the backing, is under HELD_RATIO of the other's, and the robot
 #: says so, after HELD_MIN_TIME seconds in all.
-AIM_STEP = 6.0
+AIM_STEP = 5.0
+#: With no tread held, how much of how far off the line it docked on the robot stopped it moves its aim, at the
+#: most, and how near the line, in mm, is near enough to leave it be.
+AIM_END_GAIN = 0.5
+AIM_END_MAX = 12.0
+END_OFFSET_MIN = 10.0
 AIM_LEARNING = 0.7
 HELD_RATIO = 0.4
 HELD_WINDOW = 0.3
-HELD_MIN_TIME = 0.25
+HELD_MIN_TIME = 0.5
+#: Seating the robot on the contacts it did not touch: the to-and-fro it tries, forward and then back, in mm, how fast,
+#: in mm/s, and the tilt, in degrees, that says it is on the ramp.
+SEATING = ((20.0, 35.0), (12.0, 20.0))
+SEAT_SPEED = 25.0
+RAMP_TILT = 3.0
 #: How far in front of the marker's plane the robot drives out to when backing has not taken, in mm, and how fast.
 OUT_DISTANCE = PREDOCK_DISTANCE - 20.0
 OUT_SPEED = 50.0
@@ -294,12 +304,41 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
         _pause(0.3, cancel)
         if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
             return True
+        if _tilted_on_the_ramp(cli) and _seat_on_contacts(cli, cancel):
+            return True
         cli.charger.last_held = _held_tread(speeds)
+        cli.charger.last_end_offset = cli.charger.offset_from_dock_axis(cli.pose.position.x, cli.pose.position.y)
         logger.info("Charger: backing did not take; tread held: %s (%s s)", cli.charger.last_held,
                     {side: round(seconds, 2) for side, seconds in _held_times(speeds).items()})
         return False
     finally:
         cli.enable_stop_on_cliff(True)
+
+
+def _tilted_on_the_ramp(cli: Any) -> bool:
+    """ Whether the robot rests with its nose up, as it does on the ramp: its accelerometer says so, not its pitch. """
+    return bool(math.degrees(math.atan2(cli.accel.x, cli.accel.z)) < -RAMP_TILT)
+
+
+def _seat_on_contacts(cli: Any, cancel: Optional[threading.Event]) -> bool:
+    """
+    A robot on the ramp whose contacts do not touch those of the charger has them a few mm out, or short of them, or
+    past them: it goes forward a little, and back a little more, slowly, a few times, and says whether they touched.
+    """
+    for forward, back in SEATING:
+        for distance in (forward, -back):
+            _check(cancel)
+            cli.drive_straight(util.Distance(mm=distance), speed=SEAT_SPEED, wait=False)
+            deadline = time.perf_counter() + abs(distance) / SEAT_SPEED + 1.0
+            while time.perf_counter() < deadline:
+                if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
+                    cli.stop_all_motors()
+                    _pause(0.3, cancel)
+                    return True
+                _check(cancel)
+                time.sleep(0.02)
+    cli.stop_all_motors()
+    return False
 
 
 def _held_tread(speeds: Sequence[Tuple[float, float, float]]) -> Optional[str]:
@@ -369,12 +408,16 @@ def go_to_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
                 # Where it stood when it got on is where the ramp takes it: aim a little nearer there.
                 cli.charger.aim += AIM_LEARNING * cli.charger.last_lateral
                 return True
-            logger.info("Charger: aim %.1f mm, tread held %s", cli.charger.aim, cli.charger.last_held)
+            logger.info("Charger: aim %.1f mm, tread held %s, stopped %s mm to the left of the line it docked on",
+                        cli.charger.aim, cli.charger.last_held, cli.charger.last_end_offset)
             # The tread held is on the side the robot was off to: aim the other way.
             if cli.charger.last_held == "left":
                 cli.charger.aim -= AIM_STEP
             elif cli.charger.last_held == "right":
                 cli.charger.aim += AIM_STEP
+            elif cli.charger.last_end_offset is not None and abs(cli.charger.last_end_offset) > END_OFFSET_MIN:
+                # None held: the robot went over the ramp, and stopped off the line it docked on: aim the other way.
+                cli.charger.aim -= max(-AIM_END_MAX, min(AIM_END_MAX, AIM_END_GAIN * cli.charger.last_end_offset))
             # It did not take: drive straight out, to well in front of the charger, where the way to the front of it is
             # clear, and look again.
             pose = cli.charger.pose

@@ -32,11 +32,10 @@ __all__ = [
 
 #: How far the charger's axis - the line the robot's origin follows, backing on - is to the left of its marker's centre,
 #: looking the way the marker faces, in mm. The marker is not in the middle of the charger, and the ramp takes little.
-#: Robots that stood 24 and 18 mm to the left of the marker's line, by its views, docked; those 4 to 24 mm to its right
-#: went off to the right of the charger, and so did one aimed 13 mm left; one aimed 24 mm left went off to the left,
-#: with the 8 mm that a heading 4 degrees out takes a robot over 200 mm. The window is some 16 to 30 mm, 14 wide, and
-#: 22 is the middle of it.
-AXIS_OFFSET = 22.0
+#: On a robot, aiming 15.5 mm from the marker's line, give or take 5, docked, or was put well by the user's eye; 4 to 10
+#: mm further to the right, and the robot went off to its right; 15 mm nearer, and it came in slanted and could not
+#: climb. What the robot learns, Charger.aim, is on top of this.
+AXIS_OFFSET = 15.5
 #: How far the robot's origin is from the marker's plane, along the way the marker faces, with the robot on the charger
 #: and its back to the charger, in mm: measured by the robot's driving back onto the charger from the distance a marker
 #: was seen at, and the robot's own count of how far it went.
@@ -50,6 +49,8 @@ MAX_VIEW_ANGLE = math.radians(65.0)
 MAX_HEADING_DISAGREEMENT = math.radians(40.0)
 #: How much less a view counts for each view that came after it, in where the charger is.
 RECENCY = 0.8
+#: How far the robot may move its aim off the axis it was given, either way, in mm.
+MAX_AIM = 12.0
 #: How much the heading the robot rested on its charger with counts against the views, in the weights of the views:
 #: that of three seen from the side, at 25 cm. The robot has turned since, and its gyro is 1.3% out on each turn.
 PRIOR_WEIGHT = 1e-5
@@ -114,6 +115,10 @@ class Charger:
         #: to the left of the axis the robot was when it set off, in mm.
         self.last_held: Optional[str] = None
         self.last_lateral = 0.0
+        #: Where the robot stopped, to the left of the line it docked on, in mm, after a backing; None if not known.
+        self.last_end_offset: Optional[float] = None
+        # Where the robot last stood on its charger: x, y, heading, and the frame.
+        self._dock: Optional[Tuple[float, float, float, int]] = None
         self._views: List[_View] = []
         # The heading the robot rested on its charger with, which is the charger's: how it was known before any view.
         self._prior: Optional[Tuple[float, int]] = None
@@ -137,10 +142,24 @@ class Charger:
 
     @aim.setter
     def aim(self, value: float) -> None:
+        value = max(-MAX_AIM, min(MAX_AIM, value))
         with self.lock:
             self._aim = value
             if self._pose is not None:
                 self._pose = dataclasses.replace(self._pose, aim=value)
+
+    def offset_from_dock_axis(self, x: float, y: float) -> Optional[float]:
+        """
+        How far to the left, in mm, of the line the robot last docked on - through where it stood, along its heading -
+        a point of the world frame is; None if it has not docked in this frame. The robot's wheels know that line to
+        a few mm for as long as it has not driven far.
+        """
+        with self.lock:
+            dock = self._dock
+        if dock is None or dock[3] != self.cli.pose.origin_id:
+            return None
+        dx, dy = x - dock[0], y - dock[1]
+        return -dx * math.sin(dock[2]) + dy * math.cos(dock[2])
 
     @property
     def known(self) -> bool:
@@ -151,6 +170,7 @@ class Charger:
             self._pose = None
             self._views = []
             self._prior = None
+            self._dock = None
 
     def docked(self) -> ChargerPose:
         """
@@ -162,6 +182,7 @@ class Charger:
         with self.lock:
             self._views = []
             self._prior = (heading, pose.origin_id)
+            self._dock = (pose.position.x, pose.position.y, heading, pose.origin_id)
             c, s = math.cos(heading), math.sin(heading)
             self._pose = ChargerPose(x=pose.position.x - DOCKED_DISTANCE * c + AXIS_OFFSET * s,
                                      y=pose.position.y - DOCKED_DISTANCE * s - AXIS_OFFSET * c,

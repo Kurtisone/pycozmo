@@ -401,7 +401,8 @@ class TestLens(unittest.TestCase):
 class TestLearning(unittest.TestCase):
 
     @staticmethod
-    def backing(left: float, right: float, held_from: float = 2.0, seconds: float = 4.0):
+    def backing(left: float, right: float, held_from: float = 2.0,
+                seconds: float = 4.0) -> List[Tuple[float, float, float]]:
         """ Speeds sampled every 20 ms for a backing: both treads at 35 mm/s, then one held from a time on. """
         samples = []
         for i in range(int(seconds / 0.02)):
@@ -446,8 +447,8 @@ class TestLearning(unittest.TestCase):
         with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
                 mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
             charger_handling.go_to_charger(fake.cli)
-        # Three tries, each moving the aim a step the other way.
-        self.assertAlmostEqual(fake.cli.charger.aim, before - 3 * charger_handling.AIM_STEP)
+        # Three tries, each moving the aim a step the other way, up to what the robot may move it.
+        self.assertAlmostEqual(fake.cli.charger.aim, max(-charger.MAX_AIM, before - 3 * charger_handling.AIM_STEP))
 
     def test_a_backing_held_on_the_right_moves_the_aim_to_the_left(self):
         fake = known(60.0, 0.0, 0.0)
@@ -459,7 +460,33 @@ class TestLearning(unittest.TestCase):
         with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
                 mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
             charger_handling.go_to_charger(fake.cli)
-        self.assertAlmostEqual(fake.cli.charger.aim, 3 * charger_handling.AIM_STEP)
+        self.assertAlmostEqual(fake.cli.charger.aim, min(charger.MAX_AIM, 3 * charger_handling.AIM_STEP))
+
+    def test_a_backing_not_held_but_stopped_off_the_line_it_docked_on_moves_the_aim(self):
+        fake = known(60.0, 0.0, 0.0)
+
+        def backing(cli: object, cancel: object = None) -> bool:
+            fake.cli.charger.last_held = None
+            fake.cli.charger.last_end_offset = 20.0
+            return False
+
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
+            charger_handling.go_to_charger(fake.cli)
+        # 20 mm to the left, three tries, each aiming half of that to the right, up to what it may move it.
+        self.assertAlmostEqual(fake.cli.charger.aim, -charger.MAX_AIM)
+
+    def test_a_small_offset_is_left_be(self):
+        fake = known(60.0, 0.0, 0.0)
+
+        def backing(cli: object, cancel: object = None) -> bool:
+            fake.cli.charger.last_end_offset = 4.0
+            return False
+
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
+            charger_handling.go_to_charger(fake.cli)
+        self.assertEqual(fake.cli.charger.aim, 0.0)
 
     def test_a_backing_not_held_either_side_leaves_the_aim(self):
         fake = known(60.0, 0.0, 0.0)
@@ -502,3 +529,42 @@ class TestAim(unittest.TestCase):
         # The marker faces +x: to its left is +y.
         self.assertAlmostEqual(after.position.y - before.position.y, 10.0)
         self.assertAlmostEqual(after.position.x, before.position.x)
+
+
+class TestSeating(unittest.TestCase):
+
+    def setUp(self):
+        self.fake = Fake(165.0, 0.0, math.pi)
+        see(self.fake.cli, 165.0, 0.0)
+        for name, value in (("BACK_SPEED", 400.0), ("SEAT_SPEED", 400.0)):
+            patcher = mock.patch.object(charger_handling, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_a_robot_with_its_nose_up_on_the_ramp_tries_to_seat_its_contacts(self):
+        # Tilted back 7 degrees, as the robot is on the ramp, the flag not up: forward a little, back a little more.
+        self.fake.cli.accel = util.Vector3(-1200.0, 0.0, 10000.0)
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+            self.assertFalse(charger_handling.back_onto_charger(self.fake.cli))
+        drives = [move[1] for move in self.fake.moves if move[0] == "drive"]
+        self.assertEqual(drives[1:], [20.0, -35.0, 12.0, -20.0])
+
+    def test_it_stops_as_soon_as_the_robot_says_it_is_on(self):
+        self.fake.cli.accel = util.Vector3(-1200.0, 0.0, 10000.0)
+        self.fake.on_charger_after = None
+        # The flag comes up while it goes to and fro, not before.
+        timer = threading.Timer(0.5, self.fake.say_on_charger)
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+            timer.start()
+            self.addCleanup(timer.cancel)
+            self.assertTrue(charger_handling.back_onto_charger(self.fake.cli))
+        self.assertLessEqual(len([move for move in self.fake.moves if move[0] == "drive"]), 5)
+
+    def test_a_robot_lying_flat_does_not_go_to_and_fro(self):
+        self.fake.cli.accel = util.Vector3(-100.0, 0.0, 10000.0)
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+            self.assertFalse(charger_handling.back_onto_charger(self.fake.cli))
+        self.assertEqual(len([move for move in self.fake.moves if move[0] == "drive"]), 1)

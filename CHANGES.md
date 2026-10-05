@@ -49,10 +49,9 @@ New features:
     looks for the marker, where it remembers the charger to be and then all round; drives round the charger if it is
     behind it; stands 20 cm in front, and looks again; turns round, and backs on, with the cliff sensors off, until the
     robot says it is on, and tries again if that does not take. The marker is not in the middle of the charger: the
-    ramp's axis is 22 mm to the marker's left, looking the way it faces (AXIS_OFFSET): backings 4 to 24 mm to its
-    other side, by the marker, and one aimed 13 mm to the left, went off to the right of the charger, the right of a
-    Cozmo on it, and one aimed 24 mm to the left went off to the left; those that docked were 18 and 24 mm to the
-    left, and the window is some 14 mm wide. The robot stands 165 mm in front of the marker to turn round, where a
+    ramp's axis is 15.5 mm to the marker's left, looking the way it faces (AXIS_OFFSET), give or take 5: backings 4
+    to 10 mm further to the right went off to the right of the charger, the right of a Cozmo on it, and one aimed 15
+    mm nearer came in slanted and could not climb. The robot stands 165 mm in front of the marker to turn round, where a
     heading a few degrees out takes it less off its line before the ramp, and the heading it rested on the charger with
     counts, against the views, for that of three seen from the side. It learns where the ramp takes it: after a backing
     that did not take, the tread held at the end - the one on the side the robot was off to, which tells which side
@@ -61,7 +60,10 @@ New features:
     and the robot goes on over the top of the ramp, 5 cm past the contacts. A view of the marker that faces more than
     65 degrees off the way it is seen from, or 40 off the way the charger is known to face, is not taken: two of them,
     cap 113 degrees, put the charger 9 cm off, and the robot went there. On a robot, one return in two docked on its
-    own, in 24 s; the others went over the ramp's top 20 to 35 mm to its left. A half turn the gyro
+    own, in 24 s; the others went over the ramp's top 20 to 35 mm to its left. In five cycles of leaving the charger and
+    coming back, three docked, one of them at the third try, after learning where the ramp takes it. A tread held for a
+    moment is not taken for a side, what the robot learns of its aim is kept within 12 mm of the axis, and a robot
+    that rests with its nose up on the ramp and says nothing goes to and fro a little to seat its contacts. A half turn the gyro
     reports as 180 degrees is 182.4 on the floor, 1.3% more, which sent the robot back along a line 5 degrees out; it is
     asked for that much less (TURN_SCALE). The robot's own camera calibration is read, which the first tries used one
     of another robot's for, with a focal length 4% off and an optical centre 12 px out. The robot stops backing when

@@ -126,6 +126,13 @@ class TestCharger(unittest.TestCase):
         cli.charger.forget()
         self.assertEqual(cli.charger.aim, 6.0)
 
+    def test_the_aim_is_kept_within_what_the_robot_may_move_it(self):
+        cli = client()
+        cli.charger.aim = 100.0
+        self.assertEqual(cli.charger.aim, charger.MAX_AIM)
+        cli.charger.aim = -100.0
+        self.assertEqual(cli.charger.aim, -charger.MAX_AIM)
+
     def test_forgetting(self):
         cli = client()
         see(cli, 200.0)
@@ -250,3 +257,29 @@ class TestPlausible(unittest.TestCase):
         self.assertTrue(cli.charger.plausible((200.0, 0.0, 25.0), facing(math.pi)))
         # 50 degrees round: seen from the side that much, and the charger is not remembered so.
         self.assertFalse(cli.charger.plausible((200.0, 0.0, 25.0), facing(math.pi + 0.87)))
+
+
+class TestDockAxis(unittest.TestCase):
+
+    def test_nothing_is_known_before_it_docks(self):
+        self.assertIsNone(client().charger.offset_from_dock_axis(0.0, 0.0))
+
+    def test_how_far_to_the_left_of_the_line_it_docked_on_a_point_is(self):
+        cli = client(100.0, 50.0, math.pi / 2)
+        cli.charger.docked()
+        # It docked facing up the y axis: to its left is -x.
+        self.assertAlmostEqual(cli.charger.offset_from_dock_axis(100.0, 300.0) or 0.0, 0.0)
+        self.assertAlmostEqual(cli.charger.offset_from_dock_axis(90.0, 10.0) or 0.0, 10.0)
+        self.assertAlmostEqual(cli.charger.offset_from_dock_axis(120.0, 80.0) or 0.0, -20.0)
+
+    def test_another_frame_says_nothing(self):
+        cli = client()
+        cli.charger.docked()
+        cli.pose = util.Pose(0.0, 0.0, 0.0, angle_z=util.Angle(radians=0.0), origin_id=2)
+        self.assertIsNone(cli.charger.offset_from_dock_axis(0.0, 10.0))
+
+    def test_forgetting_forgets_where_it_docked(self):
+        cli = client()
+        cli.charger.docked()
+        cli.charger.forget()
+        self.assertIsNone(cli.charger.offset_from_dock_axis(0.0, 10.0))
