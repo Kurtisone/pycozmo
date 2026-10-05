@@ -66,6 +66,10 @@ _SQUEEZES = (1.0, 0.8, 0.62)
 #: is not seen in that.
 MIN_SCORE = 0.45
 MIN_BATTERY = 0.4
+#: How high the marker's centre may be, in mm. It is 25 mm up, and seen from a head angle that is a few degrees out it
+#: comes out 10 or 15 mm off; a match that is under the floor or a hand's breadth up is something else.
+MIN_HEIGHT = 0.0
+MAX_HEIGHT = 70.0
 # The battery's half width and half height, in the drawing's pixels.
 _BATTERY = (31.0, 16.5)
 # How far apart, in the ring's widths, two matches may be and still be one marker.
@@ -128,7 +132,7 @@ def observe_charger(image: Image.Image, calibration: Optional[camera.CameraCalib
             continue
         tried.append(candidate)
         fit = _align(gray, calibration, head_angle, pitch, x, y, width, squeeze)
-        if fit is not None and fit[1] >= min_score and fit[2] >= MIN_BATTERY:
+        if fit is not None and fit[1] >= min_score and fit[2] >= MIN_BATTERY and MIN_HEIGHT <= fit[0][2] <= MAX_HEIGHT:
             return _observed(fit[0], fit[1], calibration, head_angle, pitch)
         if len(tried) >= _TRIES:
             break

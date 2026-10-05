@@ -146,3 +146,11 @@ class TestObserveCharger(unittest.TestCase):
     def test_what_is_known_to_be_something_else_is_avoided(self):
         frame = np.array(seen(render(250.0)).corners)
         self.assertIsNone(charger_detection.observe_charger(render(250.0), CALIBRATION, HEAD_ANGLE, avoid=[frame]))
+
+    def test_a_match_not_at_the_height_of_the_marker_is_not_taken_for_it(self):
+        # The same picture, with the head 0.3 rad out: the marker's fit goes under the floor, or high up in the
+        # air, and is not the marker.
+        image = render(250.0)
+        self.assertIsNotNone(charger_detection.observe_charger(image, CALIBRATION, HEAD_ANGLE))
+        self.assertIsNone(charger_detection.observe_charger(image, CALIBRATION, HEAD_ANGLE + 0.3))
+        self.assertIsNone(charger_detection.observe_charger(image, CALIBRATION, HEAD_ANGLE - 0.3))
