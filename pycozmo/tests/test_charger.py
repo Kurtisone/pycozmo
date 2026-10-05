@@ -44,14 +44,23 @@ class TestCharger(unittest.TestCase):
         self.assertEqual(pose.views, 1)
         self.assertIs(cli.charger.pose, pose)
 
-    def test_views_are_put_together_the_nearer_counting_for_more(self):
+    def test_views_are_put_together_the_nearer_counting_for_more_and_the_newer(self):
         cli = client()
         see(cli, 240.0, 20.0)
         pose = see(cli, 200.0, 0.0)
-        # Weighed by the inverse square of the distance: the second counts as 1.44 times the first.
-        w1, w2 = 1.0 / math.hypot(240.0, 20.0) ** 2, 1.0 / 200.0 ** 2
+        # Weighed by the inverse square of the distance, and the older view by RECENCY less.
+        w1, w2 = charger.RECENCY / math.hypot(240.0, 20.0) ** 2, 1.0 / 200.0 ** 2
         self.assertAlmostEqual(pose.x, (240.0 * w1 + 200.0 * w2) / (w1 + w2), 6)
-        self.assertEqual(pose.views, 2)
+
+    def test_the_views_of_where_the_robot_is_count_for_more_than_those_of_where_it_was(self):
+        cli = client()
+        for _ in range(4):
+            see(cli, 250.0, 40.0)
+        for _ in range(4):
+            pose = see(cli, 200.0, 10.0)
+        # Odometry is some 20 mm out from one place to the next: the marker is where the last views say, to a few mm.
+        self.assertAlmostEqual(pose.y, 10.0, delta=12.0)
+        self.assertLess(pose.y, 25.0)
 
     def test_a_view_far_from_the_others_does_not_count(self):
         cli = client()
@@ -67,6 +76,16 @@ class TestCharger(unittest.TestCase):
         pose = see(cli, 200.0, facing=-math.pi + 0.2)
         # Either side of pi, not the mean of -pi + 0.2 and pi - 0.2.
         self.assertAlmostEqual(abs(pose.angle), math.pi, places=6)
+
+    def test_a_view_from_the_side_tells_the_heading_better_than_one_seen_squarely(self):
+        cli = client()
+        # Seen from a way round, the marker says it faces pi + 0.1; seen squarely, pi - 0.1.
+        cli.charger.observe((250.0, 150.0, 25.0), (math.cos(math.pi + 0.1), math.sin(math.pi + 0.1), 0.0), 292.0)
+        pose = cli.charger.observe((250.0, 0.0, 25.0), (math.cos(math.pi - 0.1), math.sin(math.pi - 0.1), 0.0), 250.0)
+        # The mean of the two would be pi; the heading is nearer the one that says more, on pi + 0.1's side.
+        deviation = math.atan2(math.sin(pose.angle - math.pi), math.cos(pose.angle - math.pi))
+        self.assertGreater(deviation, 0.02)
+        self.assertLess(deviation, 0.1)
 
     def test_only_the_last_views_are_kept(self):
         cli = client()
@@ -94,13 +113,19 @@ class TestCharger(unittest.TestCase):
         self.assertIsNone(cli.charger.pose)
 
     def test_on_the_charger_the_robot_knows_where_it_is(self):
-        # Its back is to the charger: the marker is behind it, and faces the way the robot does.
+        # Its back is to the charger: the marker is behind it, and faces the way the robot does. The robot's axis is the
+        # charger's, which is AXIS_OFFSET to the left of the marker, looking the way it faces: the marker is that far to
+        # the robot's right.
         cli = client(50.0, 20.0, math.pi / 2)
         pose = cli.charger.docked()
-        self.assertAlmostEqual(pose.x, 50.0)
+        self.assertAlmostEqual(pose.x, 50.0 + charger.AXIS_OFFSET)
         self.assertAlmostEqual(pose.y, 20.0 - charger.DOCKED_DISTANCE)
         self.assertAlmostEqual(pose.angle, math.pi / 2)
         self.assertEqual(pose.views, 0)
+        # And the robot is on the charger's axis, DOCKED_DISTANCE in front of the marker's plane.
+        along, left = pose.in_its_frame(50.0, 20.0)
+        self.assertAlmostEqual(along, charger.DOCKED_DISTANCE)
+        self.assertAlmostEqual(left, 0.0)
 
     def test_the_robot_says_it_is_on_the_charger(self):
         cli = client()
@@ -119,7 +144,7 @@ class TestCharger(unittest.TestCase):
         cli.charger.docked()
         pose = cli.charger.pose
         assert pose is not None
-        self.assertAlmostEqual(pose.y, 0.0)
+        self.assertAlmostEqual(pose.y, -charger.AXIS_OFFSET)
         self.assertEqual(pose.views, 0)
 
     def test_a_view_tells_the_listeners(self):

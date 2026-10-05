@@ -19,7 +19,7 @@ the client's events: a behavior's own thread will do. Each step can be cut short
 import math
 import threading
 import time
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import numpy as np
 
@@ -70,6 +70,18 @@ BACK_MARGIN = 25.0
 DETOUR_DISTANCE = 160.0
 DETOUR_SIDE = 150.0
 IN_THE_WAY = 130.0
+#: How much further than the gyro says the robot really turns: on a robot, two half turns that the gyro said made 360
+#: degrees took the marker's bearing 4.7 degrees (3.4 to 5.7) round, 1.3%. A half turn is asked for that much less.
+TURN_SCALE = 1.013
+#: A tread that turns less than this fraction of the other's, while the robot backs, is held: the robot has run against
+#: the ramp's edge. After the first STALL_GRACE seconds, in which the wheels get going, and for STALL_TIME, the robot
+#: stops: its treads going on push the charger, which slides on the floor.
+STALL_RATIO = 0.35
+STALL_GRACE = 0.8
+STALL_TIME = 0.25
+#: How far in front of the marker's plane the robot drives out to when backing has not taken, in mm, and how fast.
+OUT_DISTANCE = PREDOCK_DISTANCE - 20.0
+OUT_SPEED = 50.0
 #: How many times the robot tries to get on the charger.
 ATTEMPTS = 3
 
@@ -103,9 +115,20 @@ def observe(cli: Any, timeout: float = 1.0) -> Optional[charger_detection.Observ
     return seen
 
 
+def _use_the_robots_lens(cli: Any) -> None:
+    """
+    Read the robot's own camera calibration if it has not been: on the robot this was tried on, its focal length and
+    optical centre differed from a typical robot's by 4% and 12 px, which at 20 cm puts the marker 8 mm to one side
+    and 4% too far.
+    """
+    if cli.camera_calibration is None:
+        cli.read_camera_calibration()
+
+
 def look_for_charger(cli: Any, timeout: float = 2.0, cancel: Optional[threading.Event] = None,
                      head_angle: float = LOOK_HEAD_ANGLE) -> bool:
     """ Point the head at the marker's height and say whether it is seen before the timeout. """
+    _use_the_robots_lens(cli)
     cli.enable_camera(True, color=False)
     cli.set_head_angle(head_angle)
     _pause(SETTLE_TIME, cancel)
@@ -139,9 +162,9 @@ def find_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
 
 
 def predock_pose(pose: charger.ChargerPose, distance: float = PREDOCK_DISTANCE) -> util.Pose:
-    """ Where the robot stands to look at the charger a last time: that far in front of its marker, facing it. """
-    return util.Pose(pose.x + distance * math.cos(pose.angle), pose.y + distance * math.sin(pose.angle), 0.0,
-                     angle_z=util.Angle(radians=_wrap(pose.angle + math.pi)))
+    """ Where the robot stands to look at the charger a last time: that far in front of it, on its axis, facing it. """
+    x, y = pose.on_axis(distance)
+    return util.Pose(x, y, 0.0, angle_z=util.Angle(radians=_wrap(pose.angle + math.pi)))
 
 
 def _stare(cli: Any, cancel: Optional[threading.Event]) -> int:
@@ -154,23 +177,16 @@ def _stare(cli: Any, cancel: Optional[threading.Event]) -> int:
     return seen
 
 
-def _in_its_frame(pose: charger.ChargerPose, x: float, y: float) -> Tuple[float, float]:
-    """ A point of the world frame in the charger's: how far along its marker's way, and how far to the left. """
-    dx, dy = x - pose.x, y - pose.y
-    c, s = math.cos(pose.angle), math.sin(pose.angle)
-    return dx * c + dy * s, -dx * s + dy * c
-
-
 def _detour(cli: Any, pose: charger.ChargerPose) -> bool:
     """ A robot that is behind the charger, or beside it, drives round it, not through it. """
     position = cli.pose.position
-    along, left = _in_its_frame(pose, position.x, position.y)
+    along, left = pose.in_its_frame(position.x, position.y)
     if along >= IN_THE_WAY or (along >= 0.0 and abs(left) >= IN_THE_WAY):
         return True
     side = 1.0 if left >= 0.0 else -1.0
+    x, y = pose.on_axis(DETOUR_DISTANCE)
     c, s = math.cos(pose.angle), math.sin(pose.angle)
-    a, b = DETOUR_DISTANCE, side * DETOUR_SIDE
-    waypoint = util.Pose(pose.x + a * c - b * s, pose.y + a * s + b * c, 0.0,
+    waypoint = util.Pose(x - side * DETOUR_SIDE * s, y + side * DETOUR_SIDE * c, 0.0,
                          angle_z=util.Angle(radians=_wrap(pose.angle + math.pi)))
     return bool(cli.go_to_pose(waypoint))
 
@@ -181,6 +197,7 @@ def go_to_predock(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
     should be, within PREDOCK_TOLERANCE, and sees the marker. Say whether it got there. The charger has to be known:
     seen, or remembered, and a robot that stands where it should and does not see the marker has remembered wrong.
     """
+    _use_the_robots_lens(cli)
     cli.enable_camera(True, color=False)
     cli.set_head_angle(LOOK_HEAD_ANGLE)
     _pause(SETTLE_TIME, cancel)
@@ -220,14 +237,16 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
     cli.enable_camera(False)
     _check(cancel)
     here = cli.pose
-    if not cli.turn_in_place(util.Angle(radians=_wrap(pose.angle - here.rotation.angle_z.radians))):
+    if not cli.turn_in_place(util.Angle(radians=_wrap(pose.angle - here.rotation.angle_z.radians) / TURN_SCALE)):
         return False
-    along, _ = _in_its_frame(pose, cli.pose.position.x, cli.pose.position.y)
+    along, _ = pose.in_its_frame(cli.pose.position.x, cli.pose.position.y)
     travel = max(0.0, along - charger.DOCKED_DISTANCE) + BACK_MARGIN
     cli.enable_stop_on_cliff(False)
     try:
         cli.drive_straight(util.Distance(mm=-travel), speed=BACK_SPEED, wait=False)
-        deadline = time.perf_counter() + travel / BACK_SPEED * 1.5 + 3.0
+        start = time.perf_counter()
+        deadline = start + travel / BACK_SPEED * 1.5 + 3.0
+        held_since: Optional[float] = None
         while time.perf_counter() < deadline:
             _check(cancel)
             if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
@@ -235,12 +254,25 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
                 cli.stop_all_motors()
                 _pause(0.3, cancel)
                 return True
+            now = time.perf_counter()
+            if now - start > STALL_GRACE and _a_tread_is_held(cli):
+                held_since = now if held_since is None else held_since
+                if now - held_since > STALL_TIME:
+                    break
+            else:
+                held_since = None
             time.sleep(0.02)
         cli.stop_all_motors()
         _pause(0.3, cancel)
         return bool(cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER)
     finally:
         cli.enable_stop_on_cliff(True)
+
+
+def _a_tread_is_held(cli: Any) -> bool:
+    """ Whether one of the robot's treads turns much less than the other, as the ramp's edge makes it. """
+    left, right = abs(cli.left_wheel_speed.mmps), abs(cli.right_wheel_speed.mmps)
+    return bool(max(left, right) > 15.0 and min(left, right) < STALL_RATIO * max(left, right))
 
 
 def go_to_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
@@ -262,8 +294,13 @@ def go_to_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
                 continue
             if back_onto_charger(cli, cancel):
                 return True
-            # It did not take: drive out from where the robot is, and look again.
-            cli.drive_straight(util.Distance(mm=60.0), speed=BACK_SPEED)
+            # It did not take: drive straight out, to well in front of the charger, where the way to the front of it is
+            # clear, and look again.
+            pose = cli.charger.pose
+            if pose is not None:
+                along, _ = pose.in_its_frame(cli.pose.position.x, cli.pose.position.y)
+                if along < OUT_DISTANCE:
+                    cli.drive_straight(util.Distance(mm=OUT_DISTANCE - along), speed=OUT_SPEED)
         return False
     except Cancelled:
         cli.stop_all_motors()

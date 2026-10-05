@@ -11,6 +11,7 @@ import unittest
 from typing import Any, List, Tuple
 from unittest import mock
 
+import pycozmo
 from pycozmo import charger, charger_handling, event, robot, util
 
 from .test_charger import client, see
@@ -37,6 +38,7 @@ class Fake:
         for patch in patches:
             patch.start()
         self.enable_camera = mock.patch.object(self.cli, "enable_camera").start()
+        self.read_calibration: Any = mock.patch.object(self.cli, "read_camera_calibration", return_value=None).start()
 
     def charger_pose(self) -> charger.ChargerPose:
         pose = self.cli.charger.pose
@@ -79,19 +81,20 @@ class Fake:
 
 class TestPredock(unittest.TestCase):
 
-    def test_in_front_of_the_marker_facing_it(self):
+    def test_in_front_of_the_marker_on_the_axis_facing_it(self):
         pose = charger.ChargerPose(x=100.0, y=50.0, angle=math.pi / 2, origin_id=1, time=0.0)
         predock = charger_handling.predock_pose(pose)
-        self.assertAlmostEqual(predock.position.x, 100.0)
+        # The marker faces up the y axis; the charger's axis is AXIS_OFFSET to the left of it, looking that way.
+        self.assertAlmostEqual(predock.position.x, 100.0 - charger.AXIS_OFFSET)
         self.assertAlmostEqual(predock.position.y, 50.0 + charger_handling.PREDOCK_DISTANCE)
         # Facing the marker: down the y axis.
         self.assertAlmostEqual(math.sin(predock.rotation.angle_z.radians), -1.0)
 
     def test_a_point_in_the_chargers_own_frame(self):
         pose = charger.ChargerPose(x=0.0, y=0.0, angle=math.pi / 2, origin_id=1, time=0.0)
-        along, left = charger_handling._in_its_frame(pose, -30.0, 200.0)
+        along, left = pose.in_its_frame(-30.0, 200.0)
         self.assertAlmostEqual(along, 200.0)
-        self.assertAlmostEqual(left, 30.0)
+        self.assertAlmostEqual(left, 30.0 - charger.AXIS_OFFSET)
 
 
 class TestObserve(unittest.TestCase):
@@ -137,6 +140,8 @@ class TestBackOnto(unittest.TestCase):
         self.assertTrue(charger_handling.back_onto_charger(self.fake.cli))
         kinds = [move[0] for move in self.fake.moves]
         self.assertEqual(kinds[0], "turn")
+        # The gyro says the robot turns 1.3% less than it does: half a turn is asked for that much less.
+        self.assertAlmostEqual(abs(self.fake.moves[0][1]), math.pi / charger_handling.TURN_SCALE, places=2)
         # The marker is 200 mm away; the robot backs to DOCKED_DISTANCE of it and a margin on.
         drive = next(move for move in self.fake.moves if move[0] == "drive")
         self.assertAlmostEqual(drive[1], -(200.0 - charger.DOCKED_DISTANCE + charger_handling.BACK_MARGIN), delta=12.0)
@@ -149,6 +154,22 @@ class TestBackOnto(unittest.TestCase):
             self.assertFalse(charger_handling.back_onto_charger(self.fake.cli))
         self.assertIn("stop", [move[0] for move in self.fake.moves])
         self.assertEqual([move[1] for move in self.fake.moves if move[0] == "cliff"], [0.0, 1.0])
+
+    def test_a_tread_held_against_the_ramp_stops_the_robot(self):
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+            self.fake.cli.left_wheel_speed = util.Speed(mmps=-45.0)
+            self.fake.cli.right_wheel_speed = util.Speed(mmps=-5.0)
+            self.assertFalse(charger_handling.back_onto_charger(self.fake.cli))
+        self.assertIn("stop", [move[0] for move in self.fake.moves])
+
+    def test_both_treads_turning_the_robot_goes_on(self):
+        self.fake.on_charger_after = 0.3
+        self.fake.cli.left_wheel_speed = util.Speed(mmps=-35.0)
+        self.fake.cli.right_wheel_speed = util.Speed(mmps=-33.0)
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+            self.assertTrue(charger_handling.back_onto_charger(self.fake.cli))
 
     def test_a_charger_not_known_is_not_backed_onto(self):
         fake = Fake(200.0, 0.0, math.pi)
@@ -234,12 +255,20 @@ class TestGoToCharger(unittest.TestCase):
         find.assert_called_once()
 
     def test_a_backing_that_does_not_take_is_tried_again(self):
-        fake = known(300.0, 100.0, 0.5)
+        fake = known(60.0, 0.0, 0.0)
         with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
                 mock.patch.object(charger_handling, "back_onto_charger", side_effect=[False, True]):
             self.assertTrue(charger_handling.go_to_charger(fake.cli))
-        # It drove out from the charger's edge between the tries.
-        self.assertIn(("drive", 60.0), fake.moves)
+        # It drove straight out to OUT_DISTANCE in front of the marker, not round the charger.
+        along, _ = fake.charger_pose().in_its_frame(60.0, 0.0)
+        self.assertIn(("drive", charger_handling.OUT_DISTANCE - along), fake.moves)
+
+    def test_a_robot_well_in_front_does_not_drive_out_further(self):
+        fake = known(charger_handling.OUT_DISTANCE + 50.0, 0.0, 0.0)
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", side_effect=[False, True]):
+            self.assertTrue(charger_handling.go_to_charger(fake.cli))
+        self.assertEqual([move for move in fake.moves if move[0] == "drive"], [])
 
     def test_it_gives_up(self):
         fake = known(300.0, 100.0, 0.5)
@@ -329,3 +358,19 @@ class TestFind(unittest.TestCase):
         fake = Fake()
         with mock.patch.object(charger_handling, "observe", return_value=None):
             self.assertFalse(charger_handling.look_for_charger(fake.cli, timeout=0.05))
+
+
+class TestLens(unittest.TestCase):
+
+    def test_the_robots_own_calibration_is_read_once(self):
+        fake = Fake()
+        with mock.patch.object(charger_handling, "observe", return_value=None):
+            charger_handling.look_for_charger(fake.cli, timeout=0.05)
+        fake.read_calibration.assert_called_once()
+
+    def test_one_that_is_read_is_left_be(self):
+        fake = Fake()
+        fake.cli.camera_calibration = pycozmo.camera.DEFAULT_CALIBRATION
+        with mock.patch.object(charger_handling, "observe", return_value=None):
+            charger_handling.look_for_charger(fake.cli, timeout=0.05)
+        fake.read_calibration.assert_not_called()

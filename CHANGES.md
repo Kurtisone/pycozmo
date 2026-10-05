@@ -48,9 +48,18 @@ New features:
     together, in the frame the robot's position is in, which a pick-up ends. pycozmo.charger_handling.go_to_charger()
     looks for the marker, where it remembers the charger to be and then all round; drives round the charger if it is
     behind it; stands 20 cm in front, and looks again; turns round, and backs on, with the cliff sensors off, until the
-    robot says it is on, and tries again if that does not take. On a robot, one backing from 34 cm, 38 mm to the side
-    of where the marker put the charger, took the robot on to the ramp, 1 cm short of the contacts. The rest has
-    been tried against an emulator of the robot, which has the charger, its marker, its ramp and its contacts.
+    robot says it is on, and tries again if that does not take. The marker is not in the middle of the charger: the
+    ramp's axis is 24 mm to the marker's left, looking the way it faces (AXIS_OFFSET); backings 4 to 24 mm to its
+    other side, by the marker, went off to the right of the charger, the right of a Cozmo on it. A half turn the gyro
+    reports as 180 degrees is 182.4 on the floor, 1.3% more, which sent the robot back along a line 5 degrees out; it is
+    asked for that much less (TURN_SCALE). The robot's own camera calibration is read, which the first tries used one
+    of another robot's for, with a focal length 4% off and an optical centre 12 px out. The robot stops backing when
+    one tread is held against the ramp's edge, which pushed the charger along the floor, and after a miss drives
+    straight out to 18 cm in front of the marker, not round the charger. The views of the marker are put together by
+    where the robot was when it saw them, the newer counting for more, for odometry is some 20 mm out from one place
+    to the next; its heading is told by the views from the side, which are better than those seen squarely. The rest
+    has been tried against an emulator of the robot, which has the charger, its marker, its ramp and its contacts.
+    Not yet: a backing that took, other than by hand.
 - Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
     CubeLiftWorkout, which reads Anki's four workouts, lifts as many times as the robot is confident, and has its
     energy choose the workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A
