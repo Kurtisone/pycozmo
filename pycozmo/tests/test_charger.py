@@ -106,6 +106,26 @@ class TestCharger(unittest.TestCase):
         self.assertEqual(pose.views, 1)
         self.assertAlmostEqual(pose.x, 300.0)
 
+    def test_the_aim_moves_the_axis_and_is_kept_with_the_pose(self):
+        cli = client()
+        pose = see(cli, 200.0)
+        self.assertEqual(pose.aim, 0.0)
+        cli.charger.aim = 6.0
+        moved = cli.charger.pose
+        assert moved is not None
+        self.assertEqual(moved.aim, 6.0)
+        # The axis is AXIS_OFFSET and the aim to the left of the marker, looking the way it faces.
+        c, sn = math.cos(moved.angle), math.sin(moved.angle)
+        axis = charger.AXIS_OFFSET + 6.0
+        along, left = moved.in_its_frame(moved.x + 50.0 * c - axis * sn, moved.y + 50.0 * sn + axis * c)
+        self.assertAlmostEqual(along, 50.0)
+        self.assertAlmostEqual(left, 0.0)
+        # A view that comes keeps it.
+        self.assertEqual(see(cli, 200.0).aim, 6.0)
+        # And forgetting leaves what was learnt, which is the robot's and the charger's, not a view's.
+        cli.charger.forget()
+        self.assertEqual(cli.charger.aim, 6.0)
+
     def test_forgetting(self):
         cli = client()
         see(cli, 200.0)

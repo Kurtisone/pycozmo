@@ -19,7 +19,7 @@ the client's events: a behavior's own thread will do. Each step can be cut short
 import math
 import threading
 import time
-from typing import Any, Optional
+from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -84,6 +84,13 @@ STALL_DISTANCE = 4.0
 STALL_ANGLE = math.radians(2.0)
 STALL_GRACE = 0.8
 STALL_TIME = 0.8
+#: What the robot learns of where the ramp takes it: how far, in mm, it moves its aim off the side it was held on, after
+#: a backing that did not take, and how much of its distance from the axis, when it did, it takes for the way. A tread
+#: is held when its speed, over the last seconds of the backing, is under HELD_RATIO of the other's.
+AIM_STEP = 6.0
+AIM_LEARNING = 0.7
+HELD_RATIO = 0.5
+HELD_WINDOW = 1.5
 #: How far in front of the marker's plane the robot drives out to when backing has not taken, in mm, and how fast.
 OUT_DISTANCE = PREDOCK_DISTANCE - 20.0
 OUT_SPEED = 50.0
@@ -245,7 +252,9 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
     here = cli.pose
     if not cli.turn_in_place(util.Angle(radians=_wrap(pose.angle - here.rotation.angle_z.radians) / TURN_SCALE)):
         return False
-    along, _ = pose.in_its_frame(cli.pose.position.x, cli.pose.position.y)
+    along, left = pose.in_its_frame(cli.pose.position.x, cli.pose.position.y)
+    cli.charger.last_lateral = left
+    cli.charger.last_held = None
     travel = max(0.0, along - charger.DOCKED_DISTANCE) + BACK_MARGIN
     cli.enable_stop_on_cliff(False)
     try:
@@ -255,8 +264,10 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
         # Where the robot was when it last moved, and when.
         moved_at = start
         moved_from = cli.pose
+        speeds: List[Tuple[float, float, float]] = []
         while time.perf_counter() < deadline:
             _check(cancel)
+            speeds.append((time.perf_counter(), abs(cli.left_wheel_speed.mmps), abs(cli.right_wheel_speed.mmps)))
             if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
                 # Not quite stopped: the wheels go on a moment, and the robot settles on the contacts.
                 cli.stop_all_motors()
@@ -271,9 +282,33 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
             time.sleep(0.02)
         cli.stop_all_motors()
         _pause(0.3, cancel)
-        return bool(cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER)
+        if cli.robot_status & robot.RobotStatusFlag.IS_ON_CHARGER:
+            return True
+        cli.charger.last_held = _held_tread(speeds)
+        return False
     finally:
         cli.enable_stop_on_cliff(True)
+
+
+def _held_tread(speeds: Sequence[Tuple[float, float, float]]) -> Optional[str]:
+    """
+    Which of the robot's treads was held, "left" or "right", over the last HELD_WINDOW seconds of the times it moved,
+    from their speeds, or None: a tread the ramp's edge holds turns less than the other, and it is the one on the side
+    the robot is off to.
+    """
+    if not speeds:
+        return None
+    end = speeds[-1][0]
+    moving = [(left, right) for at, left, right in speeds if at > end - HELD_WINDOW and max(left, right) > 15.0]
+    if len(moving) < 5:
+        return None
+    left = sum(speed[0] for speed in moving) / len(moving)
+    right = sum(speed[1] for speed in moving) / len(moving)
+    if left < HELD_RATIO * right:
+        return "left"
+    if right < HELD_RATIO * left:
+        return "right"
+    return None
 
 
 def _moved(before: util.Pose, after: util.Pose) -> bool:
@@ -301,7 +336,14 @@ def go_to_charger(cli: Any, cancel: Optional[threading.Event] = None) -> bool:
                 cli.charger.forget()
                 continue
             if back_onto_charger(cli, cancel):
+                # Where it stood when it got on is where the ramp takes it: aim a little nearer there.
+                cli.charger.aim += AIM_LEARNING * cli.charger.last_lateral
                 return True
+            # The tread held is on the side the robot was off to: aim the other way.
+            if cli.charger.last_held == "left":
+                cli.charger.aim -= AIM_STEP
+            elif cli.charger.last_held == "right":
+                cli.charger.aim += AIM_STEP
             # It did not take: drive straight out, to well in front of the charger, where the way to the front of it is
             # clear, and look again.
             pose = cli.charger.pose

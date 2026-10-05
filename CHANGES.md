@@ -54,7 +54,9 @@ New features:
     Cozmo on it, and one aimed 24 mm to the left went off to the left; those that docked were 18 and 24 mm to the
     left, and the window is some 14 mm wide. The robot stands 165 mm in front of the marker to turn round, where a
     heading a few degrees out takes it less off its line before the ramp, and the heading it rested on the charger with
-    counts, against the views, for that of three seen from the side. A half turn the gyro
+    counts, against the views, for that of three seen from the side. It learns where the ramp takes it: after a backing
+    that did not take, the tread held at the end - the one on the side the robot was off to, which tells which side
+    without anyone's help - moves its aim 6 mm the other way, and after one that did, it aims nearer where it stood. A half turn the gyro
     reports as 180 degrees is 182.4 on the floor, 1.3% more, which sent the robot back along a line 5 degrees out; it is
     asked for that much less (TURN_SCALE). The robot's own camera calibration is read, which the first tries used one
     of another robot's for, with a focal length 4% off and an optical centre 12 px out. The robot stops backing when

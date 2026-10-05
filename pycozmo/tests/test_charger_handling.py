@@ -396,3 +396,94 @@ class TestLens(unittest.TestCase):
         with mock.patch.object(charger_handling, "observe", return_value=None):
             charger_handling.look_for_charger(fake.cli, timeout=0.05)
         fake.read_calibration.assert_not_called()
+
+
+class TestLearning(unittest.TestCase):
+
+    def test_a_tread_held_is_told_by_its_speed_over_the_last_seconds(self):
+        now = 100.0
+        left_held = [(now - 1.0 + 0.1 * i, 5.0, 35.0) for i in range(10)]
+        right_held = [(now - 1.0 + 0.1 * i, 35.0, 8.0) for i in range(10)]
+        both = [(now - 1.0 + 0.1 * i, 34.0, 36.0) for i in range(10)]
+        self.assertEqual(charger_handling._held_tread(left_held), "left")
+        self.assertEqual(charger_handling._held_tread(right_held), "right")
+        self.assertIsNone(charger_handling._held_tread(both))
+
+    def test_a_robot_that_did_not_move_has_no_tread_held(self):
+        self.assertIsNone(charger_handling._held_tread([(1.0 + 0.1 * i, 0.0, 0.0) for i in range(20)]))
+        self.assertIsNone(charger_handling._held_tread([]))
+        # Too few moving samples to say.
+        self.assertIsNone(charger_handling._held_tread([(1.0, 5.0, 35.0), (1.1, 5.0, 35.0)]))
+
+    def test_the_old_speeds_do_not_count(self):
+        speeds = [(float(i), 5.0, 35.0) for i in range(5)] + [(10.0 + 0.1 * i, 34.0, 36.0) for i in range(10)]
+        self.assertIsNone(charger_handling._held_tread(speeds))
+
+    def test_a_backing_held_on_the_left_moves_the_aim_to_the_right(self):
+        fake = known(60.0, 0.0, 0.0)
+        before = fake.cli.charger.aim
+
+        def backing(cli: object, cancel: object = None) -> bool:
+            fake.cli.charger.last_held = "left"
+            return False
+
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
+            charger_handling.go_to_charger(fake.cli)
+        # Three tries, each moving the aim a step the other way.
+        self.assertAlmostEqual(fake.cli.charger.aim, before - 3 * charger_handling.AIM_STEP)
+
+    def test_a_backing_held_on_the_right_moves_the_aim_to_the_left(self):
+        fake = known(60.0, 0.0, 0.0)
+
+        def backing(cli: object, cancel: object = None) -> bool:
+            fake.cli.charger.last_held = "right"
+            return False
+
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
+            charger_handling.go_to_charger(fake.cli)
+        self.assertAlmostEqual(fake.cli.charger.aim, 3 * charger_handling.AIM_STEP)
+
+    def test_a_backing_not_held_either_side_leaves_the_aim(self):
+        fake = known(60.0, 0.0, 0.0)
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", return_value=False):
+            charger_handling.go_to_charger(fake.cli)
+        self.assertEqual(fake.cli.charger.aim, 0.0)
+
+    def test_a_backing_that_took_teaches_where_the_robot_stood(self):
+        fake = known(60.0, 0.0, 0.0)
+
+        def backing(cli: object, cancel: object = None) -> bool:
+            fake.cli.charger.last_lateral = -10.0
+            return True
+
+        with mock.patch.object(charger_handling, "go_to_predock", return_value=True), \
+                mock.patch.object(charger_handling, "back_onto_charger", side_effect=backing):
+            self.assertTrue(charger_handling.go_to_charger(fake.cli))
+        self.assertAlmostEqual(fake.cli.charger.aim, -10.0 * charger_handling.AIM_LEARNING)
+
+    def test_backing_notes_where_the_robot_stood_and_which_tread_was_held(self):
+        fake = known(charger_handling.PREDOCK_DISTANCE - 10.0, 7.0, math.pi)
+        fake.cli.left_wheel_speed = util.Speed(mmps=-30.0)
+        fake.cli.right_wheel_speed = util.Speed(mmps=-4.0)
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.15), \
+                mock.patch.object(charger_handling, "HELD_WINDOW", 5.0):
+            self.assertFalse(charger_handling.back_onto_charger(fake.cli))
+        # The robot is 7 mm to the left of the axis, which it knows from where it rested.
+        self.assertAlmostEqual(fake.cli.charger.last_lateral, 7.0, delta=0.01)
+        self.assertEqual(fake.cli.charger.last_held, "right")
+
+
+class TestAim(unittest.TestCase):
+
+    def test_the_aim_moves_the_axis_the_robot_goes_to(self):
+        fake = known(300.0, 0.0, math.pi)
+        before = charger_handling.predock_pose(fake.charger_pose())
+        fake.cli.charger.aim = 10.0
+        after = charger_handling.predock_pose(fake.charger_pose())
+        # The marker faces +x: to its left is +y.
+        self.assertAlmostEqual(after.position.y - before.position.y, 10.0)
+        self.assertAlmostEqual(after.position.x, before.position.x)

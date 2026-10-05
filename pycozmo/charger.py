@@ -15,6 +15,7 @@ import math
 import statistics
 import threading
 import time
+import dataclasses
 from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -68,17 +69,20 @@ class ChargerPose:
     time: float
     #: How many views it is made of; 0 for a charger the robot was on and has not seen.
     views: int = 0
+    #: How far to the left of the charger's axis, in mm, the robot has learnt to aim: see Charger.aim.
+    aim: float = 0.0
 
     def on_axis(self, distance: float) -> Tuple[float, float]:
         """ The point of the charger's axis that far in front of the marker's plane, in the world frame. """
         c, s = math.cos(self.angle), math.sin(self.angle)
-        return (self.x + distance * c - AXIS_OFFSET * s, self.y + distance * s + AXIS_OFFSET * c)
+        axis = AXIS_OFFSET + self.aim
+        return (self.x + distance * c - axis * s, self.y + distance * s + axis * c)
 
     def in_its_frame(self, x: float, y: float) -> Tuple[float, float]:
         """ A point of the world frame in the charger's: in front of the marker's plane, left of its axis. """
         dx, dy = x - self.x, y - self.y
         c, s = math.cos(self.angle), math.sin(self.angle)
-        return dx * c + dy * s, -dx * s + dy * c - AXIS_OFFSET
+        return dx * c + dy * s, -dx * s + dy * c - AXIS_OFFSET - self.aim
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,11 @@ class Charger:
         self.cli = cli
         self.lock = threading.RLock()
         self._pose: Optional[ChargerPose] = None
+        self._aim = 0.0
+        #: Which tread was held the last time the robot backed on and stopped, "left" or "right", or None; and how far
+        #: to the left of the axis the robot was when it set off, in mm.
+        self.last_held: Optional[str] = None
+        self.last_lateral = 0.0
         self._views: List[_View] = []
         # The heading the robot rested on its charger with, which is the charger's: how it was known before any view.
         self._prior: Optional[Tuple[float, int]] = None
@@ -113,6 +122,21 @@ class Charger:
         if pose is None or pose.origin_id != self.cli.pose.origin_id:
             return None
         return pose
+
+    @property
+    def aim(self) -> float:
+        """
+        How far to the left of the axis of the charger, in mm, the robot aims: what it has learnt of where the ramp
+        takes it, from which side it was held on, and where it was when it got on.
+        """
+        return self._aim
+
+    @aim.setter
+    def aim(self, value: float) -> None:
+        with self.lock:
+            self._aim = value
+            if self._pose is not None:
+                self._pose = dataclasses.replace(self._pose, aim=value)
 
     @property
     def known(self) -> bool:
@@ -137,7 +161,8 @@ class Charger:
             c, s = math.cos(heading), math.sin(heading)
             self._pose = ChargerPose(x=pose.position.x - DOCKED_DISTANCE * c + AXIS_OFFSET * s,
                                      y=pose.position.y - DOCKED_DISTANCE * s - AXIS_OFFSET * c,
-                                     angle=heading, origin_id=pose.origin_id, time=time.perf_counter(), views=0)
+                                     angle=heading, origin_id=pose.origin_id, time=time.perf_counter(), views=0,
+                                     aim=self._aim)
             result = self._pose
         return result
 
@@ -165,13 +190,13 @@ class Charger:
             views = [v for v in self._views if v.origin_id == view.origin_id] + [view]
             self._views = views[-MAX_VIEWS:]
             prior = self._prior if self._prior is not None and self._prior[1] == view.origin_id else None
-            self._pose = self._combine(self._views, None if prior is None else prior[0])
+            self._pose = self._combine(self._views, None if prior is None else prior[0], self._aim)
             result = self._pose
         self.cli.dispatch(event.EvtChargerObserved, self.cli, result)
         return result
 
     @staticmethod
-    def _combine(views: List[_View], prior: Optional[float] = None) -> ChargerPose:
+    def _combine(views: List[_View], prior: Optional[float] = None, aim: float = 0.0) -> ChargerPose:
         """ Where the views put the charger: their mean, the nearer weighing more, without any far from the rest. """
         middle = (statistics.median(v.x for v in views), statistics.median(v.y for v in views))
         kept = [v for v in views if math.hypot(v.x - middle[0], v.y - middle[1]) <= OUTLIER_DISTANCE] or views
@@ -188,4 +213,4 @@ class Charger:
             cos_sum += PRIOR_WEIGHT * math.cos(prior)
         angle = math.atan2(sin_sum, cos_sum)
         last = views[-1]
-        return ChargerPose(x=x, y=y, angle=angle, origin_id=last.origin_id, time=last.time, views=len(kept))
+        return ChargerPose(x=x, y=y, angle=angle, origin_id=last.origin_id, time=last.time, views=len(kept), aim=aim)
