@@ -18,8 +18,9 @@ setting one on another, each to the user's eye; rolling a cube, which went over 
 right; driving off the charger; a whole game of Quick Tap and a whole game of Memory Match, with the user as the
 player: the cubes lit up, the taps were told, Cozmo turned to each cube in the pattern, within 3 to 11 degrees, and
 its animations for a hand, a round and a game played. A quick player beat Cozmo's tap in most hands of Quick Tap, which
-cannot come sooner than 0.5 s after the lights. Not tried: a whole game of Keep Away, popping a wheelie, and most of the
-behaviors that run these.
+cannot come sooner than 0.5 s after the lights. Three songs, one at each tempo, were sung with the wheels moving as
+the animations move them, the robot staying within 36 mm and 16 degrees of where it began, and the user found it very
+good. Not tried: a whole game of Keep Away, popping a wheelie, and most of the behaviors that run these.
 Keep Away was played in hands: Cozmo took its place, waited, pretended and pounced, and the cube said it was tapped
 when the lift came down.
 The RollBlock behavior, on an upside-down cube, had the robot rear up to 50 degrees and fall back on a first try, at
