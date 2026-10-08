@@ -81,7 +81,9 @@ New features:
     of the battery a second, none on the charger, and the robot goes back when the middle of the last 20 s of them is
     at or under 3.75 V, off the charger and not in somebody's hand; before any other activity, though not in the midst
     of a behavior. A try that fails is not repeated for 5 minutes. Tried against an emulator of the robot with the whole
-    brain.
+    brain, and on a robot with the threshold raised above its full battery: twice it was playing, left it, found the
+    charger and backed on, in 49 and 52 s. The first time the charger's ramp set off the cliff reaction, which cut the
+    behavior short; it is no cliff for a robot going home.
 - Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
     CubeLiftWorkout, which reads Anki's four workouts, lifts as many times as the robot is confident, and has its
     energy choose the workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A
