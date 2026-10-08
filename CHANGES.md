@@ -81,7 +81,8 @@ New features:
     of its charger to a file - the aim it learnt, which holds in any frame, and the charger's pose - and reads it at the
     start. The pose holds only in the frame the robot is in, which it keeps until it is picked up or switched off, and
     is not taken when older than 6 hours: a robot that starts off its charger goes where the file says, and looks all
-    round if the marker is not there.
+    round if the marker is not there. On a robot, one that was given a file as a new run would be, off its charger, went to
+    where it said without looking round, and docked in 24 s.
 - Going back when the battery is low. pycozmo.charger_behaviors.BehaviorGoHome, which the brain keeps as "GoHome"
     though the resources have none: Anki's robot, running down, drove about asking for help. The brain takes a reading
     of the battery a second, none on the charger, and the robot goes back when the middle of the last 20 s of them is
