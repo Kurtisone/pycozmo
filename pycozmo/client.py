@@ -58,7 +58,8 @@ class Client(event.Dispatcher):
                  protocol_log_messages: Optional[list] = None,
                  auto_initialize: bool = True,
                  enable_animations: bool = True,
-                 enable_procedural_face: bool = True) -> None:
+                 enable_procedural_face: bool = True,
+                 charger_memory: Optional[str] = None) -> None:
         super().__init__()
         # Whether to automatically initialize the robot when connection is established.
         self.auto_initialize = bool(auto_initialize)
@@ -112,6 +113,8 @@ class Client(event.Dispatcher):
         self.cubes = cubes.Cubes(self)
         #: Where the robot's charger is, as far as it knows: see pycozmo.charger.
         self.charger = charger.Charger(self)
+        if charger_memory is not None:
+            self.charger.remember_in(charger_memory)
         #: The faces the robot sees and knows: see pycozmo.faces. Found only with OpenCV: see pycozmo.face_detection.
         self.faces = faces.Faces(self)
         # Filters

@@ -4,7 +4,10 @@ Tests for what the robot knows of where its charger is.
 
 """
 
+import json
 import math
+import os
+import tempfile
 import time
 import unittest
 from typing import Optional, Tuple
@@ -283,3 +286,97 @@ class TestDockAxis(unittest.TestCase):
         cli.charger.docked()
         cli.charger.forget()
         self.assertIsNone(cli.charger.offset_from_dock_axis(0.0, 10.0))
+
+
+class TestMemory(unittest.TestCase):
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.path = os.path.join(directory.name, "charger.json")
+
+    def remembering(self, *args: float, **kwargs: int) -> pycozmo.client.Client:
+        cli = client(*args, **kwargs)  # type: ignore[arg-type]
+        cli.charger.remember_in(self.path)
+        return cli
+
+    def test_nothing_is_read_from_a_file_that_is_not_there(self):
+        cli = self.remembering()
+        self.assertIsNone(cli.charger.pose)
+        self.assertEqual(cli.charger.aim, 0.0)
+
+    def test_the_charger_seen_is_there_for_the_next_run(self):
+        first = self.remembering(100.0, 50.0, math.pi / 2)
+        seen = see(first, 200.0, 30.0)
+        second = self.remembering(100.0, 50.0, math.pi / 2)
+        pose = second.charger.pose
+        assert pose is not None
+        self.assertAlmostEqual(pose.x, seen.x)
+        self.assertAlmostEqual(pose.y, seen.y)
+        self.assertAlmostEqual(pose.angle, seen.angle)
+
+    def test_the_charger_the_robot_stood_on_is_there_too(self):
+        first = self.remembering(5.0, 6.0, 0.3)
+        docked = first.charger.docked()
+        pose = self.remembering(5.0, 6.0, 0.3).charger.pose
+        assert pose is not None
+        self.assertAlmostEqual(pose.x, docked.x)
+        self.assertAlmostEqual(pose.angle, docked.angle)
+
+    def test_a_robot_in_another_frame_does_not_have_the_pose(self):
+        see(self.remembering(origin_id=1), 200.0)
+        self.assertIsNone(self.remembering(origin_id=2).charger.pose)
+
+    def test_the_aim_it_learnt_holds_in_another_frame(self):
+        first = self.remembering(origin_id=1)
+        see(first, 200.0)
+        first.charger.aim = -7.5
+        second = self.remembering(origin_id=2)
+        self.assertIsNone(second.charger.pose)
+        self.assertEqual(second.charger.aim, -7.5)
+
+    def test_a_pose_that_is_too_old_is_not_taken(self):
+        see(self.remembering(), 200.0)
+        with open(self.path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["saved"] -= charger.MEMORY_MAX_AGE + 1.0
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        self.assertIsNone(self.remembering().charger.pose)
+
+    def test_forgetting_is_remembered(self):
+        cli = self.remembering()
+        see(cli, 200.0)
+        cli.charger.forget()
+        self.assertIsNone(self.remembering().charger.pose)
+
+    def test_a_file_that_makes_no_sense_is_no_harm(self):
+        for content in ("", "{", "[1, 2]", '{"pose": {"x": 1}, "saved": 0}', '{"aim": "far"}'):
+            with self.subTest(content=content):
+                with open(self.path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                cli = self.remembering()
+                self.assertIsNone(cli.charger.pose)
+                self.assertEqual(cli.charger.aim, 0.0)
+
+    def test_views_are_written_at_most_every_so_often(self):
+        cli = self.remembering()
+        see(cli, 200.0)
+        first = os.stat(self.path).st_mtime_ns
+        for ahead in (190.0, 180.0, 170.0):
+            see(cli, ahead)
+        with open(self.path, encoding="utf-8") as f:
+            written = json.load(f)
+        self.assertEqual(os.stat(self.path).st_mtime_ns, first)
+        self.assertEqual(written["pose"]["views"], 1)
+
+    def test_a_client_is_given_the_file(self):
+        first = pycozmo.client.Client(charger_memory=self.path)
+        first.charger.aim = 4.0
+        self.assertEqual(pycozmo.client.Client(charger_memory=self.path).charger.aim, 4.0)
+
+    def test_an_unwritable_file_is_no_harm(self):
+        cli = client()
+        cli.charger.remember_in(os.path.join(self.path, "no", "such", "directory", "charger.json"))
+        see(cli, 200.0)
+        self.assertTrue(cli.charger.known)

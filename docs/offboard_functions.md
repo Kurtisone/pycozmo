@@ -153,6 +153,7 @@ Done:
   behind it, stands 20 cm in front, turns round and backs on. The version of the application this follows never did
   it: the robot was put on its charger by hand. `pycozmo.charger_behaviors.BehaviorGoHome` has the brain send the robot
   back when its battery has been at or under 3.75 V for 20 s, before any other activity.
+  `Client(charger_memory=path)` keeps the charger's pose and the aim the robot learnt in a file between runs.
 
 Open:
 - **Where the camera points.** The robot's reported pitch, flat on a table, drifts from one session to the next by

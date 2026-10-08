@@ -11,18 +11,22 @@ together, in the world frame, nearer ones counting for more, and the charger sta
 
 """
 
+import json
 import math
+import os
 import statistics
 import threading
 import time
 import dataclasses
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import event
+from .logger import logger
 
 
 __all__ = [
+    "MEMORY_MAX_AGE",
     "AXIS_OFFSET",
     "DOCKED_DISTANCE",
     "ChargerPose",
@@ -51,6 +55,9 @@ MAX_HEADING_DISAGREEMENT = math.radians(40.0)
 RECENCY = 0.8
 #: How far the robot may move its aim off the axis it was given, either way, in mm.
 MAX_AIM = 12.0
+#: How old, in seconds, a charger pose read from a file may be, and how often, at most, a change is written.
+MEMORY_MAX_AGE = 6 * 3600.0
+MEMORY_INTERVAL = 2.0
 #: How much the heading the robot rested on its charger with counts against the views, in the weights of the views:
 #: that of three seen from the side, at 25 cm. The robot has turned since, and its gyro is 1.3% out on each turn.
 PRIOR_WEIGHT = 1e-5
@@ -122,6 +129,57 @@ class Charger:
         self._views: List[_View] = []
         # The heading the robot rested on its charger with, which is the charger's: how it was known before any view.
         self._prior: Optional[Tuple[float, int]] = None
+        # The file the charger is kept in between runs, if any, and when it was last written.
+        self._memory: Optional[str] = None
+        self._written = 0.0
+
+    def remember_in(self, path: str) -> None:
+        """
+        Keep what the robot knows of its charger in a file, and take what the file has from an earlier run.
+
+        The aim the robot learnt is the ramp's, and holds whatever frame the robot is in. The charger's pose holds only
+        in the frame it was seen in - see ChargerPose.origin_id - which the robot keeps for as long as it is not picked
+        up, or switched off: a robot that is off its charger when a run starts has it where the file says, if it was
+        not, and if the file is not older than MEMORY_MAX_AGE. Whether it is can only be told by looking: the robot
+        goes where the file says, does not find the marker there, and looks all round.
+        """
+        self._memory = path
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            self._aim = max(-MAX_AIM, min(MAX_AIM, float(data.get("aim", 0.0))))
+            saved = data.get("pose")
+            if saved is not None and time.time() - float(data["saved"]) <= MEMORY_MAX_AGE:
+                pose = ChargerPose(x=float(saved["x"]), y=float(saved["y"]), angle=float(saved["angle"]),
+                                   origin_id=int(saved["origin_id"]), time=time.perf_counter(),
+                                   views=int(saved.get("views", 0)), aim=self._aim)
+                with self.lock:
+                    self._pose = pose
+                    self._prior = (pose.angle, pose.origin_id)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            # No file yet, or none that makes sense: the robot knows nothing of its charger, as it did.
+            logger.debug("Charger: nothing read from {}: {}".format(path, e))
+
+    def _save(self, force: bool = False) -> None:
+        """ Write what is known to the file, if there is one: at most every MEMORY_INTERVAL seconds, or at once. """
+        path = self._memory
+        now = time.perf_counter()
+        if path is None or (not force and now - self._written < MEMORY_INTERVAL):
+            return
+        self._written = now
+        with self.lock:
+            pose = self._pose
+            data: Dict[str, Any] = {"saved": time.time(), "aim": self._aim, "pose": None}
+            if pose is not None:
+                data["pose"] = {"x": pose.x, "y": pose.y, "angle": pose.angle, "origin_id": pose.origin_id,
+                                "views": pose.views}
+        try:
+            temporary = path + ".tmp"
+            with open(temporary, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            os.replace(temporary, path)
+        except OSError as e:
+            logger.warning("Charger: could not write {}: {}".format(path, e))
 
     @property
     def pose(self) -> Optional[ChargerPose]:
@@ -147,6 +205,7 @@ class Charger:
             self._aim = value
             if self._pose is not None:
                 self._pose = dataclasses.replace(self._pose, aim=value)
+        self._save(force=True)
 
     def offset_from_dock_axis(self, x: float, y: float) -> Optional[float]:
         """
@@ -171,6 +230,7 @@ class Charger:
             self._views = []
             self._prior = None
             self._dock = None
+        self._save(force=True)
 
     def docked(self) -> ChargerPose:
         """
@@ -189,6 +249,7 @@ class Charger:
                                      angle=heading, origin_id=pose.origin_id, time=time.perf_counter(), views=0,
                                      aim=self._aim)
             result = self._pose
+        self._save(force=True)
         return result
 
     def plausible(self, position: Sequence[float], normal: Sequence[float]) -> bool:
@@ -236,6 +297,7 @@ class Charger:
             prior = self._prior if self._prior is not None and self._prior[1] == view.origin_id else None
             self._pose = self._combine(self._views, None if prior is None else prior[0], self._aim)
             result = self._pose
+        self._save()
         self.cli.dispatch(event.EvtChargerObserved, self.cli, result)
         return result
 

@@ -77,6 +77,11 @@ New features:
     coming back, by paths 3 to 7 cm to the right and 10 to 22 cm in front, all docked on their own, in 23 to 34 s but
     for one that took three tries and 90 s, in which it learnt its aim. The seating of a robot on the ramp
     was tried on one, put there by hand: it seated at the second try.
+- The charger kept between runs. Client(charger_memory=path), or Charger.remember_in(path), writes what the robot knows
+    of its charger to a file - the aim it learnt, which holds in any frame, and the charger's pose - and reads it at the
+    start. The pose holds only in the frame the robot is in, which it keeps until it is picked up or switched off, and
+    is not taken when older than 6 hours: a robot that starts off its charger goes where the file says, and looks all
+    round if the marker is not there.
 - Going back when the battery is low. pycozmo.charger_behaviors.BehaviorGoHome, which the brain keeps as "GoHome"
     though the resources have none: Anki's robot, running down, drove about asking for help. The brain takes a reading
     of the battery a second, none on the charger, and the robot goes back when the middle of the last 20 s of them is
