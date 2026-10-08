@@ -550,6 +550,15 @@ class TestSeating(unittest.TestCase):
         drives = [move[1] for move in self.fake.moves if move[0] == "drive"]
         self.assertEqual(drives[1:], [20.0, -35.0, 12.0, -20.0])
 
+    def test_a_robot_with_its_nose_down_past_the_crest_tries_as_well(self):
+        # Tilted forward 6 degrees, as the robot is over the ramp's crest, having gone past its contacts.
+        self.fake.cli.accel = util.Vector3(1000.0, 0.0, 10000.0)
+        with mock.patch.object(charger_handling, "STALL_GRACE", 0.0), \
+                mock.patch.object(charger_handling, "STALL_TIME", 0.1):
+            self.assertFalse(charger_handling.back_onto_charger(self.fake.cli))
+        drives = [move[1] for move in self.fake.moves if move[0] == "drive"]
+        self.assertEqual(drives[1:], [20.0, -35.0, 12.0, -20.0])
+
     def test_it_stops_as_soon_as_the_robot_says_it_is_on(self):
         self.fake.cli.accel = util.Vector3(-1200.0, 0.0, 10000.0)
         self.fake.on_charger_after = None

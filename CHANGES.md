@@ -63,7 +63,8 @@ New features:
     own, in 24 s; the others went over the ramp's top 20 to 35 mm to its left. In five cycles of leaving the charger and
     coming back, three docked, one of them at the third try, after learning where the ramp takes it. A tread held for a
     moment is not taken for a side, what the robot learns of its aim is kept within 12 mm of the axis, and a robot
-    that rests with its nose up on the ramp and says nothing goes to and fro a little to seat its contacts. A half turn the gyro
+    that rests tilted on the ramp - nose up before its crest, down past it, where a robot that went over its contacts
+    is - and says nothing goes to and fro a little to seat its contacts; put by hand past the crest, it took a second try. A half turn the gyro
     reports as 180 degrees is 182.4 on the floor, 1.3% more, which sent the robot back along a line 5 degrees out; it is
     asked for that much less (TURN_SCALE). The robot's own camera calibration is read, which the first tries used one
     of another robot's for, with a focal length 4% off and an optical centre 12 px out. The robot stops backing when
@@ -74,8 +75,8 @@ New features:
     has been tried against an emulator of the robot, which has the charger, its marker, its ramp and its contacts.
     With the axis there, the learning kept in bounds and the backing as above, ten cycles of leaving the charger and
     coming back, by paths 3 to 7 cm to the right and 10 to 22 cm in front, all docked on their own, in 23 to 34 s but
-    for one that took three tries and 90 s, in which it learnt its aim. The seating of a robot nose up on the ramp has
-    not been tried on a robot.
+    for one that took three tries and 90 s, in which it learnt its aim. The seating of a robot on the ramp
+    was tried on one, put there by hand: it seated at the second try.
 - Going back when the battery is low. pycozmo.charger_behaviors.BehaviorGoHome, which the brain keeps as "GoHome"
     though the resources have none: Anki's robot, running down, drove about asking for help. The brain takes a reading
     of the battery a second, none on the charger, and the robot goes back when the middle of the last 20 s of them is

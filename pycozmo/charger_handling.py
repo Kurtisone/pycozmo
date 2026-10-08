@@ -316,8 +316,11 @@ def back_onto_charger(cli: Any, cancel: Optional[threading.Event] = None) -> boo
 
 
 def _tilted_on_the_ramp(cli: Any) -> bool:
-    """ Whether the robot rests with its nose up, as it does on the ramp: its accelerometer says so, not its pitch. """
-    return bool(math.degrees(math.atan2(cli.accel.x, cli.accel.z)) < -RAMP_TILT)
+    """
+    Whether the robot rests tilted, as it does on the ramp: its accelerometer says so, not its pitch. The nose is up
+    on the near side of the ramp's crest, and down past it, where the robot is when it went over the contacts.
+    """
+    return bool(abs(math.degrees(math.atan2(cli.accel.x, cli.accel.z))) > RAMP_TILT)
 
 
 def _seat_on_contacts(cli: Any, cancel: Optional[threading.Event]) -> bool:
