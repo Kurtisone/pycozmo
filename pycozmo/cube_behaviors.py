@@ -21,6 +21,7 @@ from . import activity
 from . import behavior
 from . import cube_handling
 from . import event
+from . import robot
 from . import util
 from .cube_handling import Cancelled
 from .cubes import CUBE_SIDE, LightCube
@@ -28,6 +29,11 @@ from .json_loader import load_json_file
 from .logger import logger
 from .needs import BRACKETS
 from .protocol_encoder import UpAxis
+
+
+#: How high the lift may be, in mm, for an animation to take over, and how long it is brought down in, in seconds.
+LOWERED_LIFT = 40.0
+LIFT_LOWER_TIME = 0.8
 
 
 __all__ = [
@@ -148,6 +154,17 @@ class BehaviorScript(behavior.Behavior):
     def play(self, trigger: str, cancel: threading.Event) -> bool:
         """ Play an animation trigger and wait for it to end; say whether it did. """
         return play_and_wait(self.cli, trigger, cancel, self.ANIMATION_TIMEOUT)
+
+    def lower_lift(self, cancel: threading.Event) -> None:
+        """
+        Bring the lift down, gently, if it is up. A roll or a wheelie that did not take leaves it up, and Anki's clip
+        for the retry sends it to the bottom in 66 ms, onto the cube or the floor, which rocked the robot up to 52
+        degrees.
+        """
+        if self.cli.lift_position.height.mm > LOWERED_LIFT:
+            self.cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm, duration=LIFT_LOWER_TIME)
+            if cancel.wait(LIFT_LOWER_TIME + 0.3):
+                raise Cancelled()
 
     def need_action(self) -> None:
         """ Credit the need action the configuration names, once the behavior has done its part. """
@@ -341,6 +358,7 @@ class BehaviorRollBlock(BehaviorScript):
                 self.need_action()
                 return
             side = side_below_top(before, cube.up_axis) if rolled else 0
+            self.lower_lift(cancel)
             self.play("RollBlockRetry", cancel)
 
 
@@ -388,4 +406,5 @@ class BehaviorPopAWheelie(BehaviorScript):
             self.play("SuccessfulWheelie", cancel)
             self.need_action()
         else:
+            self.lower_lift(cancel)
             self.play("PopAWheelieRetry", cancel)

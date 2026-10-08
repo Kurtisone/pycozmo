@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 from unittest import mock
 
 import pycozmo
-from pycozmo import behavior, cube_behaviors, event
+from pycozmo import behavior, cube_behaviors, event, robot, util
 from pycozmo.cube_handling import Cancelled
 from pycozmo.protocol_encoder import ObjectType, UpAxis
 
@@ -108,6 +108,17 @@ class ScriptClient(FakeClient):
     def __init__(self) -> None:
         super().__init__()
         self.cubes: Any = mock.Mock(carried=None)
+        #: Where the lift is; whatever sets it goes there.
+        self.lift_height = 31.0
+        self.lowered: List[float] = []
+
+    @property
+    def lift_position(self):
+        return robot.LiftPosition(height=util.Distance(mm=self.lift_height))
+
+    def set_lift_height(self, height, *args, **kwargs):
+        self.lowered.append(height)
+        self.lift_height = height
 
     def play_anim_group(self, name):
         super().play_anim_group(name)
@@ -342,6 +353,18 @@ class TestRollBlock(ScriptTestCase):
         self.run_script(self.make(cube_behaviors.BehaviorRollBlock, needsActionID="RollACube"))
         self.assertEqual(self.sides, [0, -1])
         self.assertEqual(self.needs.actions, ["RollACube"])
+
+    def test_the_lift_comes_down_gently_before_the_retry_animation_sends_it_down(self):
+        # A roll that did not take leaves the lift up, and Anki's clip for the retry slams it to the bottom in 66 ms.
+        self.cli.lift_height = 92.0
+        self.roll_to(UpAxis.ZNegative, UpAxis.ZPositive)
+        self.run_script(self.make(cube_behaviors.BehaviorRollBlock, needsActionID="RollACube"))
+        self.assertEqual(self.cli.lowered, [robot.MIN_LIFT_HEIGHT.mm])
+
+    def test_a_lift_that_is_down_is_left_alone(self):
+        self.roll_to(UpAxis.ZNegative, UpAxis.ZPositive)
+        self.run_script(self.make(cube_behaviors.BehaviorRollBlock, needsActionID="RollACube"))
+        self.assertEqual(self.cli.lowered, [])
 
     def test_four_rolls_at_most(self):
         self.roll_to(UpAxis.ZNegative, UpAxis.XPositive, UpAxis.ZNegative, UpAxis.XNegative)
