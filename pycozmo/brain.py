@@ -282,6 +282,10 @@ class Brain:
         self.post_emotion_event(name)
 
     def on_cliff_detected(self, cli: client.Client, state: bool) -> None:
+        if self.behavior is self.go_home:
+            # Backing on the charger, whose ramp the cliff sensors take for the edge of a table: the behavior
+            # drives with them off, and a reaction would stop it halfway up.
+            return
         if state and not cli.robot_picked_up and cli.robot_moving:
             self.post_reaction("CliffDetected")
 

@@ -582,6 +582,16 @@ class TestActivityEngine(unittest.TestCase):
             go_home.thread.join(2.0)
             self.brain.deactivate_behavior()
 
+    def test_the_charger_is_no_cliff_for_a_robot_going_home(self):
+        self.brain.behavior = self.brain.go_home
+        with mock.patch.object(self.brain, "post_reaction") as post:
+            self.brain.cli.robot_picked_up, self.brain.cli.robot_moving = False, True
+            self.brain.on_cliff_detected(self.brain.cli, True)
+            post.assert_not_called()
+            self.brain.behavior = None
+            self.brain.on_cliff_detected(self.brain.cli, True)
+            post.assert_called_once_with("CliffDetected")
+
     def test_running_a_behavior_holds_it_back(self):
         chooser = self.brain.activities["NothingToDo"].behavior_chooser
         assert chooser is not None
