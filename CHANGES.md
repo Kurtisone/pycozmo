@@ -72,7 +72,16 @@ New features:
     where the robot was when it saw them, the newer counting for more, for odometry is some 20 mm out from one place
     to the next; its heading is told by the views from the side, which are better than those seen squarely. The rest
     has been tried against an emulator of the robot, which has the charger, its marker, its ramp and its contacts.
-    Not yet: a backing that took, other than by hand.
+    With the axis there, the learning kept in bounds and the backing as above, ten cycles of leaving the charger and
+    coming back, by paths 3 to 7 cm to the right and 10 to 22 cm in front, all docked on their own, in 23 to 34 s but
+    for one that took three tries and 90 s, in which it learnt its aim. The seating of a robot nose up on the ramp has
+    not been tried on a robot.
+- Going back when the battery is low. pycozmo.charger_behaviors.BehaviorGoHome, which the brain keeps as "GoHome"
+    though the resources have none: Anki's robot, running down, drove about asking for help. The brain takes a reading
+    of the battery a second, none on the charger, and the robot goes back when the middle of the last 20 s of them is
+    at or under 3.75 V, off the charger and not in somebody's hand; before any other activity, though not in the midst
+    of a behavior. A try that fails is not repeated for 5 minutes. Tried against an emulator of the robot with the whole
+    brain.
 - Anki's cube behaviors: PutDownBlock, PickUpCube, PickUpAndPutDownCube, StackBlocks, RollBlock, PopAWheelie, and
     CubeLiftWorkout, which reads Anki's four workouts, lifts as many times as the robot is confident, and has its
     energy choose the workout. Each runs its steps on a thread of its own, and deactivating it cancels them. A

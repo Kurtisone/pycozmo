@@ -19,6 +19,7 @@ from . import emotions
 from . import needs
 from . import behavior
 from . import cube_behaviors
+from . import charger_behaviors
 from . import game_behaviors
 from . import activity
 from . import motion_detection
@@ -111,6 +112,9 @@ class Brain:
         # them, and they are what makes a robot left alone start asking to be played with.
         self.needs = needs.load_needs(resource_dir)
         self.behaviors = behavior.load_behaviors(resource_dir, self.cli, self.needs)
+        # Not in the resources: see pycozmo.charger_behaviors .
+        self.go_home = charger_behaviors.BehaviorGoHome(self.cli, None, self.needs)
+        self.behaviors[self.go_home.get_id()] = self.go_home
         # What the robot has earned the right to do: everything, since nothing here keeps a progression. See
         # pycozmo.unlocks .
         self.unlocks = unlocks.load_all_unlocks(resource_dir)
@@ -515,6 +519,10 @@ class Brain:
         with self.behavior_lock:
             if self.behavior is not None or self.behavior_to_resume is not None:
                 return
+            if self.go_home.wants_to_run(now):
+                # A battery that is running down comes before whatever there is to do.
+                self._activate_behavior(self.go_home.get_id())
+                return
             if now < self.next_choice_time:
                 return
             if self.sub_activity is not None and self.sub_activity.should_end(now):
@@ -655,6 +663,7 @@ class Brain:
             self.update_emotion_types()
             self.update_needs()
             self.update_hiccups()
+            self.go_home.sample()
             self.update_activity()
             self.cli.cubes.update()
             # TODO: Timers

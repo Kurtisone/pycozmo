@@ -567,6 +567,21 @@ class TestActivityEngine(unittest.TestCase):
             self.brain.update_activity(1001.0)
             self.assertEqual(choose.call_count, 2)
 
+    def test_a_low_battery_sends_the_robot_home_before_anything_else(self):
+        go_home = self.brain.go_home
+        self.addCleanup(go_home.samples.clear)
+        now = 1000.0
+        for step in range(15):
+            go_home.cli.battery_voltage = 3.6
+            go_home.sample(now + step)
+        go_home.cli.robot_status = 0
+        with mock.patch.object(pycozmo.charger_handling, "go_to_charger", return_value=True):
+            self.brain.update_activity(now + 15.0)
+            self.assertEqual(self.current_behavior(), "GoHome")
+            assert go_home.thread is not None
+            go_home.thread.join(2.0)
+            self.brain.deactivate_behavior()
+
     def test_running_a_behavior_holds_it_back(self):
         chooser = self.brain.activities["NothingToDo"].behavior_chooser
         assert chooser is not None

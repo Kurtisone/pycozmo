@@ -151,7 +151,8 @@ Done:
   robot's own camera images. See [Vision](vision.md#the-chargers-marker).
 - **Going back to the charger**: `pycozmo.charger_handling` looks for the marker, drives round the charger if it is
   behind it, stands 20 cm in front, turns round and backs on. The version of the application this follows never did
-  it: the robot was put on its charger by hand.
+  it: the robot was put on its charger by hand. `pycozmo.charger_behaviors.BehaviorGoHome` has the brain send the robot
+  back when its battery has been at or under 3.75 V for 20 s, before any other activity.
 
 Open:
 - **Where the camera points.** The robot's reported pitch, flat on a table, drifts from one session to the next by
@@ -277,7 +278,7 @@ The SDK drove Anki's engine through the application. What its robot and world of
 | Light cubes: connection, lights, taps, moves | Yes: `Client.cubes` |
 | Light cubes: pose | Yes, from their markers |
 | Charger pose | Yes, from its marker, and from where the robot stood on it: `Client.charger`, `pycozmo.charger_detection` |
-| Going back to the charger | Yes, which Anki's application never did: `pycozmo.charger_handling` |
+| Going back to the charger | Yes, which Anki's application never did: `pycozmo.charger_handling`, and the brain does it on a low battery: `pycozmo.charger_behaviors` |
 | Custom objects | No |
 | Faces: seeing, naming, where they are | Yes, with OpenCV: `Client.faces` |
 | Facial expressions, pets | No |
