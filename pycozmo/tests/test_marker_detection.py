@@ -286,6 +286,24 @@ class TestFinding(unittest.TestCase):
         self.assertEqual(marker_detection.find_frames(image, CALIBRATION), [])
 
 
+class TestDegenerate(unittest.TestCase):
+
+    def test_a_quadrilateral_with_two_corners_in_one_is_left_as_it_is(self):
+        # Seen on a robot: sides of no length have no direction, and their samples were nowhere.
+        gray = np.full((240, 320), 80.0)
+        corners = np.array([[100.0, 100.0], [100.0, 100.0], [140.0, 140.0], [100.0, 140.0]])
+        for inwards in (False, True):
+            with self.subTest(inwards=inwards):
+                refined = marker_detection._refine_sides(gray, corners, inwards=inwards)
+                np.testing.assert_array_equal(refined, corners)
+
+    def test_corners_that_are_not_numbers_are_left_as_they_are(self):
+        gray = np.full((240, 320), 80.0)
+        corners = np.array([[100.0, 100.0], [np.nan, 100.0], [140.0, 140.0], [100.0, 140.0]])
+        refined = marker_detection._refine_sides(gray, corners, inwards=False)
+        np.testing.assert_array_equal(refined, corners)
+
+
 class TestIdentity(unittest.TestCase):
 
     POSES = ((turn(), (0.0, 0.0, 150.0)), (turn(0.5, 0.0), (30.0, 10.0, 200.0)),

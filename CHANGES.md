@@ -81,6 +81,14 @@ New features:
     coming back, by paths 3 to 7 cm to the right and 10 to 22 cm in front, all docked on their own, in 23 to 34 s but
     for one that took three tries and 90 s, in which it learnt its aim. The seating of a robot on the ramp
     was tried on one, put there by hand: it seated at the second try.
+- Keep Away on a robot. A whole game was started, with the player's cube: Cozmo waited, pretended, pounced, and the
+    cube was taken away and left in turn; four hands were judged, two for Cozmo and two for the player, and a fifth
+    two for neither when the game stopped on a crash in the cube markers' search - a quadrilateral with two corners in
+    one gave its sides no direction (marker_detection._refine_sides now leaves it as it is). A cube that had said
+    nothing since the run began, though connected, and said what it did again once it was disconnected and connected
+    again. The lift fell 44 mm in 99 ms in Anki's clips, which the user found violent: the fall is slowed to 250 ms and
+    starts earlier, to land when it did (keep_away.soften_pounce). Not settled: whether a cube that is tapped and then
+    moves, with the lift at the floor, was pulled away in time or was hit; the two look alike in the cube's reports.
 - The charger kept between runs. Client(charger_memory=path), or Charger.remember_in(path), writes what the robot knows
     of its charger to a file - the aim it learnt, which holds in any frame, and the charger's pose - and reads it at the
     start. The pose holds only in the frame the robot is in, which it keeps until it is picked up or switched off, and

@@ -8,8 +8,9 @@ waits taken out.
 
 import math
 import random
+import types
 import unittest
-from typing import Callable, Dict
+from typing import Any, Callable, Dict
 from unittest import mock
 
 from pycozmo import cube_handling, event, keep_away, robot, util
@@ -215,3 +216,58 @@ class TestReach(unittest.TestCase):
         # On a robot, the pounces lunged 39 to 57 mm, and caught a cube there every time.
         self.assertEqual(keep_away.POUNCE_DISTANCE, 88.0)
         self.assertGreater(keep_away.POUNCE_DISTANCE - cube_handling.DOCK_DISTANCE, 30.0)
+
+
+class TestSoftening(unittest.TestCase):
+
+    @staticmethod
+    def lifts(*keyframes):
+        from pycozmo import anim_encoder
+        return types.SimpleNamespace(keyframes=[
+            anim_encoder.AnimLiftHeight(trigger_time_ms=t, duration_ms=d, height_mm=h, variability_mm=0)
+            for t, d, h in keyframes])
+
+    def test_a_fast_fall_is_slowed_and_still_ends_where_it_did(self):
+        clip = self.lifts((330, 99, 48), (429, 66, 92), (1155, 330, 0))
+        keep_away.soften_pounce(clip)
+        first, second, third = clip.keyframes
+        self.assertEqual(first.duration_ms, keep_away.LIFT_FALL_MS)
+        self.assertEqual(first.trigger_time_ms + first.duration_ms, 330 + 99)
+        # What follows is where it was.
+        self.assertEqual((second.trigger_time_ms, second.duration_ms), (429, 66))
+        self.assertEqual((third.trigger_time_ms, third.duration_ms), (1155, 330))
+
+    def test_only_the_first_fall_is_slowed(self):
+        # The last one, to the bottom, is once the robot has backed off the cube.
+        clip = self.lifts((300, 66, 36), (363, 33, 34), (660, 66, 0))
+        keep_away.soften_pounce(clip)
+        self.assertEqual((clip.keyframes[0].trigger_time_ms, clip.keyframes[0].duration_ms), (116, 250))
+        self.assertEqual((clip.keyframes[2].trigger_time_ms, clip.keyframes[2].duration_ms), (660, 66))
+
+    def test_a_fall_that_follows_a_move_does_not_start_before_the_move_ended(self):
+        clip = self.lifts((0, 100, 92), (100, 60, 40))
+        keep_away.soften_pounce(clip)
+        fall = clip.keyframes[1]
+        self.assertGreaterEqual(fall.trigger_time_ms, 100)
+        self.assertEqual(fall.trigger_time_ms + fall.duration_ms, 160)
+
+    def test_a_small_fall_or_a_rise_is_left_alone(self):
+        clip = self.lifts((0, 50, 80), (200, 40, 92))
+        keep_away.soften_pounce(clip)
+        self.assertEqual([(k.trigger_time_ms, k.duration_ms) for k in clip.keyframes], [(0, 50), (200, 40)])
+
+    def test_the_clips_of_the_game_are_softened_once(self):
+        cli: Any = PounceClient()
+        member = types.SimpleNamespace(name="anim_a")
+        cli.animation_groups = {"CubePouncePounceNormal": types.SimpleNamespace(members=[member])}
+        clip = self.lifts((330, 99, 48))
+        cli._clip_metadata = {"anim_a": types.SimpleNamespace(fspec="x")}
+        cli._load_clips = mock.Mock()
+        cli._clips = {"anim_a": clip}
+        cli._ppclips = {"anim_a": object()}
+        game = keep_away.KeepAway(cli, cli.cube)
+        game._soften_pounces()
+        game._soften_pounces()
+        self.assertEqual(clip.keyframes[0].duration_ms, keep_away.LIFT_FALL_MS)
+        self.assertNotIn("anim_a", cli._ppclips)
+        cli._load_clips.assert_called_once()

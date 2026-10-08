@@ -661,8 +661,14 @@ def _refine_sides(gray: np.ndarray, corners: np.ndarray,
     Inwards, the corners are those of the frame's inner edge, and the light margin is inside it. Where a side
     has too little light beyond it, the corners are left as they are.
     """
+    if not np.all(np.isfinite(corners)):
+        return corners
     centre = corners.mean(axis=0)
-    side = float(np.mean([np.hypot(*(corners[(i + 1) % 4] - corners[i])) for i in range(4)]))
+    lengths = [float(np.hypot(*(corners[(i + 1) % 4] - corners[i]))) for i in range(4)]
+    if min(lengths) < 1e-6:
+        # Two corners are one: there is no side to refine, and its direction is nothing.
+        return corners
+    side = float(np.mean(lengths))
     # Across the side, no further in than the ring is thick.
     reach = max(1.0, min(2.5, 0.08 * side))
     # Finely: interpolated brightness bends at every pixel's centre, and summed in coarse steps, the bends

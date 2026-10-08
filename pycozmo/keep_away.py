@@ -22,6 +22,7 @@ import threading
 import time
 from typing import Any, List, Optional
 
+from . import anim_encoder
 from . import cube_handling
 from . import cube_lights
 from . import event
@@ -37,8 +38,11 @@ __all__ = [
     "PLAYER",
     "POUNCE_DISTANCE",
 
+    "LIFT_FALL_MS",
+
     "Skill",
     "KeepAway",
+    "soften_pounce",
 ]
 
 
@@ -57,6 +61,11 @@ POSITION_TOLERANCE = 10.0
 HEADING_TOLERANCE = math.radians(8.0)
 #: How long Cozmo waits, lift up, before pouncing or pretending to, in seconds: a time drawn in this range.
 WAIT_TIME = (1.0, 4.0)
+#: How long, at least, the lift takes to come down in a pounce, in milliseconds. Anki's clips let it fall 44 mm in 99,
+#: and the user, who knew the application's, found it violent: see soften_pounce().
+LIFT_FALL_MS = 250
+#: How far the lift has to fall, in mm, for the fall to be slowed.
+LIFT_FALL_MIN = 20.0
 #: How long after an animation a move of the cube still counts towards it, in seconds.
 MOVE_GRACE = 0.3
 #: How high, in mm, the lift is when a pounce has come down on the cube, as against on nothing. On a robot, with the
@@ -257,10 +266,46 @@ class KeepAway:
         elif cancel.wait(seconds):
             raise Cancelled()
 
+    def _soften_pounces(self) -> None:
+        """ Soften the clips of Cozmo's pounces, once for the client. """
+        if getattr(self.cli, "_pounces_softened", False):
+            return
+        groups = getattr(self.cli, "animation_groups", None)
+        if not groups or "CubePouncePounceNormal" not in groups:
+            return
+        for member in groups["CubePouncePounceNormal"].members:
+            if member.name not in self.cli._clip_metadata:
+                continue
+            self.cli._load_clips(self.cli._clip_metadata[member.name].fspec)
+            soften_pounce(self.cli._clips[member.name])
+            self.cli._ppclips.pop(member.name, None)
+        self.cli._pounces_softened = True
+
     def _load_resources(self) -> None:
+        self._soften_pounces()
         if "CubePouncePlayerWin" not in self.cli.cubes.light_animations:
             self.cli.cubes.light_animations.update(cube_lights.load_cube_light_animations(
                 str(util.get_cozmo_asset_dir())))
+
+
+def soften_pounce(clip: Any) -> None:
+    """
+    Let the lift fall slower in a pounce's clip, as it lands when it did: the fall starts earlier, so as to end where
+    it did, which is where the lunge has the fork over the cube, and no sooner than the lift's last move ended. Only
+    the first fall is the pounce's; the last, to the bottom, once the robot has backed off, is left as it is.
+    """
+    lifts = sorted((k for k in clip.keyframes if isinstance(k, anim_encoder.AnimLiftHeight)),
+                   key=lambda k: k.trigger_time_ms)
+    height = robot.MAX_LIFT_HEIGHT.mm
+    last_end = 0
+    for k in lifts:
+        end = k.trigger_time_ms + k.duration_ms
+        if height - k.height_mm >= LIFT_FALL_MIN:
+            if k.duration_ms < LIFT_FALL_MS:
+                start = max(last_end, end - LIFT_FALL_MS)
+                k.trigger_time_ms, k.duration_ms = start, end - start
+            return
+        height, last_end = k.height_mm, end
 
 
 def _wrap(angle: float) -> float:
