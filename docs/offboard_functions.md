@@ -296,7 +296,7 @@ Compared with the Cozmo application
 |---|---|
 | Freeplay: waking up, reactions, bored and idle animations, pouncing on motion, hiking | Yes |
 | Freeplay with cubes: seeing them, lighting them, reacting to them | Yes |
-| Freeplay with cubes: lifting, working out, stacking, rolling, popping wheelies | Yes, as Anki's engine was recorded doing them; not yet tried on a robot as written |
+| Freeplay with cubes: lifting, working out, stacking, rolling, popping wheelies | Yes, as Anki's engine was recorded doing them; the wheelie has been tried on a robot (76 degrees, down again on its treads), the rest not as written |
 | Freeplay with cubes: knocking over, pyramids | No |
 | Freeplay with faces: greeting, peek-a-boo, fist bumps | A face that appears is acknowledged; the fist bump behavior is there, and nothing asks for it; the others, which look for faces and drive to them, are not |
 | Needs, and asking to be played with | Yes |
