@@ -41,6 +41,8 @@ __all__ = [
     "PLACE_ON_DISTANCE",
     "ROLL_DISTANCE",
     "WHEELIE_DISTANCE",
+    "WHEELIE_LIFT_ACCEL",
+    "WHEELIE_LIFT_SPEED",
     "PREDOCK_GAP",
     "LOOK_HEAD_ANGLE",
     "DOCK_HEAD_ANGLE",
@@ -102,7 +104,12 @@ ROLL_REPORT_TIME = 3.0
 #: third of a second later.
 WHEELIE_DISTANCE = 32.5
 WHEELIE_SPEED = 150.0
-WHEELIE_TIME = 0.35
+WHEELIE_TIME = 0.6
+#: How fast the lift comes down in it, in rad/s and rad/s^2. Anki's SDK let it fall in 0.15 s, which the user, who knew
+#: the application's, found violent; at these it takes 0.2 s, the robot goes up to 77 degrees all the same, and the
+#: wheels drive on longer to make up for it.
+WHEELIE_LIFT_SPEED = 4.0
+WHEELIE_LIFT_ACCEL = 40.0
 #: How far beyond where it docks the robot stands to have a look at the cube, in mm: some 15 cm from it.
 PREDOCK_GAP = 100.0
 #: The head's angle for looking at a cube on the ground nearby, in radians: the whole marker is in sight from
@@ -575,7 +582,7 @@ def pop_a_wheelie(cli: Any, cube: LightCube, cancel: Optional[threading.Event] =
             return False
         cli.enable_stop_on_cliff(False)
         try:
-            cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm, accel=100.0, max_speed=10.0)
+            cli.set_lift_height(robot.MIN_LIFT_HEIGHT.mm, accel=WHEELIE_LIFT_ACCEL, max_speed=WHEELIE_LIFT_SPEED)
             _creep(cli, WHEELIE_SPEED, WHEELIE_TIME, cancel)
             _pause(SETTLE_TIME / 2, cancel)
         finally:

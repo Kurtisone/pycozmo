@@ -21,7 +21,9 @@ its animations for a hand, a round and a game played. A quick player beat Cozmo'
 cannot come sooner than 0.5 s after the lights. Three songs, one at each tempo, were sung with the wheels moving as
 the animations move them, the robot staying within 36 mm and 16 degrees of where it began, and the user found it very
 good. A wheelie was popped on a robot, 250 mm from a cube, from a battery of 4.5 V: the lift fell from 93 to 30 mm and
- the nose went up to 76 degrees, the 74 of Anki's, and Anki's animation brought it down on its treads, level. Not tried:
+ the nose went up to 76 degrees, the 74 of Anki's, and Anki's animation brought it down on its treads, level. The user found the lift's fall, in 0.15 s as the SDK let it, violent next to the
+ application's: it takes 0.2 s now (WHEELIE_LIFT_SPEED, WHEELIE_LIFT_ACCEL) and the wheels drive on for 0.6 s, which
+ put the nose up to 77 degrees in three of three tries. Not tried:
  a whole game of Keep Away, and most of the behaviors that run these.
 Keep Away was played in hands: Cozmo took its place, waited, pretended and pounced, and the cube said it was tapped
 when the lift came down.

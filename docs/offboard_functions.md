@@ -208,7 +208,7 @@ looking at the marker again on the way. From there it makes the manoeuvre's own 
 | Putting down | 52.5 mm, where it is set down | The lift comes down, the robot backs off 30 mm |
 | Setting on another | 38.5 mm, the lift up | The lift comes down to 76 mm only, which lets go; the robot backs off 55 mm |
 | Rolling | 34 mm, the lift up | The fork comes down on the top edge at 74 mm, then all the way down as the robot backs off at 55 mm/s: the cube tips over towards it |
-| Popping a wheelie | 32.5 mm, the lift up | The lift slams down while the robot drives on at 150 mm/s: it ends up on its back, at some 74 degrees |
+| Popping a wheelie | 32.5 mm, the lift up | The lift comes down in 0.2 s (Anki's SDK let it fall in 0.15) while the robot drives on at 150 mm/s for 0.6 s: it ends up on its back, at some 76 degrees |
 
 The distances are Anki's, 2.5 mm longer: PyCozmo places a cube that much further than Anki's engine did on the same
 images. The robot does not stop at cliffs while it rolls a cube or pops a wheelie, which tip it up, as Anki's engine
