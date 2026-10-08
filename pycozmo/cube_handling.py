@@ -39,6 +39,7 @@ __all__ = [
     "DOCK_DISTANCE",
     "PICKUP_DISTANCE",
     "PLACE_ON_DISTANCE",
+    "ROLL_BACK_OFF",
     "ROLL_DISTANCE",
     "WHEELIE_DISTANCE",
     "WHEELIE_LIFT_ACCEL",
@@ -96,6 +97,9 @@ ROLL_LOWER_TIME = 1.1
 ROLL_PULL_DELAY = 0.55
 ROLL_PULL_DISTANCE = 75.0
 ROLL_PULL_SPEED = 60.0
+#: How much further the robot backs off once the cube is rolled, in mm: from where the roll left it, a cube less than
+#: some 15 cm away is too big a marker for the robot to know, and it never found the cube it had just rolled.
+ROLL_BACK_OFF = 100.0
 #: How long, after the roll, the cube is waited for to say which way up it is, in seconds: on a robot it said so up to a
 #: second after the robot had stopped, and the roll that had worked was taken for one that had not.
 ROLL_REPORT_TIME = 3.0
@@ -221,6 +225,9 @@ def find_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = Non
         cli.turn_in_place(util.Angle(radians=_wrap(heading - cli.pose.rotation.angle_z.radians)))
         if look_for_cube(cli, cube, timeout=1.0, cancel=cancel):
             return True
+    elif look_for_cube(cli, cube, timeout=1.0, cancel=cancel):
+        # Not known where it is: the robot looks where it faces before it turns.
+        return True
     for _ in range(round(2 * math.pi / SEARCH_STEP)):
         _check(cancel)
         cli.turn_in_place(util.Angle(radians=SEARCH_STEP))
@@ -562,6 +569,8 @@ def roll_cube(cli: Any, cube: LightCube, cancel: Optional[threading.Event] = Non
             _pause(ROLL_PULL_DISTANCE / ROLL_PULL_SPEED + SETTLE_TIME / 2, cancel)
         finally:
             cli.enable_stop_on_cliff(True)
+        # Far enough to see it again, whatever it did.
+        cli.drive_straight(util.Distance(mm=-ROLL_BACK_OFF), speed=ROLL_PULL_SPEED)
         deadline = time.perf_counter() + ROLL_REPORT_TIME
         while cube.up_axis == axis and time.perf_counter() < deadline:
             _pause(0.1, cancel)

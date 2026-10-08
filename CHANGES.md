@@ -89,6 +89,11 @@ New features:
     again. The lift fell 44 mm in 99 ms in Anki's clips, which the user found violent: the fall is slowed to 250 ms and
     starts earlier, to land when it did (keep_away.soften_pounce). Not settled: whether a cube that is tapped and then
     moves, with the lift at the floor, was pulled away in time or was hit; the two look alike in the cube's reports.
+- RollBlock on a robot, from a cube on its side, at 3.73 V at the lowest: the lift did not fall as it had in the
+    incident of 3 October (no fall of more than 40 mm in under 0.3 s), the nose went up 31 degrees as a roll takes it,
+    and the cube was rolled once. It was left upside down, the behavior not having found it again: it had been
+    rolled up to the robot, which stood 10 cm from it, too near for its marker to be known, and the robot looked all
+    round before it looked ahead. The robot now backs off 10 cm more after a roll, and looks where it faces first.
 - The charger kept between runs. Client(charger_memory=path), or Charger.remember_in(path), writes what the robot knows
     of its charger to a file - the aim it learnt, which holds in any frame, and the charger's pose - and reads it at the
     start. The pose holds only in the frame the robot is in, which it keeps until it is picked up or switched off, and

@@ -376,7 +376,9 @@ class TestRoll(GestureTestCase):
         self.assertEqual(self.cli.orders, [
             ("lift", cube_handling.CARRY_HEIGHT, 0.0), ("cliff", False),
             ("lift", pycozmo.robot.MIN_LIFT_HEIGHT.mm, cube_handling.ROLL_LOWER_TIME),
-            ("drive", -cube_handling.ROLL_PULL_DISTANCE, False), ("cliff", True)])
+            ("drive", -cube_handling.ROLL_PULL_DISTANCE, False), ("cliff", True),
+            # Then far enough to see the cube again.
+            ("drive", -cube_handling.ROLL_BACK_OFF, True)])
         self.assertIsNone(self.cube.pose)
 
     def test_a_cube_that_says_so_late_did_roll(self):
@@ -411,3 +413,23 @@ class TestWheelie(GestureTestCase):
 
     def test_still_on_its_treads(self):
         self.assertFalse(cube_handling.pop_a_wheelie(self.cli, self.cube))
+
+
+class TestFindCube(unittest.TestCase):
+
+    def setUp(self):
+        self.cli = mock.Mock()
+        self.cube = pycozmo.cubes.LightCube(pycozmo.protocol_encoder.ObjectType.Block_LIGHTCUBE2)
+
+    def test_a_cube_not_known_to_be_anywhere_is_looked_for_where_the_robot_faces_first(self):
+        with mock.patch.object(cube_handling, "look_for_cube", return_value=True) as look:
+            self.assertTrue(cube_handling.find_cube(self.cli, self.cube))
+        look.assert_called_once()
+        self.cli.turn_in_place.assert_not_called()
+
+    def test_a_cube_nowhere_in_sight_is_looked_for_all_round(self):
+        with mock.patch.object(cube_handling, "look_for_cube", return_value=False) as look:
+            self.assertFalse(cube_handling.find_cube(self.cli, self.cube))
+        steps = round(2 * math.pi / cube_handling.SEARCH_STEP)
+        self.assertEqual(self.cli.turn_in_place.call_count, steps)
+        self.assertEqual(look.call_count, steps + 1)
